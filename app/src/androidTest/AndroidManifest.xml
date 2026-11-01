@@ -1,0 +1,11 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Test-only editor in a separate app UID, for real clipboard URI/IME integration. -->
+        <activity android:name="com.rheerkens.androidkeyboard.test.ClipboardFixtureActivity"
+            android:exported="true" android:theme="@android:style/Theme.Material.Light.NoActionBar"
+            android:windowSoftInputMode="adjustResize" />
+        <provider android:name="com.rheerkens.androidkeyboard.test.ClipboardFixtureProvider"
+            android:authorities="com.rheerkens.androidkeyboard.test.clipboard"
+            android:exported="false" android:grantUriPermissions="true" />
+    </application>
+</manifest>

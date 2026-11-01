@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Blocks pushes whose commits, tags, author emails or ref names would leak private details.
+# Enable once per clone: git config core.hooksPath .githooks
+set -euo pipefail
+remote=$1
+url=$2
+root=$(git rev-parse --show-toplevel)
+check() { python3 -I "$root/scripts/check-leaks.py" --require-denylist "$@"; }
+zero=0000000000000000000000000000000000000000
+
+# Commits the destination really has, asked from the destination itself (local tracking refs can be
+# stale or belong to another repository). If it can't be asked, nothing is excluded.
+exclude=()
+if advertised=$(git ls-remote "$url" 2>/dev/null); then
+  while read -r sha _; do
+    if git cat-file -e "$sha^{commit}" 2>/dev/null; then exclude+=("^$sha^{commit}"); fi
+  done <<<"$advertised"
+fi
+
+status=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$local_sha" = "$zero" ] && continue # deleting a remote ref
+  printf '%s\n%s\n' "$local_ref" "$remote_ref" | check text "ref name" || status=1
+  if [ "$(git cat-file -t "$local_sha")" = tag ]; then
+    check tag "$local_sha" || status=1
+  fi
+  if git cat-file -e "$local_sha^{commit}" 2>/dev/null; then
+    check commits "$local_sha^{commit}" "${exclude[@]}" || status=1
+  else
+    # Tags of trees or blobs would publish content the commit check never sees.
+    echo "leak: a pushed ref points to a $(git cat-file -t "$local_sha"), not a commit; only commits and tags of commits may be pushed"
+    status=1
+  fi
+done
+if [ "$status" != 0 ]; then
+  echo "pre-push: push blocked by the leak check. Remove the content from the commits; don't use --no-verify." >&2
+fi
+exit "$status"

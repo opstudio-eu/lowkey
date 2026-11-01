@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Clipboard-history image copies (ClipboardHistory) and edited images (ImageEditorActivity). -->
+<paths>
+    <cache-path name="clipboard" path="clipboard/" />
+    <cache-path name="edits" path="edits/" />
+</paths>

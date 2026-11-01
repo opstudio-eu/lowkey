@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Slim Keyboard – repository design and architecture</title>
+<style>
+  :root {
+    --bg: #0f1115; --fg: #e6e8ee; --muted: #9aa3b2; --card: #171a21; --border: #2a2f3a;
+    --accent: #5fd39a; --accent2: #7aa8ff; --warn: #f2b84b; --bad: #ff7a7a; --code: #1d2129;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f7f8fa; --fg: #1b1e24; --muted: #5d6675; --card: #fff; --border: #dde1e8;
+      --accent: #12885a; --accent2: #2f62d6; --warn: #a86b00; --bad: #c43c3c; --code: #f0f2f5; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1040px; margin: 0 auto; padding: 32px 20px 80px; }
+  h1 { font-size: 28px; margin: 0 0 4px; }
+  h2 { font-size: 20px; margin: 44px 0 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+  h3 { font-size: 16px; margin: 22px 0 6px; }
+  p, li { color: var(--fg); }
+  .sub { color: var(--muted); margin: 0 0 18px; }
+  code, pre { font-family: var(--mono); font-size: 13px; }
+  code { background: var(--code); padding: 1px 5px; border-radius: 4px; }
+  pre { background: var(--code); border: 1px solid var(--border); border-radius: 8px; padding: 14px; overflow-x: auto; line-height: 1.45; }
+  a { color: var(--accent2); }
+  nav.toc { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 12px 14px; background: var(--card);
+    border: 1px solid var(--border); border-radius: 10px; font-size: 14px; }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .card h4 { margin: 0 0 6px; font-size: 15px; }
+  .card p { margin: 0; color: var(--muted); font-size: 14px; }
+  .tag { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: .03em; padding: 1px 7px;
+    border-radius: 999px; border: 1px solid currentColor; margin-left: 6px; vertical-align: 1px; }
+  .t-now { color: var(--accent); } .t-later { color: var(--accent2); } .t-risk { color: var(--warn); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
+  .tree .d { color: var(--accent2); } .tree .c { color: var(--muted); } .tree .n { color: var(--accent); }
+  svg text { font-family: system-ui, sans-serif; }
+  .diagram { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px; overflow-x: auto; }
+  .note { border-left: 3px solid var(--warn); padding: 6px 12px; background: var(--card); border-radius: 0 8px 8px 0; }
+  .ok { border-left-color: var(--accent); }
+  details { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; margin: 8px 0; }
+  summary { cursor: pointer; font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+<h1>Slim Keyboard: repository design and architecture</h1>
+<p class="sub">Project <code>opstudio-eu/lowkey</code> · application ID <code>com.rheerkens.androidkeyboard</code> · drafted 2026-10-10 alongside the mock demo. This document describes the intended design and serves as input for review before implementation begins.</p>
+
+<nav class="toc">
+  <a href="#goals">Goals</a><a href="#principles">Principles</a><a href="#overview">System overview</a>
+  <a href="#tree">Folder structure</a><a href="#modules">Modules</a><a href="#seams">Key interfaces</a>
+  <a href="#voice">Voice state machine</a><a href="#editor">Editor safety</a><a href="#dictionary">Dictionary</a>
+  <a href="#models">Models</a><a href="#refs">Reference reuse</a><a href="#stack">Tech stack</a>
+  <a href="#testing">Testing</a><a href="#roadmap">Roadmap</a><a href="#risks">Risks and open questions</a>
+</nav>
+
+<h2 id="goals">1. Product goals</h2>
+<div class="grid">
+  <div class="card"><h4>Slim keyboard</h4><p>Four key rows with a suggestion strip. The globe sits immediately after <code>?123</code>, in Samsung's position. About 240 dp tall.</p></div>
+  <div class="card"><h4>Low-height voice mode</h4><p>One row, about 56 dp: model picker, status, Talk/Stop, and the mic/keyboard toggle in the same slot in both modes. Live text appears in the editor.</p></div>
+  <div class="card"><h4>Predictable voice lifecycle</h4><p>Voice entry starts recording automatically, and the last mode is remembered. Switching to keys cancels recording and pending transcription.</p></div>
+  <div class="card"><h4>Local English dictation</h4><p>Dictate coding requests and explanations on the device. Live partial text is followed by one final commit.</p></div>
+  <div class="card"><h4>Exact technical terms</h4><p>Exact multiword terms such as <code>T3 Code</code> keep their spelling and case. Spoken-to-written phrase rules are optional.</p></div>
+  <div class="card"><h4>Private and offline</h4><p>Text and audio stay on the device. The network is used only for explicit model downloads.</p></div>
+</div>
+
+<h2 id="principles">2. Design principles</h2>
+<ol>
+  <li><b>Build our own code from proven designs.</b> Write the code ourselves, guided by how FUTO Keyboard and the Moonshine voice fork solve the same problems. Do not copy their source. This keeps licensing simple and lets the architecture fit our narrower scope. Third-party <i>libraries</i> with permissive licenses, such as the Moonshine runtime, are acceptable dependencies.</li>
+  <li><b>Pure logic stays independent of Android.</b> The voice state machine, layouts, suggestions, phrase rules, and model catalog are plain Kotlin that runs in fast JVM tests. Android-specific code is a thin layer around them.</li>
+  <li><b>Replaceable components behind interfaces.</b> <code>SpeechEngine</code>, <code>ModelStore</code>, and <code>Suggester</code> have fake implementations today and real ones later. The mock demo is the first client of these interfaces.</li>
+  <li><b>One owner for each piece of state.</b> Each store exposes a <code>StateFlow</code>. The companion app and the input method run in the same process and share one <code>AppGraph</code>, so a dictionary edit appears in the keyboard immediately.</li>
+  <li><b>Session-scoped, cancellable work.</b> Each recording has a session ID. Every asynchronous result checks that ID before it touches the editor.</li>
+  <li><b>Start with one module and clear packages.</b> Extract Gradle modules when a boundary needs enforcement or isolates a heavy dependency.</li>
+</ol>
+
+<h2 id="overview">3. System overview</h2>
+<div class="diagram">
+<svg viewBox="0 0 980 470" width="100%" style="min-width:760px" role="img" aria-label="Component diagram">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#8a93a3"/></marker>
+  </defs>
+  <style>
+    .bx{fill:none;stroke:#8a93a3;stroke-width:1.2;rx:8}
+    .g1{fill:rgba(95,211,154,.10);stroke:#5fd39a}
+    .g2{fill:rgba(122,168,255,.10);stroke:#7aa8ff}
+    .g3{fill:rgba(242,184,75,.10);stroke:#f2b84b}
+    .t{font-size:12px;fill:currentColor}
+    .h{font-size:13px;font-weight:700;fill:currentColor}
+    .s{font-size:11px;fill:#8a93a3}
+    .ln{stroke:#8a93a3;stroke-width:1.2;fill:none;marker-end:url(#ar)}
+  </style>
+  <g style="color:var(--fg)">
+  <!-- host -->
+  <rect x="10" y="20" width="170" height="120" rx="8" class="bx"/>
+  <text x="22" y="44" class="h">Host app</text>
+  <text x="22" y="64" class="s">T3 Code, browser, chat…</text>
+  <text x="22" y="90" class="t">EditText</text>
+  <text x="22" y="110" class="t">InputConnection</text>
+
+  <!-- IME process -->
+  <rect x="210" y="10" width="760" height="450" rx="10" class="bx" stroke-dasharray="5 4"/>
+  <text x="224" y="32" class="s">App process: com.rheerkens.androidkeyboard</text>
+
+  <rect x="230" y="45" width="260" height="190" rx="8" class="g1"/>
+  <text x="244" y="68" class="h">ime/ SlimKeyboardService</text>
+  <text x="244" y="90" class="t">InputMethodService + ComposeView</text>
+  <text x="244" y="112" class="t">EditorBridge (composing ownership)</text>
+  <text x="244" y="134" class="t">KeyboardRoot: Keys ⇄ Voice</text>
+  <text x="244" y="160" class="s">keyboard/ui: KeysPanel, SuggestionStrip</text>
+  <text x="244" y="180" class="s">voice/ui: VoicePanel (one row), ModelPicker</text>
+  <text x="244" y="200" class="s">lifecycle owner, insets, height</text>
+
+  <rect x="520" y="45" width="210" height="190" rx="8" class="g2"/>
+  <text x="534" y="68" class="h">Pure Kotlin logic</text>
+  <text x="534" y="92" class="t">KeyboardController</text>
+  <text x="534" y="114" class="t">VoiceSessionController</text>
+  <text x="534" y="136" class="t">Suggester / TermProtection</text>
+  <text x="534" y="158" class="t">PhraseRuleApplier</text>
+  <text x="534" y="180" class="t">ModelCatalog</text>
+  <text x="534" y="206" class="s">no android.* imports</text>
+
+  <rect x="760" y="45" width="195" height="190" rx="8" class="g3"/>
+  <text x="774" y="68" class="h">Engines and stores</text>
+  <text x="774" y="92" class="t">SpeechEngine</text>
+  <text x="774" y="110" class="s">Fake → Moonshine</text>
+  <text x="774" y="132" class="t">AudioSource</text>
+  <text x="774" y="150" class="s">AudioRecord 16 kHz + VAD</text>
+  <text x="774" y="172" class="t">ModelStore</text>
+  <text x="774" y="190" class="s">Fake → downloader + SHA-256</text>
+  <text x="774" y="212" class="t">Dictionary / Settings stores</text>
+
+  <rect x="230" y="270" width="500" height="170" rx="8" class="g1"/>
+  <text x="244" y="294" class="h">companion/ MainActivity (Compose, Material 3)</text>
+  <text x="244" y="320" class="t">Home/Setup · Try it · Models · Dictionary · Settings · Diagnostics · About</text>
+  <text x="244" y="346" class="s">Reads and writes the same stores through AppGraph. It is also the IME settingsActivity,</text>
+  <text x="244" y="364" class="s">and the keyboard opens deep links to it (book → Dictionary, gear → Voice settings, no model → Models).</text>
+
+  <rect x="760" y="270" width="195" height="170" rx="8" class="bx"/>
+  <text x="774" y="294" class="h">AppGraph</text>
+  <text x="774" y="316" class="s">manual DI singleton,</text>
+  <text x="774" y="334" class="s">created in Application.</text>
+  <text x="774" y="356" class="s">Holds stores and engines.</text>
+  <text x="774" y="374" class="s">Swaps fake and real</text>
+  <text x="774" y="392" class="s">implementations.</text>
+
+  <path d="M180,80 L228,80" class="ln"/>
+  <text x="184" y="72" class="s">IMF</text>
+  <path d="M490,140 L518,140" class="ln"/>
+  <path d="M730,140 L758,140" class="ln"/>
+  <path d="M480,268 L540,238" class="ln"/>
+  <path d="M857,268 L857,238" class="ln"/>
+  </g>
+</svg>
+</div>
+<p>The input-method service and companion app share one process. The service owns editor interaction. Pure-logic controllers decide what happens. Engines and stores do slow work off the main thread and report results as flows.</p>
+
+<h2 id="tree">4. Folder structure</h2>
+<p>The mock demo uses this layout today, as one <code>:app</code> module whose packages mirror the intended boundaries. Files marked <span class="tag t-later">later</span> appear when the real engine arrives.</p>
+<pre class="tree"><span class="d">android-keyboard/</span>
+├── AGENTS.md  README.md  REFERENCES.md      <span class="c"># agent workflow, overview, upstream references</span>
+├── <span class="d">docs/</span>
+│   ├── mock-spec.md                         <span class="c"># every page and behavior of the mock demo</span>
+│   ├── app-prototype.html                   <span class="c"># clickable HTML prototype</span>
+│   ├── architecture.html                    <span class="c"># this page</span>
+│   ├── keyboard-mockups.html                <span class="c"># 5 concepts; concept 4 chosen</span>
+├── <span class="d">gradle/</span>wrapper/                           <span class="c"># Gradle 8.13, SHA-256 pinned</span>
+├── settings.gradle.kts  build.gradle.kts  gradle.properties
+└── <span class="d">app/</span>
+    ├── build.gradle.kts
+    └── <span class="d">src/</span>
+        ├── <span class="d">main/</span>
+        │   ├── AndroidManifest.xml          <span class="c"># launcher activity + BIND_INPUT_METHOD service + RECORD_AUDIO</span>
+        │   ├── res/xml/method.xml           <span class="c"># IME subtypes en_US, nl_NL; settingsActivity</span>
+        │   └── java/com/rheerkens/androidkeyboard/
+        │       ├── SlimKeyboardApp.kt       <span class="c"># Application; builds AppGraph</span>
+        │       ├── AppGraph.kt              <span class="c"># manual DI: stores, engines, controllers</span>
+        │       ├── <span class="n">ime/</span>                     <span class="c"># InputMethodService, lifecycle owner, EditorBridge</span>
+        │       ├── <span class="n">keyboard/</span>                <span class="c"># layouts (data), KeyboardController, ui/ (keys, strip)</span>
+        │       ├── <span class="n">voice/</span>                   <span class="c"># VoiceSessionController state machine, ui/VoicePanel</span>
+        │       ├── <span class="n">speech/</span>                  <span class="c"># SpeechEngine interface, FakeSpeechEngine</span>
+        │       │   └── moonshine/  <span class="tag t-later">later</span>  <span class="c"># MoonshineSpeechEngine adapter</span>
+        │       ├── <span class="n">audio/</span>  <span class="tag t-later">later</span>          <span class="c"># AudioSource (AudioRecord), VAD, level meter</span>
+        │       ├── <span class="n">models/</span>                  <span class="c"># ModelCatalog, ModelStore, FakeModelStore</span>
+        │       │   └── download/   <span class="tag t-later">later</span>  <span class="c"># downloader, checksum, install/remove</span>
+        │       ├── <span class="n">dictionary/</span>              <span class="c"># terms, phrase rules, Suggester, store</span>
+        │       ├── <span class="n">settings/</span>                <span class="c"># SettingsStore (StateFlow per setting)</span>
+        │       ├── <span class="n">diagnostics/</span>             <span class="c"># voice SessionLog</span>
+        │       └── <span class="n">companion/</span>               <span class="c"># MainActivity, navigation, screens/, theme/</span>
+        └── <span class="d">test/</span>                                <span class="c"># JVM tests for pure logic</span>
+</pre>
+
+<h3>Possible module split</h3>
+<p>Split the module when one of these triggers occurs: native or large speech dependencies slow builds, a second speech engine is added, or pure logic needs compiler-enforced isolation from Android.</p>
+<div class="tablewrap"><table>
+  <tr><th>Module</th><th>Type</th><th>Contents</th><th>Depends on</th></tr>
+  <tr><td><code>:core:model</code></td><td>Kotlin JVM</td><td>Layouts, voice state machine, suggester, phrase rules, catalog data</td><td>coroutines</td></tr>
+  <tr><td><code>:speech:api</code></td><td>Kotlin JVM</td><td><code>SpeechEngine</code>, events, fake engine</td><td>coroutines</td></tr>
+  <tr><td><code>:speech:moonshine</code></td><td>Android library</td><td>Moonshine adapter, model files layout</td><td><code>:speech:api</code>, <code>ai.moonshine:moonshine-voice</code></td></tr>
+  <tr><td><code>:data</code></td><td>Android library</td><td>Settings, dictionary, model stores, downloader</td><td><code>:core:model</code></td></tr>
+  <tr><td><code>:app</code></td><td>Android application</td><td>IME service, Compose UI, companion app, <code>AppGraph</code></td><td>all</td></tr>
+</table></div>
+
+<h2 id="seams">5. Key interfaces</h2>
+<p>These interfaces separate replaceable implementations. Each has a fake implementation now and a real one later.</p>
+<pre><span class="c">// speech/ — modeled on the voice fork's StreamingSpeechBackend (load → stream audio → partials → finish → close)</span>
+interface SpeechEngine {
+    val modelId: String
+    suspend fun load()                                   <span class="c">// heavy; done once per selected model, off main</span>
+    fun start(sessionId: Long): Flow&lt;SpeechEvent&gt;        <span class="c">// Partial(text) … Final(text) | Error</span>
+    fun acceptAudio(samples: FloatArray)                 <span class="c">// real engine only; the fake ignores this</span>
+    suspend fun stop()                                   <span class="c">// stop capture → engine emits Final once</span>
+    fun cancel()                                         <span class="c">// drop everything; no Final</span>
+    suspend fun release()
+}
+
+<span class="c">// models/ — modeled on the fork's RecognitionModelCatalog (artifacts with size + sha256)</span>
+interface ModelStore {
+    val models: StateFlow&lt;List&lt;ModelState&gt;&gt;              <span class="c">// NotInstalled | Downloading(p) | Installed | Active</span>
+    fun download(id: String); fun cancel(id: String)
+    fun activate(id: String); fun delete(id: String)     <span class="c">// delete(active) is rejected</span>
+}
+
+<span class="c">// ime/ — the only code that touches InputConnection</span>
+class EditorBridge(private val ic: () -&gt; InputConnection?) {
+    fun setComposing(text: String, owner: Long)          <span class="c">// marks provisional text as owned by a session</span>
+    fun commit(text: String, owner: Long)
+    fun discardComposing(owner: Long)                    <span class="c">// removes only text this session still owns</span>
+}</pre>
+
+<h2 id="voice">6. Voice session state machine</h2>
+<div class="diagram">
+<svg viewBox="0 0 900 260" width="100%" style="min-width:720px" role="img" aria-label="Voice state machine">
+  <style>
+    .st{fill:var(--card);stroke:#7aa8ff;stroke-width:1.5}
+    .lb{font-size:13px;font-weight:700;fill:currentColor}
+    .ed{font-size:11px;fill:#8a93a3}
+    .ln2{stroke:#8a93a3;stroke-width:1.2;fill:none;marker-end:url(#ar2)}
+    .cx{stroke:#ff7a7a;stroke-width:1.2;fill:none;stroke-dasharray:4 3;marker-end:url(#ar2)}
+  </style>
+  <defs><marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#8a93a3"/></marker></defs>
+  <g style="color:var(--fg)">
+  <rect x="20" y="95" width="120" height="46" rx="23" class="st"/><text x="80" y="123" text-anchor="middle" class="lb">Ready</text>
+  <rect x="230" y="95" width="130" height="46" rx="23" class="st"/><text x="295" y="123" text-anchor="middle" class="lb">Listening</text>
+  <rect x="460" y="95" width="130" height="46" rx="23" class="st"/><text x="525" y="123" text-anchor="middle" class="lb">Finalizing</text>
+  <rect x="690" y="95" width="150" height="46" rx="23" class="st"/><text x="765" y="123" text-anchor="middle" class="lb">Committed</text>
+  <rect x="300" y="200" width="200" height="40" rx="20" class="st" style="stroke:#ff7a7a"/><text x="400" y="225" text-anchor="middle" class="lb">Cancelled</text>
+  <rect x="20" y="10" width="190" height="40" rx="20" class="st" style="stroke:#f2b84b"/><text x="115" y="35" text-anchor="middle" class="lb">NoModel / NoPermission</text>
+
+  <path d="M140,118 L228,118" class="ln2"/><text x="148" y="110" class="ed">enter voice / tap</text>
+  <path d="M360,118 L458,118" class="ln2"/><text x="372" y="110" class="ed">Stop · silence</text>
+  <path d="M590,118 L688,118" class="ln2"/><text x="600" y="110" class="ed">Final(session)</text>
+  <path d="M765,95 C765,40 300,40 290,93" class="ln2"/><text x="520" y="52" class="ed">continuous mode: new session</text>
+  <path d="M700,141 C600,180 200,180 120,141" class="ln2"/><text x="420" y="172" class="ed">otherwise → Ready ("Tap to talk")</text>
+  <path d="M300,141 L360,198" class="cx"/><path d="M520,141 L450,198" class="cx"/>
+  <text x="510" y="232" class="ed">switch to keys · hide keyboard · new editor</text>
+  <path d="M80,95 L100,52" class="ln2"/>
+  </g>
+</svg>
+</div>
+<ul>
+  <li>Every transition that leaves Listening or Finalizing increments <code>sessionId</code>. Events whose ID does not match the current session are dropped. This mirrors the session-token approach in the concept 4 mockup and the voice fork's insertion-safety spec.</li>
+  <li><b>Cancelled</b> discards provisional text through <code>EditorBridge.discardComposing(owner)</code>. Committed text is never removed. The voice fork instead keeps partial text on cancel; our requirement is the opposite, which is why we write this part ourselves.</li>
+  <li>The current mode, Keys or Voice, persists in <code>SettingsStore</code>. If the keyboard opens in Voice mode and auto-start is on, it starts a new session.</li>
+</ul>
+
+<h2 id="editor">7. Editor safety rules</h2>
+<ol>
+  <li>Provisional speech appears only as <i>composing text</i>. It becomes real text only when the final transcript arrives.</li>
+  <li>Before any write, check that the session, the editor (from <code>EditorInfo</code> and field ID), and the selection are the ones this session started with. If they differ, cancel instead of writing.</li>
+  <li><code>onFinishInputView</code> and <code>onStartInput</code> with a new editor cancel the active session.</li>
+  <li>Never commit a final transcript twice. The controller marks the session completed before calling the bridge.</li>
+  <li>Password and other sensitive fields (<code>TYPE_TEXT_VARIATION_PASSWORD</code>, <code>IME_FLAG_NO_PERSONALIZED_LEARNING</code>) disable voice mode and learning.</li>
+</ol>
+
+<h2 id="dictionary">8. Dictionary design</h2>
+<div class="tablewrap"><table>
+  <tr><th>Layer</th><th>Purpose</th><th>Now (mock)</th><th>Later</th></tr>
+  <tr><td>General word list</td><td>Ordinary suggestions and corrections</td><td>Small built-in list with prefix match</td><td>Compact frequency trie built at compile time from an openly licensed English and Dutch word list (license to verify), plus bigrams for next-word prediction</td></tr>
+  <tr><td>Personal terms</td><td>Exact spelling and case, including multiword terms (<code>T3 Code</code>)</td><td>Persisted list. Ranked first and never autocorrected away</td><td>Same contract. Optionally import Android's <code>UserDictionary</code>, as FUTO's <code>UserDictionaryIO</code> does</td></tr>
+  <tr><td>Speech phrase rules</td><td><code>spoken → written</code> after recognition</td><td>Applied once to final text when the master switch is on</td><td>Same. Possibly propose rules from user corrections</td></tr>
+  <tr><td>Learning</td><td>Adapt to typed words</td><td>None</td><td>Opt-in local frequency boosts, disabled in incognito fields</td></tr>
+</table></div>
+<p class="note">Saved terms do not change what the speech model hears. Use phrase rules for that. Contextual biasing, if a runtime supports it, is a later experiment.</p>
+
+<h2 id="models">9. Speech models and runtime</h2>
+<ul>
+  <li><b>Runtime:</b> the voice fork uses <code>ai.moonshine:moonshine-voice</code>, the official Moonshine Android library from Maven, for Moonshine. It uses <code>sherpa-onnx</code> for Parakeet and Nemotron. Using the Moonshine library directly means we write <b>no custom JNI and need no NDK build</b> for the first engine. Its license and APK-size impact still need verification.</li>
+  <li><b>First model:</b> Moonshine Small streaming English (246 MB, quantized). Medium (450 MB) is the accuracy comparison. Measure both on the Samsung phone with real coding dictation.</li>
+  <li><b>Storage:</b> <code>filesDir/models/&lt;id&gt;/</code>, outside the APK and git. Download to <code>.partial</code>, verify each artifact's SHA-256, then rename atomically. <code>ModelCatalog</code> pins URLs, sizes, and checksums, as the fork's catalog does.</li>
+  <li><b>Downloads:</b> WorkManager with a foreground notification, so a download survives leaving the app. Cancelling deletes the partial files. The active model cannot be deleted.</li>
+  <li><b>Audio:</b> <code>AudioRecord</code> at 16 kHz mono float. Optional WebRTC VAD can stop recording after silence; the fork uses <code>android-vad</code>.</li>
+</ul>
+
+<h2 id="refs">10. What we learn from each reference</h2>
+<div class="tablewrap"><table>
+  <tr><th>Concern</th><th>FUTO Keyboard</th><th>Moonshine voice fork</th><th>Our approach</th></tr>
+  <tr><td>IME and Compose hosting</td><td>A LatinIME core with a Compose action bar and settings (<code>uix/</code>)</td><td>A Compose voice IME</td><td>Compose throughout, with a small custom lifecycle owner for the IME window</td></tr>
+  <tr><td>Key layouts</td><td>A large layout engine with many locales</td><td>None</td><td>Small data-driven layouts: EN, NL, and two symbol layers</td></tr>
+  <tr><td>Suggestions</td><td>Native binary dictionaries through JNI</td><td>None</td><td>A Kotlin trie, kept simple until it is measured</td></tr>
+  <tr><td>Personal dictionary</td><td><code>UserDictionaryIO</code> and personal dictionary pages</td><td>Post-recognition corrections</td><td>Separate protected terms and opt-in phrase rules</td></tr>
+  <tr><td>Speech backend</td><td>Calls an external voice app</td><td><code>StreamingSpeechBackend</code> and <code>MoonshineBackend</code></td><td>A <code>SpeechEngine</code> interface with the same lifecycle, built into our APK</td></tr>
+  <tr><td>Model management</td><td>None</td><td><code>RecognitionModelCatalog</code> with checksummed artifacts</td><td>The same pattern with fewer models</td></tr>
+  <tr><td>Insertion safety</td><td>None</td><td><code>ime-insertion-safety.md</code></td><td>Similar ownership checks, but cancellation discards provisional text</td></tr>
+</table></div>
+<p class="note">Both upstream projects use FUTO Source First licenses that restrict modification to non-commercial use. We read them for design ideas and write our own code. If we copy any code, we must keep its notice and record the file in <code>REFERENCES.md</code>.</p>
+
+<h2 id="stack">11. Tech stack</h2>
+<div class="tablewrap"><table>
+  <tr><th>Area</th><th>Choice</th><th>Why</th></tr>
+  <tr><td>Language and UI</td><td>Kotlin 2.4.21 and Jetpack Compose with Material 3 (BOM 2026.09.00: Compose 1.12.1, M3 1.4.0)</td><td>One UI toolkit for the keyboard and companion app. Both references use Compose.</td></tr>
+  <tr><td>Build</td><td>AGP 9.4.1 with built-in Kotlin (no <code>kotlin-android</code> plugin), Gradle 9.8.1 wrapper with a pinned checksum, JDK 21, compile and target SDK 37, minSdk 28</td><td>Matches the verified host setup. Navigation is a small custom back stack; it does not use <code>navigation-compose</code>.</td></tr>
+  <tr><td>Concurrency</td><td>kotlinx.coroutines, StateFlow, and Flow</td><td>Session-scoped cancellation through structured concurrency.</td></tr>
+  <tr><td>Dependency injection</td><td>Manual <code>AppGraph</code></td><td>The project is small. The input-method service and activity share a single graph without Hilt's complexity.</td></tr>
+  <tr><td>Persistence</td><td>SharedPreferences or DataStore with JSON. Room only if the dictionary grows large</td><td>Small datasets.</td></tr>
+  <tr><td>Speech</td><td><code>ai.moonshine:moonshine-voice</code>, with sherpa-onnx as an optional second engine</td><td>Proven in the fork and requires no custom native code.</td></tr>
+</table></div>
+
+<h2 id="testing">12. Testing and verification</h2>
+<ul>
+  <li><b>JVM unit tests</b> cover the voice state machine, including rejection of stale sessions, as well as phrase rules, suggestions, layouts, and model-store state. They run quickly with <code>./gradlew testDebugUnitTest</code>.</li>
+  <li><b>Lint:</b> <code>lintDebug</code> must report zero errors. T3 provides <b>Build debug APK</b> and <b>Android lint</b> scripts.</li>
+  <li><b>Device checks</b> run on <code>T3_Fold_API_36</code> through T3 <code>device_open</code> and the pinned <code>agent-device</code>. Check the nine acceptance flows in <code>docs/mock-spec.md</code>: typing in a real field, voice entry, cancellation, and mode recall.</li>
+  <li><b>Later engine benchmarks:</b> use a fixed set of recorded coding prompts to measure word error rate, real-time factor, first-partial latency, and memory for Small and Medium on the Samsung phone.</li>
+</ul>
+
+<h2 id="roadmap">13. Roadmap</h2>
+<div class="tablewrap"><table>
+  <tr><th>#</th><th>Milestone</th><th>Exit criteria</th></tr>
+  <tr><td>1</td><td>Minimal app <span class="tag t-now">done</span></td><td>Build, lint, and emulator workflow are proven.</td></tr>
+  <tr><td>2</td><td>Mock demo, HTML and native <span class="tag t-now">done</span></td><td>All pages and flows can be clicked through. Review and reflection come next.</td></tr>
+  <tr><td>3</td><td>Real typing</td><td>Keys, suggestions, personal terms, and settings are reliable in T3 Code and Chrome. Voice remains simulated.</td></tr>
+  <tr><td>4</td><td>Real audio and Moonshine Small <span class="tag t-now">0.3.0</span></td><td>Microphone capture, live partial text, final commit, and cancellation safety work on the device.</td></tr>
+  <tr><td>5</td><td>Model management <span class="tag t-now">0.3.0, without WorkManager</span></td><td>Real downloads with checksums, Small and Medium are selectable, and a benchmark page exists.</td></tr>
+  <tr><td>6</td><td>Polish</td><td>Dictionary add-word flow, VAD auto-stop, height tuning, themes, and a release-signed build stored privately.</td></tr>
+</table></div>
+
+<h2 id="risks">14. Risks and open questions</h2>
+<details open><summary>Compose inside an input method</summary><p>The service needs its own lifecycle, saved-state, and view-model owners. Insets and height have to be measured precisely. Startup time must be checked on the Samsung phone. Fallback: use Android views for the key grid only.</p></details>
+<details><summary>Suggestion quality without FUTO's native engine</summary><p>A Kotlin trie handles prefix completion well, but corrections such as edit distance and key proximity need tuning. Consider reimplementing proximity-aware correction later.</p></details>
+<details><summary>Moonshine runtime licensing and size</summary><p>Verify the license of <code>ai.moonshine:moonshine-voice</code> and the model weights, the native library size for each ABI, and whether to ship only <code>arm64-v8a</code>.</p></details>
+<details><summary>Samsung-specific behavior</summary><p>Check One UI's IME switching gesture and globe expectations, Fold inner and outer screen heights, and floating or split keyboard expectations.</p></details>
+<details><summary>Dictionary word-list source</summary><p>Find an English and Dutch frequency list with a permissive license that can be bundled.</p></details>
+</main>
+</body>
+</html>

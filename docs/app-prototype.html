@@ -1,0 +1,1538 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Slim Keyboard · clickable prototype</title>
+<style>
+:root{
+  --page:#e6ebf1; --frame:#11161c; --bg:#f4f7fa; --surface:#ffffff; --surface2:#eaeff5; --line:#d5dde6;
+  --text:#141b23; --muted:#556270; --dim:#66727f;
+  --accent:#2c5c9a; --accent-ink:#ffffff; --accent-soft:#d9e7f8;
+  --green:#1a7f4e; --green-soft:rgba(26,127,78,.12); --green-line:rgba(26,127,78,.8); --prov-text:#0f5c37;
+  --amber:#8f5d00; --danger:#b3261e; --focus:#b25e00;
+  --kb:#e3e8ee; --kb-line:#cbd4de; --key:#ffffff; --key-mod:#c9d3de; --key-press:#aebbc9; --key-text:#141b23;
+  --enter:#2c5c9a; --enter-ink:#fff; --stop:#141b23; --stop-ink:#fff; --chip-div:#c3cdd8;
+  --nav:#d9e0e8; --sys:#ffffff; --pillbg:rgba(20,27,35,.07); --pillbg2:rgba(20,27,35,.13); --amber-soft:rgba(143,93,0,.1); --toast:#2b3744; --toast-ink:#f1f5f9;
+  --row:48px;
+  color-scheme:light;
+}
+[data-theme="dark"]{
+  --page:#0a0e13; --frame:#03050a; --bg:#0e141b; --surface:#18212b; --surface2:#222c38; --line:#28333f;
+  --text:#e9eef3; --muted:#9eacba; --dim:#8794a2;
+  --accent:#a9c7fa; --accent-ink:#0c1f3d; --accent-soft:#1d3350;
+  --green:#5cd193; --green-soft:rgba(92,209,147,.12); --green-line:rgba(92,209,147,.75); --prov-text:#bff3d6;
+  --amber:#f2c46e; --danger:#f2a5a5; --focus:#ffd479;
+  --kb:#141a21; --kb-line:#222b35; --key:#2c3641; --key-mod:#1f2730; --key-press:#3d4a58; --key-text:#f3f6f9;
+  --enter:#a9c7fa; --enter-ink:#0c1f3d; --stop:#e8eef4; --stop-ink:#0e151c; --chip-div:#2d3844;
+  --nav:#0c1116; --sys:#202a35; --pillbg:rgba(255,255,255,.08); --pillbg2:rgba(255,255,255,.15); --amber-soft:rgba(242,196,110,.1); --toast:#233040; --toast-ink:#eef3f8;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;background:var(--page);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+body{overflow-x:hidden}
+button{font:inherit;color:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+button:disabled,button[aria-disabled="true"]{cursor:default}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+svg.i{display:block;width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+h1,h2,h3,p{margin:0}
+
+/* stage */
+.stage{display:flex;gap:24px;justify-content:center;align-items:flex-start;flex-wrap:wrap;padding:12px 8px 24px}
+.phonecol{width:360px;max-width:100%;flex:none}
+.tour{width:360px;max-width:100%;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px;font-size:14px}
+@media (min-width:900px){
+  .stage{flex-wrap:nowrap}
+  .tour{width:360px;position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto}
+}
+@media (min-width:900px) and (max-height:880px){.phonecol{zoom:.92}}
+@media (min-width:900px) and (max-height:800px){.phonecol{zoom:.84}}
+@media (min-width:900px) and (max-height:720px){.phonecol{zoom:.74}}
+
+/* tour */
+.tour h2{font-size:16px;margin-bottom:2px}
+.tour .sub{color:var(--muted);font-size:12.5px;margin-bottom:10px}
+.tour ol{list-style:none;margin:0 0 10px;padding:0;display:grid;gap:4px}
+.tstep{width:100%;text-align:left;display:flex;gap:10px;align-items:flex-start;border:1px solid transparent;background:transparent;border-radius:10px;padding:8px;min-height:44px}
+.tstep:hover{background:var(--surface2)}
+.tstep[aria-expanded="true"]{background:var(--accent-soft);border-color:var(--accent)}
+.tnum{flex:none;width:22px;height:22px;border-radius:50%;background:var(--surface2);display:grid;place-items:center;font-size:12px;font-weight:700;border:1px solid var(--line)}
+.tstep[aria-expanded="true"] .tnum{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.ttitle{font-weight:600;font-size:13.5px}
+.tdesc{display:block;color:var(--muted);font-size:12.5px;margin-top:2px;line-height:1.4;font-weight:400}
+.tbtns{display:flex;gap:8px;flex-wrap:wrap}
+.tfoot{color:var(--muted);font-size:12px;margin-top:10px;line-height:1.4}
+
+/* buttons */
+.btn{min-height:44px;border-radius:22px;border:0;background:var(--accent);color:var(--accent-ink);font-weight:650;padding:0 18px;font-size:14px}
+.btn.ghost{background:transparent;color:var(--text);border:1.5px solid var(--line);font-weight:600}
+.btn.sm{min-height:36px;padding:0 14px;font-size:13px}
+.btn.danger{color:var(--danger);border-color:var(--danger)}
+.btn:disabled,.btn[aria-disabled="true"]{opacity:.5}
+.mock{display:inline-block;font-size:9.5px;font-weight:700;letter-spacing:.06em;color:var(--amber);border:1px solid var(--amber);border-radius:4px;padding:1px 5px;line-height:1.3;vertical-align:middle;flex:none}
+
+/* phone */
+.phone{position:relative;width:360px;max-width:100%;height:780px;margin:0 auto;background:var(--bg);color:var(--text);border-radius:26px;overflow:hidden;border:1px solid var(--line);box-shadow:0 0 0 6px var(--frame),0 12px 32px rgba(0,0,0,.35);display:flex;flex-direction:column}
+.statusbar{flex:none;height:24px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.statusbar .sys{display:flex;gap:6px;align-items:center}
+.statusbar svg{width:14px;height:14px;fill:currentColor}
+.appwrap{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;background:var(--bg)}
+.appbar{flex:none;height:52px;display:flex;align-items:center;gap:4px;padding:0 10px 0 6px;border-bottom:1px solid var(--line)}
+.appbar h1{flex:1;min-width:0;font-size:18px;font-weight:650;padding-left:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.appbar.top h1{padding-left:10px}
+.iconbtn{width:44px;height:44px;flex:none;display:grid;place-items:center;background:transparent;border:0;color:var(--muted);border-radius:10px}
+.iconbtn:active{background:var(--surface2)}
+.page{flex:1;min-height:0;overflow-y:auto;padding:12px 12px 16px;display:flex;flex-direction:column;gap:12px;font-size:14px;line-height:1.45;overscroll-behavior:contain}
+.bnav{flex:none;height:64px;display:flex;border-top:1px solid var(--line);background:var(--surface)}
+.bnav button{flex:1;border:0;background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:12px;color:var(--muted);min-width:0}
+.bnav button .pill{width:56px;height:30px;border-radius:15px;display:grid;place-items:center}
+.bnav button[aria-current="page"]{color:var(--text);font-weight:650}
+.bnav button[aria-current="page"] .pill{background:var(--accent-soft);color:var(--accent)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.card h2{font-size:15px;font-weight:650}
+.card h3{font-size:13px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px}
+.note{color:var(--muted);font-size:12.5px;line-height:1.4}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat b{display:block;font-size:15px;margin-top:2px;overflow-wrap:anywhere}
+.stat span.l{font-size:12px;color:var(--muted)}
+.bar{display:block;height:6px;border-radius:3px;background:var(--surface2);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);transition:width .2s}
+.steps{list-style:none;margin:8px 0 0;padding:0}
+.step{display:flex;gap:10px;align-items:center;min-height:62px;padding:6px 0;border-top:1px solid var(--line)}
+.step:first-child{border-top:0}
+.tick{flex:none;width:28px;height:28px;border-radius:50%;border:2px solid var(--dim);display:grid;place-items:center;font-size:13px;font-weight:700;color:var(--muted)}
+.tick svg.i{width:16px;height:16px;stroke-width:2.6}
+.step.done .tick{background:var(--green);border-color:var(--green);color:#fff}
+.stext{flex:1;min-width:0;display:flex;flex-direction:column}
+.stext b{font-size:14px}
+.stext span{font-size:12px;color:var(--muted)}
+.step .btn{flex:none;min-height:40px;padding:0 14px;font-size:13px}
+.linkrow{display:flex;width:100%;align-items:center;gap:10px;min-height:52px;border:0;border-top:1px solid var(--line);background:transparent;text-align:left;padding:4px 0}
+.linkrow:first-of-type{border-top:0}
+.linkrow .t{flex:1;display:flex;flex-direction:column}
+.linkrow small{color:var(--muted);font-size:12px}
+.linkrow .chev{transform:rotate(-90deg);color:var(--muted)}
+.switchrow{display:flex;width:100%;min-height:56px;align-items:center;gap:12px;border:0;border-top:1px solid var(--line);background:transparent;text-align:left;padding:6px 0}
+.switchrow:first-of-type{border-top:0}
+.switchrow .sl{flex:1;display:flex;flex-direction:column;min-width:0}
+.switchrow small{color:var(--muted);font-size:12px}
+.knob{width:42px;height:24px;border-radius:12px;background:var(--dim);position:relative;flex:none;transition:background .15s}
+.knob::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .15s}
+[aria-checked="true"]>.knob{background:var(--accent)}
+[data-theme="dark"] [aria-checked="true"]>.knob::after{background:var(--accent-ink)}
+[aria-checked="true"]>.knob::after{transform:translateX(18px)}
+.knob.sm{width:38px}
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:4px 0 6px}
+.seg button{flex:1;min-height:44px;border:0;border-left:1px solid var(--line);background:transparent;font-size:13.5px;padding:0 4px}
+.seg button:first-child{border-left:0}
+.seg button[aria-checked="true"]{background:var(--accent-soft);color:var(--accent);font-weight:650}
+.slabel{font-size:13px;font-weight:600;margin-top:6px;display:block}
+.fieldlabel{font-size:12.5px;color:var(--muted);margin:2px 0 4px;display:block}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.pchip{border:1px solid var(--line);background:var(--surface2);border-radius:16px;min-height:36px;padding:0 12px;font-size:13px}
+
+/* fake text fields */
+.field{min-height:46px;max-height:140px;overflow-y:auto;background:var(--surface);border:1.5px solid var(--line);border-radius:12px;padding:11px 14px;font-size:15px;line-height:1.4;white-space:pre-wrap;word-break:break-word;cursor:text}
+.field.multi{min-height:96px}
+.field.focused{border-color:var(--accent)}
+.field .ph{color:var(--dim)}
+.prov{color:var(--prov-text);background:var(--green-soft);text-decoration:underline dotted var(--green-line);text-decoration-thickness:2px;text-underline-offset:3px;border-radius:3px}
+.caret{display:inline-block;width:2px;height:1.15em;margin-left:1px;vertical-align:-.2em;background:var(--accent);animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.result{font-size:13px;color:var(--muted);border-left:3px solid var(--accent);padding:2px 0 2px 10px}
+.sentmsg{align-self:flex-end;background:var(--accent-soft);border-radius:14px 14px 4px 14px;padding:7px 12px;font-size:14px;white-space:pre-wrap;word-break:break-word;max-width:90%}
+.sentlist{display:flex;flex-direction:column;gap:6px}
+
+/* models */
+.mrow{padding:10px 0;border-top:1px solid var(--line)}
+.mrow:first-of-type{border-top:0}
+.mtop{display:flex;align-items:flex-start;gap:8px}
+.minfo{flex:1;min-width:0}
+.minfo b{font-size:15px}
+.minfo .meta{font-size:12px;color:var(--muted);margin-top:1px}
+.minfo .desc{font-size:12.5px;margin-top:3px}
+.badge{display:inline-block;font-size:11px;font-weight:650;border-radius:6px;padding:1px 6px;margin-left:6px;background:var(--accent-soft);color:var(--accent);vertical-align:1px}
+.badge.live{background:var(--green-soft);color:var(--green)}
+.mact{display:flex;align-items:center;gap:6px;flex:none}
+.mrow .bar{margin-top:8px}
+.activepill{display:inline-flex;align-items:center;gap:4px;height:36px;padding:0 12px;border-radius:18px;background:var(--green-soft);color:var(--green);font-weight:650;font-size:13px}
+.activepill svg.i{width:16px;height:16px;stroke-width:2.4}
+.menu{margin-top:8px;padding:10px;background:var(--surface2);border-radius:10px;font-size:13px}
+.menu p{margin-bottom:8px;color:var(--muted)}
+
+/* dictionary */
+.tabs{display:flex;border-bottom:1px solid var(--line)}
+.tabs button{flex:1;min-height:44px;border:0;border-bottom:3px solid transparent;background:transparent;font-weight:600;font-size:14px;color:var(--muted)}
+.tabs button[aria-selected="true"]{color:var(--text);border-bottom-color:var(--accent)}
+.lrow{display:flex;align-items:center;gap:6px;min-height:52px;border-top:1px solid var(--line)}
+.lrow:first-child{border-top:0}
+.lmain{flex:1;min-width:0;display:flex;flex-direction:column}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.lmain .mono{font-weight:650;font-size:14.5px;overflow-wrap:anywhere}
+.lmain small{color:var(--muted);font-size:12px}
+.empty{color:var(--muted);padding:12px 0;text-align:center}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap}
+
+/* log */
+.logitem{border-top:1px solid var(--line);padding:8px 0;font-size:13px}
+.logitem:first-child{border-top:0}
+.logitem .h{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.outcome{font-size:11.5px;font-weight:700;border-radius:6px;padding:1px 7px}
+.outcome.committed{background:var(--green-soft);color:var(--green)}
+.outcome.cancelled{background:rgba(190,120,0,.15);color:var(--amber)}
+.outcome.listening{background:var(--accent-soft);color:var(--accent)}
+.trans{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;margin:3px 0}
+.meta2{color:var(--muted);font-size:12px}
+
+/* dialogs */
+.scrim{position:absolute;inset:0;z-index:20;background:rgba(2,6,10,.5);display:flex;align-items:center;justify-content:center;padding:14px}
+.scrim.sys{inset:24px 0 0 0;z-index:40;align-items:flex-end;padding:0}
+.dlg{width:100%;max-height:100%;overflow-y:auto;background:var(--surface);border-radius:18px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.35);display:flex;flex-direction:column;gap:8px}
+.dlg h2{font-size:17px}
+.dlg .err{color:var(--danger);font-size:12.5px;min-height:16px}
+.dlg .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
+.sysdlg{width:100%;background:var(--sys);color:var(--text);border-radius:24px 24px 0 0;padding:18px 18px 14px;display:flex;flex-direction:column;gap:8px;box-shadow:0 -8px 24px rgba(0,0,0,.4)}
+.sysdlg.center{border-radius:24px;margin:0 16px 120px;width:auto;align-self:center}
+.scrim.sys.c{align-items:center}
+.sysdlg h2{font-size:17px;font-weight:600}
+.sysdlg .sysbar{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.sysdlg .acts{display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap}
+.sysdlg .acts.col{flex-direction:column;align-items:stretch}
+.sysdlg .acts button{min-height:44px;border-radius:22px;border:0;background:transparent;color:var(--accent);font-weight:650;padding:0 14px}
+.sysdlg .opt{display:flex;align-items:center;gap:12px;min-height:52px;border:0;background:transparent;text-align:left;width:100%;border-radius:10px;padding:0 4px}
+.radio{width:20px;height:20px;border-radius:50%;border:2px solid var(--dim);flex:none;display:grid;place-items:center}
+.opt[aria-checked="true"] .radio{border-color:var(--accent)}
+.opt[aria-checked="true"] .radio::after{content:"";width:10px;height:10px;border-radius:50%;background:var(--accent)}
+.opt[aria-disabled="true"]{opacity:.5}
+
+.toast{position:absolute;left:12px;right:12px;bottom:12px;z-index:30;background:var(--toast);color:var(--toast-ink);font-size:13.5px;line-height:1.35;padding:10px 14px;border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,.35);display:flex;gap:10px;align-items:center}
+.appwrap.hasnav .toast{bottom:76px}
+.toast button{border:0;background:transparent;color:var(--accent);font-weight:700;min-height:32px;padding:0 4px;flex:none}
+[data-theme="light"] .toast button{color:#9cc2ff}
+
+/* IME */
+.imewrap{flex:none;position:relative;background:var(--kb);border-top:1px solid var(--kb-line)}
+.imewrap.slide .ime{animation:slideup .18s ease-out}
+@keyframes slideup{from{transform:translateY(40px);opacity:.3}to{transform:none;opacity:1}}
+.ime{position:relative;color:var(--key-text);container:ime/inline-size}
+.topline{display:flex;height:44px}
+.lead{flex:1;min-width:0;display:flex;align-items:center}
+.ime .iconbtn{color:var(--muted)}
+.toggle{color:var(--key-text)!important}
+.toggle .tg{width:38px;height:38px;border-radius:10px;display:grid;place-items:center}
+.toggle.voice .tg{background:var(--key-mod);box-shadow:inset 0 0 0 1px var(--chip-div)}
+.chips2{flex:1;min-width:0;display:flex;height:44px}
+.chip{flex:1 1 0;min-width:0;border:0;background:transparent;color:var(--key-text);font-size:14px;padding:0 4px;display:flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap;position:relative}
+.chip+.chip::before{content:"";position:absolute;left:0;top:12px;bottom:12px;width:1px;background:var(--chip-div)}
+.chip .lbl{overflow:hidden;text-overflow:ellipsis}
+.chip.saved .lbl{font-weight:600}
+.chip.undo{color:var(--amber)}
+.chip svg.i{width:16px;height:16px}
+.chip:active:not(.empty){background:var(--key-mod)}
+.chip.empty{cursor:default}
+.keys{padding:0 3px 4px}
+.krow{display:flex;height:var(--row)}
+.sp{flex:.5 1 0}
+.k{flex:1 1 0;min-width:0;border:0;background:transparent;padding:3px 2.5px;color:var(--key-text)}
+.k>span{display:flex;align-items:center;justify-content:center;height:100%;border-radius:7px;background:var(--key);font-size:21px;box-shadow:0 1px 0 rgba(0,0,0,.25);user-select:none}
+.k:active>span{background:var(--key-press)}
+.k.mod>span{background:var(--key-mod);font-size:14px;font-weight:500}
+.k.mod svg.i{width:20px;height:20px}
+.k.on>span{background:var(--key-press)}
+.k.on svg.i{fill:currentColor}
+.k.lock>span{box-shadow:inset 0 -3px 0 var(--accent)}
+.k.space>span{font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden}
+.k.enter>span{background:var(--enter);color:var(--enter-ink);font-size:13.5px;font-weight:650}
+.k.enter svg.i{width:20px;height:20px}
+.addmenu{position:absolute;left:10px;bottom:calc(100% + 6px);z-index:35;background:var(--toast);color:var(--toast-ink);border-radius:10px;padding:4px;box-shadow:0 6px 18px rgba(0,0,0,.4)}
+.addmenu button{min-height:44px;border:0;background:transparent;padding:0 12px;font-size:14px;border-radius:8px;text-align:left}
+.addmenu button:disabled{opacity:.7}
+/* voice: one row, about 56 px */
+.ime.vmode .topline{height:56px;align-items:center}
+.vrow{display:flex;align-items:center;gap:4px;height:56px;padding:0 0 0 4px;width:100%;min-width:0}
+.mpill{flex:0 100 auto;min-width:96px;max-width:70%;height:44px;padding:0;border:0;background:transparent;color:var(--key-text);display:flex;align-items:center}
+.mpill .pbody{min-width:0;height:36px;display:flex;align-items:center;gap:4px;padding:0 4px 0 9px;border-radius:18px;background:var(--pillbg);font-size:13px;font-weight:600;transition:background .12s}
+.mpill:hover .pbody{background:var(--pillbg2)}
+.mpill[aria-expanded="true"]{min-width:124px}
+.mpill[aria-expanded="true"] .pbody{background:var(--pillbg2)}
+.mpill:focus-visible{outline:none}
+.mpill:focus-visible .pbody{outline:2px solid var(--focus);outline-offset:1px}
+.mpill .mn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.mpill svg.i{width:14px;height:14px;color:var(--muted);transition:transform .15s}
+.mpill[aria-expanded="true"] svg.i{transform:rotate(180deg)}
+.okdot{width:8px;height:8px;border-radius:50%;background:var(--green);flex:none}
+.okdot.off{background:var(--amber)}
+.vstatus{flex:1 1 auto;min-width:54px;display:flex;align-items:center;justify-content:center;gap:7px;font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;font-variant-numeric:tabular-nums}
+.vstatus:empty{min-width:0}
+.vstatus .vtime{color:var(--key-text);font-size:13px}
+.vnote{white-space:normal;line-height:1.2;text-align:center;font-size:12.5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;animation:fadeout .4s ease forwards}
+@keyframes fadeout{to{opacity:0}}
+.meter{display:flex;gap:2px;align-items:center;height:20px;flex:none}
+.meter i{display:block;width:3px;height:4px;background:var(--green);border-radius:2px;transition:height .18s}
+.spin{width:16px;height:16px;border-radius:50%;border:2px solid var(--chip-div);border-top-color:var(--green);flex:none;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.vbtn{flex:none;height:40px;min-width:0;border-radius:20px;border:0;background:var(--accent);color:var(--accent-ink);font-weight:650;font-size:13.5px;display:flex;gap:4px;align-items:center;justify-content:center;padding:0 10px 0 8px}
+.vbtn svg.i{width:17px;height:17px}
+.vbtn.stop{background:var(--stop);color:var(--stop-ink)}
+.vbtn.busy{background:var(--key-mod);color:var(--muted);opacity:.7}
+.vbtn.allow{background:var(--amber-soft);color:var(--amber);box-shadow:inset 0 0 0 1.5px var(--amber)}
+/* model picker */
+.picker{height:calc(var(--row)*4 - 8px);display:flex;flex-direction:column;border-bottom:1px solid var(--kb-line);background:var(--kb)}
+.picker.enter{animation:slideup .16s ease-out}
+.plist{flex:1;min-height:0;overflow-y:auto;padding:4px 6px 0;overscroll-behavior:contain}
+.plist.more{-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 22px),transparent);mask-image:linear-gradient(to bottom,#000 calc(100% - 22px),transparent)}
+.phead{font-size:11px;font-weight:650;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);padding:6px 10px 1px}
+.pnone{font-size:13px;color:var(--muted);padding:2px 10px 6px}
+.prow{display:flex;align-items:center;gap:8px;width:100%;min-height:44px;padding:3px 6px 3px 4px;border:0;border-radius:10px;background:transparent;text-align:left;color:var(--key-text)}
+button.prow:hover{background:var(--pillbg)}
+button.prow:active{background:var(--pillbg2)}
+.pchk{flex:none;width:24px;height:24px;display:grid;place-items:center;color:var(--green)}
+.pchk svg.i{width:18px;height:18px;stroke-width:2.4}
+.ptxt{flex:1;min-width:0;display:flex;flex-direction:column}
+.ptxt b{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ptxt small{font-size:11.5px;line-height:1.25;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prow[aria-current="true"] .ptxt b{font-weight:700}
+.pright{flex:none;display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)}
+.pright svg.i{width:20px;height:20px;color:var(--key-text)}
+.prow .pbar{display:block;height:4px;border-radius:2px;background:var(--pillbg2);overflow:hidden;margin-top:6px}
+.prow .pbar i{display:block;height:100%;background:var(--green);transition:width .2s}
+.pcancel{flex:none;width:40px;height:40px;border:0;border-radius:50%;background:transparent;color:var(--key-text);display:grid;place-items:center}
+.pcancel:hover{background:var(--pillbg)}
+.pcancel svg.i{width:18px;height:18px}
+.pfoot{flex:none;display:flex;border-top:1px solid var(--kb-line)}
+.pfoot button{flex:1;min-height:42px;border:0;background:transparent;color:var(--key-text);font-size:13.5px;font-weight:600;padding:0 6px}
+.pfoot button+button{border-left:1px solid var(--kb-line)}
+.pfoot button:hover{background:var(--pillbg)}
+.ime :focus-visible{outline-offset:-3px}
+.navbar{flex:none;height:40px;display:flex;align-items:center;justify-content:space-around;background:var(--nav);color:var(--muted)}
+.navbtn{width:56px;height:40px;border:0;background:transparent;display:grid;place-items:center;color:inherit}
+.navbtn svg.i{width:18px;height:18px}
+@container ime (max-width:351px){.vbtn:not(.allow){width:40px;padding:0}.vbtn:not(.allow) .vl{display:none}.vstatus{gap:5px}}
+@media (prefers-reduced-motion:reduce){.spin,.caret,.vnote,.picker.enter{animation:none}.meter i,.bar i,.knob,.knob::after{transition:none}.imewrap.slide .ime{animation:none}}
+</style>
+</head>
+<body>
+<div class="stage">
+  <main class="phonecol">
+    <div class="phone" id="phone" aria-label="Simulated Android phone">
+      <div class="statusbar" aria-hidden="true">
+        <span>9:41</span>
+        <span class="sys">
+          <svg viewBox="0 0 16 16"><path d="M1 13h2v2H1zM5 10h2v5H5zM9 7h2v8H9zM13 3h2v12h-2z"/></svg>
+          <svg viewBox="0 0 16 16"><rect x="1" y="4" width="12" height="8" rx="2"/><rect x="14" y="6.5" width="1.5" height="3" rx=".5"/></svg>
+        </span>
+      </div>
+      <div class="appwrap" id="appwrap">
+        <header class="appbar" id="appbar"></header>
+        <div class="page" id="page" tabindex="-1"></div>
+        <nav class="bnav" id="bnav" aria-label="Main navigation"></nav>
+        <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+        <div class="scrim" id="dlgScrim" hidden></div>
+      </div>
+      <div class="imewrap" id="imewrap" hidden>
+        <div class="addmenu" id="addMenu" hidden></div>
+        <div class="ime" id="ime">
+          <div class="picker" id="picker" role="dialog" aria-label="Speech models" hidden></div>
+          <div class="topline">
+            <div class="lead" id="lead"></div>
+            <button class="iconbtn toggle" id="toggle"></button>
+          </div>
+          <div class="keys" id="keysPane"></div>
+        </div>
+      </div>
+      <div class="navbar">
+        <button class="navbtn" id="navBack" aria-label="Back"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 5L7 12l9 7z" fill="currentColor"/></svg></button>
+        <span class="navbtn" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/></svg></span>
+        <button class="navbtn" id="navHide" aria-label="Hide keyboard"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+      </div>
+      <div class="scrim sys" id="sysScrim" hidden></div>
+    </div>
+  </main>
+
+  <aside class="tour" id="tour" aria-label="Guided tour">
+    <h2>Guided tour <span class="mock">MOCK</span></h2>
+    <p class="sub">Slim Keyboard prototype. Speech, downloads and the microphone are simulated. Pick a flow to jump to the right page.</p>
+    <ol id="tourList"></ol>
+    <div class="tbtns">
+      <button class="btn ghost sm" id="quickSetup">Quick setup</button>
+      <button class="btn ghost sm" id="resetDemo">Reset demo</button>
+    </div>
+    <p class="tfoot">Quick setup grants the mic, enables the keyboard and installs Moonshine Small so you can skip flow 1. The state is saved in this browser. For automation use <code>window.prototypeApi</code>.</p>
+  </aside>
+</div>
+<p class="sr" id="sr" aria-live="polite"></p>
+
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const svg = p => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${p}</svg>`;
+const ICON = {
+  mic: svg('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/>'),
+  keyboard: svg('<rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6.5 9.5h.01M9.5 9.5h.01M12.5 9.5h.01M15.5 9.5h.01M18 9.5h.01M6.5 12.5h.01M9.5 12.5h.01M12.5 12.5h.01M15.5 12.5h.01M18 12.5h.01M8 15h8" stroke-width="2.2"/>'),
+  globe: svg('<circle cx="12" cy="12" r="8.5"/><ellipse cx="12" cy="12" rx="3.8" ry="8.5"/><path d="M3.5 12h17M5 7.6h14M5 16.4h14"/>'),
+  bksp: svg('<path d="M9 5.5h10.5a1.5 1.5 0 0 1 1.5 1.5v10a1.5 1.5 0 0 1-1.5 1.5H9L3 12z"/><path d="M12 9.5l5 5M17 9.5l-5 5"/>'),
+  shift: svg('<path d="M12 4l7.5 7.5h-4v7h-7v-7h-4z"/>'),
+  enter: svg('<path d="M19 6v5.5a2 2 0 0 1-2 2H6"/><path d="M9.5 10L6 13.5 9.5 17"/>'),
+  book: svg('<path d="M5 5a2 2 0 0 1 2-2h12v14H7a2 2 0 0 0-2 2z"/><path d="M5 19a2 2 0 0 0 2 2h12v-4"/><path d="M9 7.5h6M9 10.5h4"/>'),
+  stop: svg('<rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor" stroke="none"/>'),
+  check: svg('<path d="M5 12.5l4.5 4.5L19 7.5"/>'),
+  close: svg('<path d="M6 6l12 12M18 6L6 18"/>'),
+  chev: svg('<path d="M7 10l5 5 5-5"/>'),
+  undo: svg('<path d="M9 5.5L4.5 10 9 14.5"/><path d="M4.5 10H14a5 5 0 0 1 0 10h-3"/>'),
+  plus: svg('<path d="M12 5v14M5 12h14"/>'),
+  trash: svg('<path d="M5 7h14M10 7V4.5h4V7M7 7l1 13h8l1-13"/>'),
+  home: svg('<path d="M4 11l8-7 8 7"/><path d="M6 10v10h12V10"/>'),
+  models: svg('<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 10h8M8 14h5"/>'),
+  gear: svg('<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/>'),
+  arrow: svg('<path d="M15 5l-7 7 7 7"/>'),
+  more: svg('<path d="M12 5.5h.01M12 12h.01M12 18.5h.01" stroke-width="3"/>'),
+  edit: svg('<path d="M4 20l1-4L16 5l3 3L8 19z"/><path d="M14 7l3 3"/>'),
+  search: svg('<circle cx="11" cy="11" r="6"/><path d="M16 16l4 4"/>'),
+  down: svg('<path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19.5h14"/>'),
+};
+
+/* ---------------- static data ---------------- */
+const CATALOG = [
+  { id: 'moonshine-tiny', name: 'Moonshine Tiny', mb: 100, size: '~100 MB', kind: 'live', desc: 'Smallest and fastest. Lower accuracy on technical words.' },
+  { id: 'moonshine-small', name: 'Moonshine Small', mb: 246, size: '246 MB', kind: 'live', rec: true, desc: 'Best balance of speed and accuracy on a phone.' },
+  { id: 'moonshine-medium', name: 'Moonshine Medium', mb: 450, size: '450 MB', kind: 'live', desc: 'Higher accuracy. Wants a recent phone.' },
+  { id: 'parakeet-unified-en-0.6b', name: 'Parakeet Unified EN 0.6B', mb: 650, size: '~650 MB', kind: 'buffered', desc: 'Large model. Text arrives in small buffered chunks.' },
+  { id: 'whisper-base-en', name: 'Whisper base.en', mb: 150, size: '~150 MB', kind: 'final', desc: 'No live text. The whole phrase appears after Stop.' },
+];
+const KIND = { live: 'Live', buffered: 'Buffered live', final: 'Final only' };
+const PHRASES = [
+  'explain what this kotlin coroutine scope does and when it gets cancelled',
+  'refactor the view model so the repository is injected',
+  'run the t3 code lint task and show me the errors',
+  'why does adb install fail with insufficient storage',
+].map(s => s.split(' '));
+const LAT = { fast: { first: 350, word: 110, fin: 450 }, realistic: { first: 650, word: 210, fin: 1000 }, slow: { first: 1200, word: 420, fin: 2400 } };
+const LANGS = { en: 'English (US)', nl: 'Nederlands' };
+const VOCAB = {
+  en: 'the this that then there these to too and a an in is it its explain why what when where which with without function functions refactor refresh remove rename return value values should could would use using fix fails failing failed null string list view model keyboard voice android emulator update add test tests error errors launch suspend scope code class coroutine compose build gradle state flow activity fragment request because leak lifecycle cancel cancelled repository screen job install insufficient storage lint task show debug dependency inject injected interface method variable type object override import package public private release version layout button text input output'.split(' '),
+  nl: 'de het een en is dat die dit niet met voor van naar hallo dank dankjewel alsjeblieft goedemorgen goedemiddag goedenavond toetsenbord spraak woord woorden tekst bericht versturen zoeken instellingen opslaan wijzigen verwijderen morgen vandaag gisteren waarom hoe wanneer'.split(' '),
+};
+const TYPOS = { teh: 'the', fucntion: 'function', recieve: 'receive', retrun: 'return', adn: 'and', wiht: 'with', taht: 'that' };
+const FIELDS = {
+  ml:       { label: 'Multiline field', action: 'newline', multi: true, cap: true, suggest: true, ph: 'Type or dictate here…' },
+  search:   { label: 'Search field', action: 'search', cap: false, suggest: true, ph: 'Search (action: Search)' },
+  send:     { label: 'Send field', action: 'send', cap: true, suggest: true, ph: 'Message (action: Send)' },
+  dictSearch: { label: 'Search dictionary', action: 'search', cap: false, suggest: false, ph: 'Search terms and rules' },
+  dlgTerm:  { label: 'Exact spelling', action: 'done', cap: false, suggest: false, ph: 'e.g. Gradle wrapper' },
+  dlgSpoken:  { label: 'Spoken form', action: 'next', next: 'dlgWritten', cap: false, suggest: false, ph: 'e.g. view model' },
+  dlgWritten: { label: 'Written form', action: 'done', cap: false, suggest: false, ph: 'e.g. ViewModel' },
+};
+const ENTER_LABEL = { search: 'Search', send: 'Send', go: 'Go', next: 'Next', done: 'Done' };
+const KEYNAMES = { '{': 'left brace', '}': 'right brace', '[': 'left bracket', ']': 'right bracket', '(': 'left parenthesis', ')': 'right parenthesis', '<': 'less than', '>': 'greater than', '=': 'equals', '+': 'plus', '-': 'minus', '*': 'asterisk', '/': 'slash', '\\': 'backslash', '|': 'pipe', '_': 'underscore', '&': 'ampersand', '^': 'caret', '%': 'percent', '$': 'dollar', '#': 'hash', '@': 'at', '!': 'exclamation mark', '?': 'question mark', ';': 'semicolon', ':': 'colon', "'": 'apostrophe', '"': 'double quote', '~': 'tilde', '`': 'backtick', ',': 'comma', '.': 'period' };
+const SYM = [
+  ['1234567890', '@#$_&-+()/', '*"\':;!?'],
+  ['[]{}<>^%~\\', '`|=+-*/_&@', '()#$;:?'],
+];
+const TOP = ['home', 'models', 'dict', 'settings'];
+const SUB = ['tryit', 'diag', 'about'];
+const TITLES = { home: 'Slim Keyboard', models: 'Speech models', dict: 'Dictionary', settings: 'Settings', tryit: 'Try it', diag: 'Diagnostics', about: 'About and licenses' };
+const BNAV = [['home', 'Home', 'home'], ['models', 'Models', 'models'], ['dict', 'Dictionary', 'book'], ['settings', 'Settings', 'gear']];
+
+/* ---------------- persisted state ---------------- */
+const LS_KEY = 'slimkb-prototype-v1';
+const defaults = () => ({
+  v: 1, page: 'home', tab: 'terms',
+  setup: { enabled: false, selected: false, mic: false },
+  models: Object.fromEntries(CATALOG.map(m => [m.id, { st: 'available', p: 0 }])), active: null,
+  terms: ['T3 Code', 'coroutineScope', 'adb', 'ViewModel', 'Jetpack Compose'],
+  rules: [
+    { id: 'r1', spoken: 'three code', written: 'T3 Code', on: true },
+    { id: 'r2', spoken: 'view model', written: 'ViewModel', on: true },
+    { id: 'r3', spoken: 'a d b', written: 'adb', on: true },
+  ],
+  set: { height: 'normal', haptics: false, autocap: true, autocorrect: true, strip: true, layouts: { en: true, nl: true },
+    autoStart: true, rememberMode: true, liveText: true, autoStop: 0, continuous: false, phraseRules: false, theme: 'system', latency: 'realistic' },
+  layout: 'en', lastMode: 'keys', scriptIndex: 0, seq: 0, log: [],
+  texts: { ml: '', search: '', send: '' }, sent: [],
+});
+let S = load();
+function load() {
+  const d = defaults();
+  try {
+    const raw = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
+    if (raw && raw.v === 1) {
+      for (const k of Object.keys(d)) if (raw[k] !== undefined) d[k] = (d[k] && typeof d[k] === 'object' && !Array.isArray(d[k])) ? Object.assign(d[k], raw[k]) : raw[k];
+      for (const m of CATALOG) { const x = d.models[m.id] = Object.assign({ st: 'available', p: 0 }, d.models[m.id]); if (x.st === 'downloading') { x.st = 'available'; x.p = 0; } }
+      d.set.layouts = Object.assign({ en: true, nl: true }, d.set.layouts);
+    }
+  } catch (_) {}
+  return d;
+}
+let saveT = null;
+function persist() { clearTimeout(saveT); saveT = setTimeout(saveNow, 150); }
+function saveNow() { try { localStorage.setItem(LS_KEY, JSON.stringify(S)); } catch (_) {} }
+
+/* ---------------- runtime state ---------------- */
+const newR = () => ({
+  focus: null, imeVisible: false, mode: 'keys', phase: 'idle', block: null,
+  prov: '', heard: 0, heardAll: false, total: 0, last: null, lastCancel: null,
+  shift: 'off', layer: 0, corr: null, noCorrect: [], sys: null, dlg: null, menu: null, back: 'home',
+  toast: '', tour: 0, results: {}, haptics: 0, dictSearch: '', suppress: false, picker: false, note: null,
+});
+let R = newR();
+const T = new Proxy({}, { get: (_, k) => (k in S.texts ? S.texts[k] : (R.tmp && R.tmp[k]) || ''), set: (_, k, v) => { if (k in S.texts) S.texts[k] = v; else (R.tmp = R.tmp || {})[k] = v; return true; } });
+const activeModel = () => CATALOG.find(m => m.id === S.active) || null;
+const installed = () => CATALOG.filter(m => S.models[m.id].st === 'installed');
+const enabledLayouts = () => Object.keys(LANGS).filter(k => S.set.layouts[k]);
+const pad = (n, w = 2) => String(n).padStart(w, '0');
+const isDark = () => S.set.theme === 'dark' || (S.set.theme === 'system' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+
+/* ---------------- toast / announce ---------------- */
+let toastTimer = null;
+function toast(msg, action) {
+  R.toast = msg;
+  const el = $('toast');
+  el.innerHTML = `<span>${esc(msg)}</span>`;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; R.toast = ''; }, 3800);
+  announce(msg);
+}
+function announce(msg) { $('sr').textContent = msg; }
+
+/* ---------------- voice session machinery ---------------- */
+let tok = 0, timers = [], tickT = null, startedAt = 0, curWords = [], curLog = null;
+const dl = {};
+function bump() { tok++; timers.forEach(clearTimeout); timers = []; if (tickT) { clearInterval(tickT); tickT = null; } }
+function later(fn, ms) { const t = tok; timers.push(setTimeout(() => { if (t === tok) fn(); }, ms)); }
+
+let noteT = null;
+function setNote(text) {
+  clearTimeout(noteT);
+  R.note = { text, at: Date.now() };
+  noteT = setTimeout(() => { R.note = null; if (R.imeVisible && R.mode === 'voice') renderLead(); }, 2000);
+}
+function clearNote() { clearTimeout(noteT); R.note = null; }
+const wordsText = n => `${n} ${n === 1 ? 'word' : 'words'}`;
+function voiceBlock() {
+  if (!activeModel()) return 'nomodel';
+  if (!S.setup.mic) return 'nomic';
+  return null;
+}
+function enterVoiceState() {
+  clearNote();
+  const b = voiceBlock();
+  if (b) { bump(); R.phase = 'blocked'; R.block = b; R.prov = ''; return; }
+  R.block = null;
+  if (S.set.autoStart) startCapture(); else { bump(); R.phase = 'ready'; }
+}
+function startCapture() {
+  if (voiceBlock()) { enterVoiceState(); renderAll(); return; }
+  bump();
+  const model = activeModel(), L = LAT[S.set.latency];
+  const words = PHRASES[S.scriptIndex % PHRASES.length];
+  S.scriptIndex++; S.seq++;
+  curWords = words; startedAt = Date.now();
+  curLog = { id: 'S-' + pad(S.seq, 4), at: Date.now(), trans: ['listening'], outcome: 'listening', words: 0, discarded: 0, firstMs: null, finMs: null, model: model.name, field: R.focus, phrase: ((S.scriptIndex - 1) % PHRASES.length) + 1 };
+  S.log.unshift(curLog); if (S.log.length > 60) S.log.length = 60;
+  clearNote();
+  R.phase = 'listening'; R.block = null; R.prov = ''; R.heard = 0; R.heardAll = false; R.total = words.length; R.last = null; R.lastCancel = null; R.corr = null;
+  const chunk = model.kind === 'buffered' ? 3 : 1, showLive = S.set.liveText && model.kind !== 'final';
+  const myLog = curLog;
+  tickT = setInterval(tick, 220);
+  let t = L.first;
+  for (let i = 0; i < words.length; i += chunk) {
+    const upto = Math.min(words.length, i + chunk), at = t, first = i === 0;
+    later(() => {
+      R.heard = upto;
+      if (first && myLog.firstMs == null) myLog.firstMs = Date.now() - startedAt;
+      if (showLive) R.prov = words.slice(0, upto).join(' ');
+      renderFields();
+    }, at);
+    t += L.word * chunk + (upto % 4 === 0 ? L.word * 1.1 : 0);
+  }
+  later(() => { R.heardAll = true; renderVoice(); }, t + 300);
+  if (S.set.autoStop) later(() => stop('silence'), t + S.set.autoStop * 1000);
+  announce('Listening. Live text appears in the field.');
+  persist(); renderIme(); renderFields();
+}
+function tick() {
+  const el = $('vtime');
+  if (el) { const s = Math.floor((Date.now() - startedAt) / 1000); el.textContent = `${Math.floor(s / 60)}:${pad(s % 60)}`; }
+  document.querySelectorAll('#vmeter i').forEach(b => { b.style.height = (!R.heardAll ? 4 + Math.round(Math.random() * 14) : 3 + Math.round(Math.random() * 2)) + 'px'; });
+}
+function stop(how) {
+  if (R.mode !== 'voice' || R.phase !== 'listening' || !R.imeVisible) return state();
+  bump();
+  const words = curWords.slice(0, R.heard), L = LAT[S.set.latency], lg = curLog;
+  R.phase = 'finalizing';
+  lg.trans.push('finalizing');
+  lg.stopped = how === 'silence' ? 'auto-stop (silence)' : 'Stop';
+  later(() => finalize(words, lg, L.fin), L.fin);
+  announce('Finalizing.');
+  renderAll();
+  return state();
+}
+function applyRules(text) {
+  let n = 0;
+  if (!S.set.phraseRules) return { text, n };
+  const rules = S.rules.filter(r => r.on && r.spoken.trim()).sort((a, b) => b.spoken.length - a.spoken.length);
+  for (const r of rules) {
+    // recognizer alias: "three" is heard as "t3" in "T3 Code" phrases
+    const pat = r.spoken.trim().split(/\s+/).map(w => (w.toLowerCase() === 'three' ? '(?:three|t3)' : w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))).join('\\s+');
+    text = text.replace(new RegExp('\\b' + pat + '\\b', 'gi'), () => { n++; return r.written; });
+  }
+  return { text, n };
+}
+function finalize(words, lg, finMs) {
+  const id = R.focus;
+  let text = words.join(' '), rules = 0;
+  if (text) {
+    const r = applyRules(text); text = r.text; rules = r.n;
+    if (S.set.autocap) text = text.charAt(0).toUpperCase() + text.slice(1);
+    const cur = T[id];
+    T[id] = cur + (cur && !/\s$/.test(cur) ? ' ' : '') + text;
+  }
+  R.prov = ''; R.heard = 0;
+  lg.trans.push('committed'); lg.outcome = 'committed'; lg.words = words.length; lg.finMs = finMs;
+  R.last = { words: words.length, rules };
+  setNote(words.length ? wordsText(words.length) : 'No speech');
+  announce(words.length ? `Inserted ${wordsText(words.length)}.` : 'No speech captured.');
+  afterText(id);
+  if (S.set.continuous && R.mode === 'voice' && R.imeVisible) { startCapture(); }
+  else { bump(); R.phase = 'ready'; }
+  persist(); renderAll();
+}
+function cancelCapture(why) {
+  if (R.phase !== 'listening' && R.phase !== 'finalizing') return false;
+  const was = R.phase, lost = R.heard;
+  bump();
+  R.prov = ''; R.heard = 0; R.phase = 'ready';
+  R.lastCancel = { reason: why, phase: was, discarded: lost };
+  if (curLog) { curLog.trans.push(`cancelled (${why})`); curLog.outcome = 'cancelled'; curLog.discarded = lost; curLog.words = 0; }
+  const msg = lost ? `Cancelled · ${wordsText(lost)} discarded` : 'Cancelled';
+  setNote(msg);
+  if (why === 'model picker') announce(msg); else toast(msg);
+  persist();
+  return true;
+}
+
+/* ---------------- IME visibility / mode ---------------- */
+function autoShift() {
+  const cfg = FIELDS[R.focus]; if (!cfg || R.shift === 'lock') return;
+  const t = T[R.focus];
+  R.shift = S.set.autocap && cfg.cap && (t === '' || /[.!?]\s+$/.test(t) || /\n$/.test(t)) ? 'once' : 'off';
+}
+function enterEditor() {
+  R.layer = 0; R.corr = null; R.shift = 'off'; R.picker = false; closeAddMenu();
+  autoShift();
+  if (R.mode === 'voice') enterVoiceState(); else { bump(); R.phase = 'idle'; }
+}
+function focusField(id) {
+  if (!FIELDS[id]) return state();
+  const changed = R.focus !== id;
+  if (R.focus && changed) cancelCapture('moved to another editor');
+  R.focus = id;
+  if (!R.imeVisible) {
+    R.imeVisible = true; R.mode = S.set.rememberMode ? S.lastMode : 'keys';
+    $('imewrap').classList.add('slide'); setTimeout(() => $('imewrap').classList.remove('slide'), 250);
+    enterEditor();
+  } else if (changed) enterEditor();
+  renderAll();
+  const fe = document.querySelector(`.field[data-fid="${id}"]`); if (fe && document.activeElement !== fe) fe.focus({ preventScroll: true });
+  return state();
+}
+function hideIme() {
+  if (!R.imeVisible) return state();
+  cancelCapture('keyboard hidden');
+  bump(); R.imeVisible = false; R.picker = false; R.phase = 'idle'; R.prov = ''; closeAddMenu();
+  renderAll();
+  return state();
+}
+function toggleMode() {
+  if (!R.imeVisible) return state();
+  closeAddMenu(); R.picker = false;
+  if (R.mode === 'keys') { R.mode = 'voice'; S.lastMode = 'voice'; enterVoiceState(); }
+  else { cancelCapture('switched to keys'); bump(); R.mode = 'keys'; S.lastMode = 'keys'; R.phase = 'idle'; R.prov = ''; autoShift(); announce('Keyboard.'); }
+  persist(); renderAll();
+  return state();
+}
+function navigate(page, anchor) {
+  if (!TITLES[page]) return state();
+  if (R.focus || R.imeVisible) { cancelCapture('keyboard hidden'); }
+  bump(); R.imeVisible = false; R.picker = false; R.focus = null; R.phase = 'idle'; R.prov = ''; R.dlg = null; R.menu = null; closeAddMenu();
+  if (SUB.includes(page)) { if (TOP.includes(S.page)) R.back = S.page; else if (!SUB.includes(S.page)) R.back = 'home'; }
+  S.page = page; persist();
+  renderAll();
+  if (anchor) { const el = $(anchor); if (el) el.scrollIntoView({ block: 'start' }); } else $('page').scrollTop = 0;
+  return state();
+}
+
+/* ---------------- typing ---------------- */
+function buzz() { if (S.set.haptics) { R.haptics++; try { navigator.vibrate && navigator.vibrate(8); } catch (_) {} } }
+function afterText(id) {
+  persist();
+  if (id === 'dictSearch') renderDictList();
+  renderFields();
+}
+function trailingWord(t) { const m = t.match(/[A-Za-z0-9'_]+$/); return m ? m[0] : ''; }
+function autocorrectBoundary(id) {
+  if (!S.set.autocorrect || FIELDS[id].suggest === false) return;
+  const text = T[id];
+  const m = text.match(/(^|[\s(])([A-Za-z][A-Za-z0-9']*)$/);
+  if (!m) return;
+  const w = m[2], lw = w.toLowerCase(), at = text.length - w.length;
+  if (R.noCorrect.includes(lw)) return;
+  let fix = null;
+  const term = S.terms.find(t => !t.includes(' ') && t.toLowerCase() === lw);
+  if (term) { if (term !== w) fix = term; }
+  else if (TYPOS[lw]) fix = /^[A-Z]/.test(w) ? TYPOS[lw].charAt(0).toUpperCase() + TYPOS[lw].slice(1) : TYPOS[lw];
+  if (fix) { T[id] = text.slice(0, at) + fix; R.corr = { from: w, to: fix, at }; }
+}
+function typeWithCorr(ch, literal) {
+  // keeps the correction made at this boundary so the strip can offer Undo
+  const id = R.focus; if (!id) return;
+  R.corr = null;
+  if (/^[\s.,!?;:)]$/.test(ch)) { autocorrectBoundary(id); const c = R.corr; T[id] += ch; R.corr = c; }
+  else T[id] += (!literal && R.shift !== 'off' && /^[a-z]$/.test(ch)) ? ch.toUpperCase() : ch;
+  if (R.shift === 'once') R.shift = 'off';
+  autoShift(); afterText(id);
+}
+function backspace() {
+  const id = R.focus; if (!id) return;
+  R.corr = null; T[id] = T[id].slice(0, -1); autoShift(); afterText(id);
+}
+function doEnter() {
+  const id = R.focus; if (!id) return;
+  const cfg = FIELDS[id], v = T[id];
+  R.corr = null;
+  if (cfg.action === 'newline') { T[id] = v + '\n'; autoShift(); afterText(id); }
+  else if (cfg.action === 'send') {
+    if (!v.trim()) { toast('Nothing to send'); return; }
+    S.sent.unshift(v.trim()); if (S.sent.length > 6) S.sent.length = 6;
+    T[id] = ''; autoShift(); toast('Sent (MOCK host app)'); persist(); renderPage(); renderFields();
+  } else if (cfg.action === 'search') {
+    if (id === 'search') R.results[id] = v.trim();
+    hideIme(); renderPage(); renderFields();
+  } else if (cfg.action === 'next') { focusField(cfg.next); }
+  else hideIme();
+}
+function inputText(str) { if (!R.imeVisible || R.mode !== 'keys') return; for (const ch of String(str)) { if (ch === '\n') doEnter(); else typeWithCorr(ch, true); } renderTyping(); }
+function wordsFor(layout) { return VOCAB[layout] || []; }
+function suggestions() {
+  const id = R.focus, cfg = FIELDS[id];
+  if (!cfg || !cfg.suggest || !S.set.strip) return [];
+  if (R.corr) return [{ type: 'undo', text: R.corr.from }];
+  const text = T[id], p = trailingWord(text), pl = p.toLowerCase(), out = [];
+  if (!p) {
+    if (/\S$/.test(text)) return [];
+    return S.terms.slice(-3).reverse().map(t => ({ type: 'word', text: t, saved: true, len: 0 }));
+  }
+  const line = text.slice(text.lastIndexOf('\n') + 1);
+  for (let n = 3; n >= 1; n--) {
+    const m = line.match(new RegExp(`(?:^|\\s)((?:[A-Za-z0-9']+\\s+){${n - 1}}[A-Za-z0-9']+)$`));
+    if (!m) continue;
+    const tail = m[1], tl = tail.toLowerCase();
+    for (const t of S.terms) if (t.toLowerCase().startsWith(tl) && t !== tail && !out.some(o => o.text === t)) out.push({ type: 'word', text: t, saved: true, len: tail.length });
+  }
+  const cap = /^[A-Z]/.test(p);
+  for (const v of wordsFor(S.layout)) {
+    if (out.length >= 3) break;
+    if (v.startsWith(pl) && v !== pl && !out.some(o => o.text.toLowerCase() === v)) out.push({ type: 'word', text: cap ? v.charAt(0).toUpperCase() + v.slice(1) : v, len: p.length });
+  }
+  return out.slice(0, 3);
+}
+function slots() {
+  const s = suggestions();
+  if (s.length && s[0].type === 'undo') return [null, s[0], null];
+  return [s[1] || null, s[0] || null, s[2] || null];
+}
+function applySuggestion(item) {
+  const id = R.focus; if (!id || !item) return;
+  let t = T[id];
+  t = t.slice(0, t.length - item.len);
+  T[id] = t + item.text + ' ';
+  R.corr = null; R.shift = 'off'; autoShift(); afterText(id);
+}
+function addTerm(raw) {
+  const term = String(raw || '').trim().replace(/\s+/g, ' ');
+  if (!term) return { ok: false, msg: 'Type the exact spelling first.' };
+  const same = S.terms.findIndex(t => t.toLowerCase() === term.toLowerCase());
+  if (same >= 0) {
+    if (S.terms[same] === term) return { ok: false, msg: `“${term}” is already in the dictionary.` };
+    S.terms[same] = term; persist(); return { ok: true, msg: `Spelling updated to “${term}”.` };
+  }
+  S.terms.push(term); persist();
+  return { ok: true, msg: `Added “${term}” to the dictionary.` };
+}
+function closeAddMenu() { const m = $('addMenu'); if (m) m.hidden = true; }
+function openAddMenu(word, fromPress) {
+  if (!word) return;
+  const exists = S.terms.some(t => t.toLowerCase() === word.toLowerCase());
+  const m = $('addMenu');
+  m.innerHTML = `<button data-act="addword" data-w="${esc(word)}" ${exists ? 'disabled' : ''}>${exists ? `“${esc(word)}” is already in the dictionary` : `Add “${esc(word)}” to dictionary`}</button>`;
+  m.hidden = false; if (fromPress) R.suppress = true;
+  m.firstChild.focus();
+}
+
+/* ---------------- models ---------------- */
+function startDownload(id) {
+  const m = S.models[id]; if (!m || m.st !== 'available') return false;
+  m.st = 'downloading'; m.p = 0;
+  dl[id] = setInterval(() => {
+    m.p = Math.min(100, m.p + 2.5 * (0.8 + Math.random() * 0.4));
+    if (m.p >= 100) { clearInterval(dl[id]); delete dl[id]; m.st = 'installed'; m.p = 100; autoSelect(id); }
+    else updateProgress(id);
+  }, 100);
+  renderAll();
+  return true;
+}
+function autoSelect(id) {
+  // a completed download becomes the active model, on the Models page and in the keyboard's picker
+  S.active = id;
+  toast(`${CATALOG.find(c => c.id === id).name} downloaded (simulated) and selected.`);
+  if (R.imeVisible && R.mode === 'voice' && R.phase === 'blocked' && R.block === 'nomodel') {
+    const b = voiceBlock(); R.block = b;
+    if (!b) { if (R.picker || !S.set.autoStart) R.phase = 'ready'; else startCapture(); }
+  }
+  persist(); renderAll();
+}
+function cancelDownload(id) {
+  const m = S.models[id]; if (!m || m.st !== 'downloading') return false;
+  clearInterval(dl[id]); delete dl[id]; m.st = 'available'; m.p = 0;
+  toast(`Download of ${CATALOG.find(c => c.id === id).name} cancelled. Partial file removed.`);
+  persist(); renderAll();
+  return true;
+}
+function useModel(id) {
+  const m = S.models[id]; if (!m || m.st !== 'installed') return false;
+  S.active = id; toast(`${CATALOG.find(c => c.id === id).name} is now the active model.`);
+  persist(); renderAll(); return true;
+}
+function deleteModel(id) {
+  const m = S.models[id]; if (!m || m.st !== 'installed') return { ok: false, reason: 'not installed' };
+  const name = CATALOG.find(c => c.id === id).name;
+  if (S.active === id) { toast(`${name} is active and can't be deleted. Use another model first.`); return { ok: false, reason: 'active' }; }
+  m.st = 'available'; m.p = 0; R.menu = null; toast(`${name} deleted (simulated).`); persist(); renderAll();
+  return { ok: true };
+}
+function quickSetup() {
+  S.setup = { enabled: true, selected: true, mic: true };
+  const id = 'moonshine-small';
+  clearInterval(dl[id]); delete dl[id];
+  S.models[id] = { st: 'installed', p: 100 }; S.active = id;
+  if (R.imeVisible && R.mode === 'voice' && R.phase === 'blocked') enterVoiceState();
+  persist(); renderAll(); toast('Quick setup done: keyboard enabled and selected, mic allowed, Moonshine Small active.');
+  return state();
+}
+
+/* ---------------- page rendering ---------------- */
+const fieldHtml = id => `<div class="field${FIELDS[id].multi ? ' multi' : ''}" role="textbox" tabindex="0" data-fid="${id}" ${FIELDS[id].multi ? 'aria-multiline="true"' : ''} aria-label="${esc(FIELDS[id].label)}"></div>`;
+const sw = (k, label, sub, on) => `<button class="switchrow" role="switch" aria-checked="${!!on}" data-act="toggle" data-k="${k}"><span class="sl"><b>${label}</b>${sub ? `<small>${sub}</small>` : ''}</span><span class="knob" aria-hidden="true"></span></button>`;
+const seg = (k, label, opts, val) => `<span class="slabel" id="lbl-${k}">${label}</span><div class="seg" role="radiogroup" aria-labelledby="lbl-${k}">${opts.map(([v, l]) => `<button role="radio" aria-checked="${String(val) === String(v)}" data-act="setv" data-k="${k}" data-v="${v}">${l}</button>`).join('')}</div>`;
+const link = (act, title, sub, extra = '') => `<button class="linkrow" data-act="${act}" ${extra}><span class="t"><b>${title}</b>${sub ? `<small>${sub}</small>` : ''}</span>${ICON.chev.replace('class="i"', 'class="i chev"')}</button>`;
+
+function setupSteps() {
+  const m = activeModel(), inst = installed().length, dlg = CATALOG.some(c => S.models[c.id].st === 'downloading');
+  return [
+    { done: S.setup.enabled, t: 'Enable Slim Keyboard', d: 'Turn it on in system settings.', btn: S.setup.enabled ? 'Change' : 'Enable', act: 'sys-enable' },
+    { done: S.setup.selected, t: 'Choose it as current keyboard', d: 'Pick it in the input method picker.', btn: S.setup.selected ? 'Change' : 'Choose', act: 'sys-picker' },
+    { done: S.setup.mic, t: 'Allow the microphone', d: S.setup.mic ? 'Allowed. Audio stays on the device.' : 'Needed for voice typing.', btn: S.setup.mic ? 'Revoke' : 'Allow', act: S.setup.mic ? 'mic-revoke' : 'sys-perm' },
+    { done: !!m, t: 'Download a speech model', d: m ? `Active: ${m.name}` : dlg ? 'Downloading…' : inst ? 'Installed. Choose one with Use.' : 'Get Moonshine Small (recommended).', btn: m ? 'Models' : 'Open Models', act: 'goto-models' },
+  ];
+}
+function pageHome() {
+  const steps = setupSteps(), n = steps.filter(s => s.done).length, m = activeModel();
+  return `
+  <section class="card" aria-labelledby="setupT">
+    <h2 id="setupT">Set up Slim Keyboard</h2>
+    <p class="note" id="setupCount">${n} of 4 steps done${n === 4 ? '. All set.' : ''}</p>
+    <span class="bar" role="progressbar" aria-label="Setup progress" aria-valuemin="0" aria-valuemax="4" aria-valuenow="${n}" style="margin-top:8px"><i style="width:${n * 25}%"></i></span>
+    <ol class="steps">${steps.map((s, i) => `<li class="step${s.done ? ' done' : ''}" data-step="${i + 1}" data-done="${s.done}">
+      <span class="tick" aria-label="${s.done ? 'Done' : 'Not done'}">${s.done ? ICON.check : i + 1}</span>
+      <span class="stext"><b>${esc(s.t)}</b><span>${esc(s.d)}</span></span>
+      <button class="btn ${s.done ? 'ghost' : ''}" data-act="${s.act}" aria-label="${esc(s.btn)}: ${esc(s.t)}">${esc(s.btn)}</button></li>`).join('')}</ol>
+  </section>
+  <div class="grid2">
+    <section class="card stat"><span class="l">Current model <span class="mock">MOCK</span></span><b>${m ? esc(m.name) : 'None'}</b></section>
+    <section class="card stat"><span class="l">Dictionary <span class="mock">MOCK</span></span><b>${S.terms.length} terms · ${S.rules.length} rules</b></section>
+    <section class="card stat"><span class="l">Last mode</span><b>${S.lastMode === 'voice' ? 'Voice' : 'Keys'}</b></section>
+    <section class="card stat"><span class="l">Phrase rules</span><b>${S.set.phraseRules ? 'On' : 'Off'}</b></section>
+  </div>
+  <section class="card">
+    <h2>Try it</h2><p class="note" style="margin:2px 0 10px">A playground with a multiline, search and send field.</p>
+    <button class="btn" data-act="goto-tryit">Open Try it</button>
+  </section>
+  <section class="card" style="padding-top:6px;padding-bottom:6px">
+    ${link('goto-diag', 'Diagnostics', 'Voice session log and simulated latency')}
+    ${link('goto-about', 'About and licenses', 'Privacy, references, model licenses')}
+  </section>`;
+}
+function pageTryit() {
+  return `
+  <section class="card">
+    <h2>Multiline field</h2>
+    <p class="note" style="margin:2px 0 8px">Enter inserts a new line.</p>
+    ${fieldHtml('ml')}
+    <div class="chips" style="margin-top:10px" role="group" aria-label="Sample prompts">
+      ${['Explain this Kotlin coroutine', 'Why does adb install fail?', 'Refactor this ViewModel'].map(p => `<button class="pchip" data-act="sample" data-t="${esc(p)}">${esc(p)}</button>`).join('')}
+    </div>
+  </section>
+  <section class="card">
+    <h2>Search field</h2>
+    <p class="note" style="margin:2px 0 8px">Enter shows <b>Search</b>.</p>
+    ${fieldHtml('search')}
+    ${R.results.search ? `<p class="result" style="margin-top:8px">Searched for “${esc(R.results.search)}” <span class="mock">MOCK</span></p>` : ''}
+  </section>
+  <section class="card">
+    <h2>Send field</h2>
+    <p class="note" style="margin:2px 0 8px">Enter shows <b>Send</b> and posts the message.</p>
+    ${fieldHtml('send')}
+    ${S.sent.length ? `<div class="sentlist" style="margin-top:10px" aria-label="Sent messages">${S.sent.map(t => `<div class="sentmsg">${esc(t)}</div>`).join('')}</div>` : ''}
+  </section>
+  <button class="btn ghost" data-act="clear-try">Clear</button>
+  <p class="note">Slim Keyboard appears when you tap a field. Hide it with the chevron in the system bar. The keyboard is shown here even before setup is complete.</p>`;
+}
+function modelRow(c) {
+  const m = S.models[c.id], active = S.active === c.id, st = m.st;
+  let act = '';
+  if (st === 'available') act = `<button class="btn sm" data-act="download" data-id="${c.id}" aria-label="Download ${esc(c.name)}">Download</button>`;
+  else if (st === 'downloading') act = `<button class="btn sm ghost" data-act="cancel-dl" data-id="${c.id}" aria-label="Cancel download of ${esc(c.name)}">Cancel</button>`;
+  else {
+    act = (active ? `<span class="activepill" aria-label="${esc(c.name)} is active">${ICON.check}Active</span>` : `<button class="btn sm" data-act="use" data-id="${c.id}" aria-label="Use ${esc(c.name)}">Use</button>`)
+      + `<button class="iconbtn" data-act="menu" data-id="${c.id}" aria-label="More actions for ${esc(c.name)}" aria-expanded="${R.menu === c.id}">${ICON.more}</button>`;
+  }
+  const menu = R.menu === c.id && st === 'installed' ? `<div class="menu">${active ? `<p>The active model can't be deleted. Choose another model with Use first.</p><button class="btn sm ghost danger" disabled aria-disabled="true" data-act="delete" data-id="${c.id}">Delete (disabled)</button>` : `<button class="btn sm ghost danger" data-act="delete" data-id="${c.id}" aria-label="Delete ${esc(c.name)}">Delete model</button>`}</div>` : '';
+  const state = st === 'installed' ? (active ? 'Installed · active' : 'Installed') : st === 'downloading' ? 'Downloading…' : 'Not installed';
+  return `<div class="mrow" data-model="${c.id}" data-st="${st}">
+    <div class="mtop"><div class="minfo"><b>${esc(c.name)}</b>${c.rec ? '<span class="badge">Recommended</span>' : ''}
+      <div class="meta">English · ${c.size} · <span class="badge live" style="margin-left:0">${KIND[c.kind]}</span> · <span data-state>${state}</span></div>
+      <div class="desc">${esc(c.desc)}</div></div><div class="mact">${act}</div></div>
+    ${st === 'downloading' ? `<span class="bar" role="progressbar" aria-label="Download progress for ${esc(c.name)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(m.p)}"><i data-prog="${c.id}" style="width:${m.p}%"></i></span>` : ''}
+    ${menu}</div>`;
+}
+function pageModels() {
+  const used = installed().reduce((a, c) => a + c.mb, 0), free = (24.6 - used / 1000).toFixed(1);
+  return `
+  <section class="card">
+    <h3>Storage <span class="mock">MOCK</span></h3>
+    <p><b>${used} MB</b> used by models · <b>${free} GB</b> free</p>
+    <p class="note" style="margin-top:6px">Models stay in app-private storage outside the APK. Downloads here are simulated: nothing is fetched.</p>
+  </section>
+  <section class="card" aria-label="Model catalog">${CATALOG.map(modelRow).join('')}</section>
+  <p class="note">Sizes are placeholders except Moonshine Small and Medium. Each model has its own license (see About).</p>`;
+}
+function dictListHtml() {
+  const q = T.dictSearch.trim().toLowerCase();
+  if (S.tab === 'terms') {
+    const items = S.terms.map((t, i) => [t, i]).filter(([t]) => !q || t.toLowerCase().includes(q));
+    return items.length ? items.map(([t, i]) => `<div class="lrow" data-term="${esc(t)}"><div class="lmain"><span class="mono">${esc(t)}</span></div>
+      <button class="iconbtn" data-act="edit-term" data-i="${i}" aria-label="Edit ${esc(t)}">${ICON.edit}</button>
+      <button class="iconbtn" data-act="del-term" data-i="${i}" aria-label="Delete ${esc(t)}">${ICON.trash}</button></div>`).join('')
+      : `<p class="empty">${q ? 'No matching terms.' : 'No personal terms yet.'}</p>`;
+  }
+  const items = S.rules.map((r, i) => [r, i]).filter(([r]) => !q || (r.spoken + ' ' + r.written).toLowerCase().includes(q));
+  return items.length ? items.map(([r, i]) => `<div class="lrow" data-rule="${r.id}"><button class="switchrow" style="flex:1;min-height:52px;border:0" role="switch" aria-checked="${r.on}" data-act="rule-on" data-i="${i}" aria-label="Rule ${esc(r.spoken)} to ${esc(r.written)}"><span class="sl"><span class="mono" style="font-weight:650;font-size:13.5px">${esc(r.spoken)} → ${esc(r.written)}</span></span><span class="knob sm" aria-hidden="true"></span></button>
+      <button class="iconbtn" data-act="edit-rule" data-i="${i}" aria-label="Edit rule ${esc(r.spoken)}">${ICON.edit}</button>
+      <button class="iconbtn" data-act="del-rule" data-i="${i}" aria-label="Delete rule ${esc(r.spoken)}">${ICON.trash}</button></div>`).join('')
+    : `<p class="empty">${q ? 'No matching rules.' : 'No speech phrase rules yet.'}</p>`;
+}
+function pageDict() {
+  const terms = S.tab === 'terms';
+  return `
+  <div class="tabs" role="tablist" aria-label="Dictionary sections">
+    <button role="tab" aria-selected="${terms}" data-act="tab" data-v="terms">Personal terms</button>
+    <button role="tab" aria-selected="${!terms}" data-act="tab" data-v="rules">Speech phrase rules</button>
+  </div>
+  ${terms ? `<p class="note">Terms protect spelling and case in suggestions and autocorrect. They do not train speech recognition.</p>`
+    : `${sw('phraseRules', 'Apply phrase rules', 'Master switch. Off by default.', S.set.phraseRules)}
+       <p class="note">Rules apply once to the final speech text after Stop, never to typed text.</p>`}
+  <div class="toolbar"><button class="btn sm" data-act="${terms ? 'add-term' : 'add-rule'}" aria-label="${terms ? 'Add personal term' : 'Add phrase rule'}">+ Add ${terms ? 'term' : 'rule'}</button></div>
+  <div>${fieldHtml('dictSearch')}</div>
+  <section class="card" id="dictList" aria-label="${terms ? 'Personal terms' : 'Speech phrase rules'}" style="padding-top:4px;padding-bottom:4px">${dictListHtml()}</section>
+  <div class="toolbar"><button class="btn sm ghost" disabled aria-disabled="true">Import · Coming later</button><button class="btn sm ghost" disabled aria-disabled="true">Export · Coming later</button></div>`;
+}
+function pageSettings() {
+  const s = S.set;
+  return `
+  <section class="card" id="grp-keyboard"><h3>Keyboard</h3>
+    ${seg('height', 'Keyboard height', [['compact', 'Compact'], ['normal', 'Normal'], ['tall', 'Tall']], s.height)}
+    ${sw('haptics', 'Key-press vibration', '', s.haptics)}
+    ${sw('autocap', 'Auto-capitalize', 'Capital letter at the start of a sentence', s.autocap)}
+    ${sw('autocorrect', 'Autocorrect', 'Fixes common typos and keeps saved spellings', s.autocorrect)}
+    ${sw('strip', 'Suggestion strip', 'Shows suggestions and saved terms', s.strip)}
+    <span class="slabel">Typing layouts</span>
+    ${Object.entries(LANGS).map(([k, n]) => `<button class="switchrow" role="switch" aria-checked="${s.layouts[k]}" data-act="layout" data-k="${k}"><span class="sl"><b>${n}</b></span><span class="knob" aria-hidden="true"></span></button>`).join('')}
+  </section>
+  <section class="card" id="grp-voice"><h3>Voice <span class="mock">MOCK</span></h3>
+    ${sw('autoStart', 'Auto-start on voice entry', 'Listening starts when you switch to voice', s.autoStart)}
+    ${sw('rememberMode', 'Remember last mode', 'Reopen in the mode you left', s.rememberMode)}
+    ${sw('liveText', 'Live text in editor', 'Show provisional words while speaking', s.liveText)}
+    ${seg('autoStop', 'Auto-stop after silence', [[0, 'Off'], [2, '2 s'], [4, '4 s']], s.autoStop)}
+    ${sw('continuous', 'Continuous dictation', 'Start a new capture after each result', s.continuous)}
+    ${sw('phraseRules', 'Apply phrase rules', 'Run enabled rules on final text', s.phraseRules)}
+    <div class="switchrow" style="cursor:default"><span class="sl"><b>Voice language</b><small>Fixed</small></span><span>English</span></div>
+    ${link('goto-models', 'Speech models', 'Download and choose a model')}
+  </section>
+  <section class="card"><h3>Appearance</h3>${seg('theme', 'Theme', [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']], s.theme)}</section>
+  <section class="card" style="padding-top:6px;padding-bottom:6px"><h3 style="margin-top:8px">Links</h3>
+    ${link('goto-diag', 'Diagnostics', 'Voice session log')}
+    ${link('goto-about', 'About and licenses', '')}
+  </section>`;
+}
+const fmtTime = ts => { const d = new Date(ts); return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
+const sec = ms => (ms / 1000).toFixed(1) + ' s';
+function pageDiag() {
+  const L = LAT[S.set.latency];
+  return `
+  <section class="card"><h3>Simulated latency <span class="mock">MOCK</span></h3>
+    ${seg('latency', 'Speed of the fake recognizer', [['fast', 'Fast'], ['realistic', 'Realistic'], ['slow', 'Slow']], S.set.latency)}
+    <p class="note">First word after ${sec(L.first)}, then one word every ${(L.word / 1000).toFixed(2)} s. Finalizing takes ${sec(L.fin)}.</p>
+  </section>
+  <section class="card"><div style="display:flex;align-items:center;gap:8px"><h2 style="flex:1">Voice session log <span class="mock">MOCK</span></h2><button class="btn sm ghost" data-act="clear-log" ${S.log.length ? '' : 'disabled'}>Clear log</button></div>
+    <div id="logList" style="margin-top:6px">${S.log.length ? S.log.map(logHtml).join('') : '<p class="empty">No sessions yet. Dictate in Try it.</p>'}</div>
+  </section>`;
+}
+function logHtml(l) {
+  const meta = l.outcome === 'committed' ? `${l.words} ${l.words === 1 ? 'word' : 'words'}` : l.outcome === 'cancelled' ? `${l.discarded} ${l.discarded === 1 ? 'word' : 'words'} discarded` : 'in progress';
+  return `<div class="logitem" data-session="${l.id}" data-outcome="${l.outcome}"><div class="h"><b class="mono">${l.id}</b><span class="meta2">${fmtTime(l.at)}</span><span class="outcome ${l.outcome}">${l.outcome}</span></div>
+    <div class="trans">${esc(l.trans.join(' → '))}</div>
+    <div class="meta2">${meta} · first word ${l.firstMs == null ? '–' : sec(l.firstMs)} · finalize ${l.finMs == null ? '–' : sec(l.finMs)} · ${esc(l.model)}</div></div>`;
+}
+function pageAbout() {
+  return `
+  <section class="card"><h2>Slim Keyboard</h2><p class="note">Version 0.1.0 (clickable prototype) · <span class="mono">com.rheerkens.androidkeyboard</span></p></section>
+  <section class="card"><h3>Privacy</h3><p>Everything stays on the device. There is no network access except downloading speech models, which you start yourself. No audio or text is sent anywhere. In this prototype nothing is recorded or downloaded at all.</p></section>
+  <section class="card"><h3>References</h3>
+    <p class="note" style="margin-bottom:8px">These projects are design references only; no source code or assets are taken from them.</p>
+    <p><b>FUTO Keyboard</b><br><a href="https://github.com/futo-org/android-keyboard" target="_blank" rel="noopener noreferrer">github.com/futo-org/android-keyboard</a><br><span class="note">Reference for keyboard layout, suggestion strip and on-device voice input design.</span></p>
+    <p style="margin-top:10px"><b>Moonshine voice-input fork</b><br><a href="https://github.com/Today20092/voice-input" target="_blank" rel="noopener noreferrer">github.com/Today20092/voice-input</a><br><span class="note">Reference for streaming Moonshine speech models and the model catalog.</span></p>
+  </section>
+  <section class="card"><h3>Licenses</h3>
+    <p>FUTO Keyboard is published under the FUTO Source First License, which is source-available and not an open-source license. Its terms apply to that project only. Check its repository before reusing anything.</p>
+    <p style="margin-top:8px">Speech models are separate downloads under their own licenses, distinct from this app. Review each model's license before using or sharing it. Models are never bundled in the APK.</p>
+  </section>`;
+}
+const PAGE_FN = { home: pageHome, tryit: pageTryit, models: pageModels, dict: pageDict, settings: pageSettings, diag: pageDiag, about: pageAbout };
+
+let renderedPage = null;
+function renderPage() {
+  const p = $('page'), keep = renderedPage === S.page ? p.scrollTop : 0;
+  p.innerHTML = PAGE_FN[S.page]();
+  p.scrollTop = keep; renderedPage = S.page;
+}
+function renderDictList() { const el = $('dictList'); if (el && S.page === 'dict') el.innerHTML = dictListHtml(); }
+function updateProgress(id) {
+  const m = S.models[id];
+  document.querySelectorAll(`[data-prog="${id}"]`).forEach(bar => { bar.style.width = m.p + '%'; if (bar.parentNode) bar.parentNode.setAttribute('aria-valuenow', Math.round(m.p)); });
+  const st = document.querySelector(`[data-model="${id}"] [data-state]`); if (st) st.textContent = `Downloading ${Math.round(m.p)}%`;
+  document.querySelectorAll(`[data-pct="${id}"]`).forEach(x => { x.textContent = Math.round(m.p) + '%'; });
+}
+function renderChrome() {
+  const top = TOP.includes(S.page), cur = top ? S.page : (S.page === 'tryit' ? 'home' : R.back);
+  $('appbar').className = 'appbar' + (top ? ' top' : '');
+  $('appbar').innerHTML = `${top ? '' : `<button class="iconbtn" data-act="back" aria-label="Back">${ICON.arrow}</button>`}<h1>${TITLES[S.page]}</h1>${S.page === 'about' ? '' : '<span class="mock" title="Simulated data">MOCK</span>'}`;
+  $('bnav').hidden = R.imeVisible;
+  $('appwrap').classList.toggle('hasnav', !R.imeVisible);
+  $('bnav').innerHTML = BNAV.map(([id, label, ic]) => `<button data-act="nav" data-p="${id}" ${id === cur ? 'aria-current="page"' : ''}><span class="pill">${ICON[ic]}</span>${label}</button>`).join('');
+}
+function renderDlg() {
+  const sc = $('dlgScrim'), d = R.dlg;
+  sc.hidden = !d;
+  if (!d) return;
+  const isTerm = d.type === 'term', edit = d.idx != null;
+  sc.innerHTML = `<section class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgT">
+    <h2 id="dlgT">${edit ? 'Edit' : 'Add'} ${isTerm ? 'personal term' : 'phrase rule'}</h2>
+    ${isTerm ? `<span class="fieldlabel">Exact spelling</span>${fieldHtml('dlgTerm')}<p class="note">Multiword terms are allowed, for example Jetpack Compose.</p>`
+      : `<span class="fieldlabel">Spoken</span>${fieldHtml('dlgSpoken')}<span class="fieldlabel">Written as</span>${fieldHtml('dlgWritten')}`}
+    <p class="err" role="alert" id="dlgErr">${esc(d.err || '')}</p>
+    <div class="acts"><button class="btn ghost" data-act="dlg-cancel">Cancel</button><button class="btn" data-act="dlg-save">Save</button></div></section>`;
+}
+function renderSys() {
+  const sc = $('sysScrim'), k = R.sys;
+  sc.hidden = !k;
+  if (!k) return;
+  sc.classList.toggle('c', k === 'perm');
+  let h = '';
+  if (k === 'enable') h = `<div class="sysdlg" role="dialog" aria-modal="true" aria-labelledby="sysT"><span class="sysbar">System settings · MOCK</span><h2 id="sysT">On-screen keyboard</h2>
+      <p class="note">Choose which keyboards can be used.</p>
+      <button class="switchrow" role="switch" aria-checked="true" disabled style="opacity:.6"><span class="sl"><b>Gboard</b></span><span class="knob" aria-hidden="true"></span></button>
+      <button class="switchrow" role="switch" aria-checked="${S.setup.enabled}" data-act="sys-toggle-enable"><span class="sl"><b>Slim Keyboard</b><small>Switch on to allow it</small></span><span class="knob" aria-hidden="true"></span></button>
+      <div class="acts"><button data-act="sys-close">Done</button></div></div>`;
+  else if (k === 'picker') h = `<div class="sysdlg" role="dialog" aria-modal="true" aria-labelledby="sysT"><span class="sysbar">Android · MOCK</span><h2 id="sysT">Choose input method</h2>
+      <div role="radiogroup" aria-label="Input methods">
+      <button class="opt" role="radio" aria-checked="${!S.setup.selected}" data-act="sys-pick" data-v="gboard"><span class="radio"></span>Gboard</button>
+      <button class="opt" role="radio" aria-checked="${S.setup.selected}" data-act="sys-pick" data-v="slim" ${S.setup.enabled ? '' : 'aria-disabled="true"'}><span class="radio"></span>Slim Keyboard</button></div>
+      ${S.setup.enabled ? '' : '<p class="note">Slim Keyboard is not enabled yet. Enable it first (step 1).</p>'}
+      <div class="acts"><button data-act="sys-close">Cancel</button></div></div>`;
+  else if (k === 'perm') h = `<div class="sysdlg center" role="alertdialog" aria-modal="true" aria-labelledby="sysT"><span class="sysbar">Permission · MOCK</span><h2 id="sysT">Allow Slim Keyboard to record audio?</h2>
+      <p class="note">Used for voice typing. Nothing is recorded in this prototype.</p>
+      <div class="acts col"><button data-act="perm-allow">Allow</button><button data-act="perm-deny">Don't allow</button></div></div>`;
+  sc.innerHTML = h;
+  const f = sc.querySelector('button:not([disabled])'); if (f && !sc.dataset.open) { f.focus(); }
+  sc.dataset.open = '1';
+}
+function closeSys() { R.sys = null; $('sysScrim').dataset.open = ''; renderSys(); }
+
+/* ---------------- field + IME rendering ---------------- */
+function renderFields() {
+  document.querySelectorAll('.field[data-fid]').forEach(f => {
+    const id = f.dataset.fid, cfg = FIELDS[id], foc = R.focus === id;
+    let html = esc(T[id]);
+    if (foc && R.prov) html += `${T[id] && !/\s$/.test(T[id]) ? ' ' : ''}<span class="prov" aria-label="provisional text">${esc(R.prov)}</span>`;
+    const has = T[id] || (foc && R.prov), caret = foc && R.imeVisible ? '<span class="caret" aria-hidden="true"></span>' : '';
+    f.innerHTML = has ? html + caret : caret + `<span class="ph">${esc(cfg.ph)}</span>`;
+    f.classList.toggle('focused', foc);
+    if (foc) f.scrollTop = f.scrollHeight;
+  });
+  if (R.focus && R.imeVisible) { const f = document.querySelector(`.field[data-fid="${R.focus}"]`); if (f && f.scrollIntoView) f.scrollIntoView({ block: 'nearest' }); }
+}
+function keepFocus(container, fn) {
+  const a = document.activeElement, fid = a && container.contains(a) && a.dataset ? a.dataset.fid : null;
+  fn();
+  if (fid) { const el = container.querySelector(`[data-fid="${CSS.escape(fid)}"]`); if (el) el.focus(); }
+}
+function renderLead() {
+  const lead = $('lead');
+  keepFocus(lead, () => {
+    if (R.mode === 'keys') {
+      const chips = slots().map((s, i) => {
+        const fid = `chip-${i}`;
+        if (!s) return `<span class="chip empty" aria-hidden="true"></span>`;
+        if (s.type === 'undo') return `<button class="chip undo" data-act="undo" data-fid="${fid}" aria-label="Undo autocorrect, restore ${esc(s.text)}">${ICON.undo}<span class="lbl">${esc(s.text)}</span></button>`;
+        return `<button class="chip${s.saved ? ' saved' : ''}" data-act="suggest" data-i="${i}" data-w="${esc(s.text)}" data-fid="${fid}" aria-label="Insert ${esc(s.text)}${s.saved ? ', saved term' : ''}"><span class="lbl">${esc(s.text)}</span></button>`;
+      }).join('');
+      lead.innerHTML = `<button class="iconbtn" data-act="dict" data-fid="dict" aria-label="Open dictionary" title="Dictionary">${ICON.book}</button><div class="chips2" role="group" aria-label="Suggestions">${chips}</div>`;
+    } else lead.innerHTML = voiceRowHtml();
+  });
+}
+function voiceRowHtml() {
+  const m = activeModel(), open = R.picker;
+  const pill = `<button class="mpill" data-act="pill" data-fid="pill" aria-haspopup="dialog" aria-expanded="${open}" aria-controls="picker" aria-label="Speech model: ${m ? esc(m.name) : 'none selected'}. ${open ? 'Close' : 'Open'} model picker" title="Speech model"><span class="pbody"><span class="okdot${m ? '' : ' off'}" aria-hidden="true"></span><span class="mn">${m ? esc(m.name) : 'Choose model'}</span>${ICON.chev}</span></button>`;
+  let status = '', btn = '';
+  if (R.phase === 'blocked' && R.block === 'nomic') {
+    btn = `<button class="vbtn allow" data-act="v-perm" data-fid="vact" aria-label="Allow microphone. Opens Home"><span class="vl">Allow mic</span></button>`;
+  } else if (R.phase === 'listening') {
+    status = `<span class="meter" id="vmeter" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><span class="vtime" id="vtime" aria-hidden="true">0:00</span>`;
+    btn = `<button class="vbtn stop" data-act="stop" data-fid="vact" aria-label="Stop and insert text">${ICON.stop}<span class="vl">Stop</span></button>`;
+  } else if (R.phase === 'finalizing') {
+    status = `<span class="spin" aria-hidden="true"></span>`;
+    btn = `<button class="vbtn busy" data-act="noop" data-fid="vact" aria-disabled="true" aria-label="Finalizing, Stop already pressed">${ICON.stop}<span class="vl">Stop</span></button>`;
+  } else {
+    if (R.note) { const left = Math.max(0, 2000 - (Date.now() - R.note.at)); status = `<span class="vnote" style="animation-delay:${left - 400}ms">${esc(R.note.text)}</span>`; }
+    btn = `<button class="vbtn" data-act="talk" data-fid="vact" aria-label="${voiceBlock() === 'nomodel' ? 'Talk. Choose a speech model first' : 'Talk'}">${ICON.mic}<span class="vl">Talk</span></button>`;
+  }
+  return `<div class="vrow" id="voicePane">${pill}<div class="vstatus">${status}</div>${btn}</div>`;
+}
+function renderVoice() { if (R.mode === 'voice' && R.imeVisible) { renderLead(); if (R.phase === 'listening') tick(); } }
+const hint = c => `${KIND[c.kind]} · ${c.size.replace('~', '')}`;
+function pickerHtml() {
+  const inst = installed(), avail = CATALOG.filter(c => S.models[c.id].st !== 'installed');
+  const row = c => {
+    const active = S.active === c.id;
+    return `<button class="prow" role="button" data-act="pick" data-id="${c.id}" data-fid="pk-${c.id}"${active ? ' aria-current="true"' : ''} aria-label="${esc(c.name)}, ${hint(c)}${active ? ', active' : ''}"><span class="pchk" aria-hidden="true">${active ? ICON.check : ''}</span><span class="ptxt"><b>${esc(c.name)}</b><small>${hint(c)}</small></span></button>`;
+  };
+  const avl = c => {
+    const m = S.models[c.id];
+    if (m.st === 'downloading') return `<div class="prow" data-dl="${c.id}"><span class="pchk" aria-hidden="true"></span><span class="ptxt"><b>${esc(c.name)}</b><span class="pbar" role="progressbar" aria-label="Download progress for ${esc(c.name)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(m.p)}"><i data-prog="${c.id}" style="width:${m.p}%"></i></span></span><span class="pright"><span data-pct="${c.id}">${Math.round(m.p)}%</span></span><button class="pcancel" data-act="pk-cancel" data-id="${c.id}" data-fid="pkc-${c.id}" aria-label="Cancel download of ${esc(c.name)}">${ICON.close}</button></div>`;
+    return `<button class="prow" data-act="pk-dl" data-id="${c.id}" data-fid="pk-${c.id}" aria-label="Download ${esc(c.name)}, ${c.size.replace('~', '')}"><span class="pchk" aria-hidden="true"></span><span class="ptxt"><b>${esc(c.name)}</b><small>${KIND[c.kind]}${c.rec ? ' · Recommended' : ''}</small></span><span class="pright" aria-hidden="true">${c.size.replace('~', '')}${ICON.down}</span></button>`;
+  };
+  return `<div class="plist"><div class="phead" id="pkInst">Installed</div>${inst.length ? inst.map(row).join('') : '<p class="pnone">None yet</p>'}
+    ${avail.length ? `<div class="phead" id="pkAvail">Available</div>${avail.map(avl).join('')}` : ''}</div>
+    <div class="pfoot"><button data-act="pk-manage" data-fid="pk-manage">Manage models</button><button data-act="pk-voice" data-fid="pk-voice">Voice settings</button></div>`;
+}
+function renderPicker() {
+  const el = $('picker'), open = R.picker && R.imeVisible && R.mode === 'voice';
+  el.hidden = !open;
+  if (!open) return;
+  const l = el.querySelector('.plist'), top = l ? l.scrollTop : 0;
+  keepFocus(el, () => { el.innerHTML = pickerHtml(); });
+  const l2 = el.querySelector('.plist'); if (l2) { l2.scrollTop = top; markMore(l2); }
+}
+function markMore(l) { l.classList.toggle('more', l.scrollTop + l.clientHeight < l.scrollHeight - 2); }
+function openModelPicker() {
+  if (!R.imeVisible || R.mode !== 'voice') return state();
+  if (R.picker) return state();
+  cancelCapture('model picker');
+  R.picker = true;
+  const el = $('picker'); el.classList.add('enter'); setTimeout(() => el.classList.remove('enter'), 220);
+  renderAll();
+  const f = el.querySelector('[aria-current="true"]') || el.querySelector('button'); if (f) f.focus();
+  announce('Speech models');
+  return state();
+}
+function closeModelPicker(refocus) {
+  if (!R.picker) return state();
+  R.picker = false; renderAll();
+  if (refocus) { const pl = document.querySelector('#lead .mpill'); if (pl) pl.focus(); }
+  return state();
+}
+function pickModel(id) {
+  const m = S.models[id]; if (!m || m.st !== 'installed') return state();
+  const wasOpen = R.picker; S.active = id; R.picker = false;
+  if (R.imeVisible && R.mode === 'voice') { cancelCapture('model changed'); enterVoiceState(); }
+  persist(); renderAll();
+  const nm = CATALOG.find(c => c.id === id).name; announce(`${nm} selected.`);
+  if (wasOpen) { const pl = document.querySelector('#lead .mpill'); if (pl && R.phase !== 'listening') pl.focus(); }
+  return state();
+}
+function downloadFromPicker(id) { startDownload(id); return state(); }
+let keysSig = '';
+function renderKeys() {
+  const cfg = FIELDS[R.focus] || FIELDS.ml, pane = $('keysPane');
+  const enterTxt = ENTER_LABEL[cfg.action] || '';
+  const sig = [R.layer, enterTxt, S.set.height].join('|');
+  if (sig !== keysSig) {
+    keysSig = sig;
+    const k = (ch, lt) => `<button class="k" data-act="char" data-ch="${esc(ch)}" ${lt ? 'data-letter' : ''} aria-label="${esc(KEYNAMES[ch] || ch)}"><span>${esc(ch)}</span></button>`;
+    const mod = (act, label, inner, grow = 1.5, extra = '') => `<button class="k mod" style="flex-grow:${grow}" data-act="${act}" aria-label="${label}" ${extra}><span>${inner}</span></button>`;
+    let h = '';
+    if (R.layer === 0) {
+      const r = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
+      h += `<div class="krow">${[...r[0]].map(c => k(c, 1)).join('')}</div>`;
+      h += `<div class="krow"><span class="sp"></span>${[...r[1]].map(c => k(c, 1)).join('')}<span class="sp"></span></div>`;
+      h += `<div class="krow">${mod('shift', 'Shift', ICON.shift, 1.5, 'id="shiftKey"')}${[...r[2]].map(c => k(c, 1)).join('')}${mod('bksp', 'Backspace', ICON.bksp)}</div>`;
+    } else {
+      const r = SYM[R.layer - 1];
+      h += `<div class="krow">${[...r[0]].map(c => k(c)).join('')}</div><div class="krow">${[...r[1]].map(c => k(c)).join('')}</div>`;
+      h += `<div class="krow">${R.layer === 1 ? mod('layer2', 'More symbols', '=\\&lt;') : mod('layer1', 'Numbers and symbols', '?123')}${[...r[2]].map(c => k(c)).join('')}${mod('bksp', 'Backspace', ICON.bksp)}</div>`;
+    }
+    h += `<div class="krow">${R.layer === 0 ? mod('symbols', 'Numbers and symbols', '?123') : mod('letters', 'Letters', 'ABC')}
+      ${mod('globe', 'Switch typing layout', ICON.globe, 1, 'id="globeKey"')}
+      ${mod('char', 'comma', '<span style="font-size:20px">,</span>', 1, 'data-ch=","')}
+      <button class="k space" style="flex-grow:4" data-act="char" data-ch=" " id="spaceKey" aria-label="Space"><span></span></button>
+      ${mod('char', 'period', '<span style="font-size:20px">.</span>', 1, 'data-ch="."')}
+      <button class="k enter" style="flex-grow:1.5" data-act="enter" aria-label="Enter${enterTxt ? ', ' + enterTxt : ', new line'}"><span>${enterTxt || ICON.enter}</span></button></div>`;
+    pane.innerHTML = h;
+  }
+  pane.querySelectorAll('[data-letter]').forEach(b => { const c = R.shift !== 'off' ? b.dataset.ch.toUpperCase() : b.dataset.ch; b.firstChild.textContent = c; b.setAttribute('aria-label', c); });
+  const sh = $('shiftKey');
+  if (sh) { sh.classList.toggle('on', R.shift !== 'off'); sh.classList.toggle('lock', R.shift === 'lock'); sh.setAttribute('aria-pressed', String(R.shift !== 'off')); sh.setAttribute('aria-label', R.shift === 'lock' ? 'Shift, caps lock on' : 'Shift'); }
+  const sp = $('spaceKey'); if (sp) sp.firstChild.textContent = LANGS[S.layout];
+  const g = $('globeKey'); if (g) g.setAttribute('aria-label', `Switch typing layout, current ${LANGS[S.layout]}`);
+}
+function renderIme() {
+  const vis = R.imeVisible, voice = R.mode === 'voice';
+  $('imewrap').hidden = !vis;
+  $('keysPane').hidden = voice; $('ime').classList.toggle('vmode', voice);
+  const t = $('toggle');
+  t.innerHTML = `<span class="tg">${voice ? ICON.keyboard : ICON.mic}</span>`;
+  t.classList.toggle('voice', voice);
+  t.setAttribute('aria-label', voice ? (R.phase === 'listening' || R.phase === 'finalizing' ? 'Switch to keyboard. Cancels listening and discards live text.' : 'Switch to keyboard') : 'Switch to voice typing');
+  t.title = voice ? 'Keyboard' : 'Voice typing';
+  $('navHide').setAttribute('aria-disabled', String(!vis));
+  if (!vis) return;
+  renderLead(); renderPicker();
+  if (!voice) renderKeys();
+  if (voice && R.phase === 'listening') tick();
+}
+function applyTheme() {
+  document.documentElement.dataset.theme = isDark() ? 'dark' : 'light';
+  $('phone').style.setProperty('--row', { compact: '42px', normal: '48px', tall: '54px' }[S.set.height] + '');
+}
+function renderAll() {
+  applyTheme(); renderChrome(); renderPage(); renderDlg(); renderSys(); renderIme(); renderFields();
+}
+function renderTyping() { if (!R.imeVisible) { renderAll(); return; } renderLead(); if (R.mode === 'keys') renderKeys(); renderFields(); }
+
+/* ---------------- guided tour ---------------- */
+const TOUR = [
+  ['Setup checklist', 'Tap Enable, Choose and Allow (fake system dialogs), then get a model on Models. Four ticks means done.', () => navigate('home')],
+  ['Type t3, tap T3 Code', 'In the multiline field, type t3 with the keys. Tap the T3 Code suggestion: it is inserted with a space.', () => { navigate('tryit'); S.lastMode = 'keys'; focusField('ml'); }],
+  ['Add Gradle wrapper', 'Tap + Add term, type Gradle wrapper, Save. Then tap the multiline field in Try it: it shows in the strip on an empty word.', () => { navigate('dict'); S.tab = 'terms'; renderAll(); }],
+  ['Dictate and Stop', 'Needs a model and mic (flow 1 or Quick setup). Tap the mic: the keyboard becomes one row (model pill, level meter and time, Stop) while live text grows in the field. Tap Stop; it commits once and the row shows the word count.', () => { navigate('tryit'); S.lastMode = 'keys'; focusField('ml'); }],
+  ['Switch to keys mid-listening', 'While listening, tap the keyboard icon. Live text disappears and a note shows the discarded word count. Tapping the model pill cancels the same way and shows the note in the row.', () => { navigate('tryit'); S.lastMode = 'keys'; focusField('ml'); }],
+  ['Hide and reopen in voice', 'In voice mode tap the chevron in the system bar, then tap the field. It reopens in voice mode with a new capture.', () => { navigate('tryit'); focusField('ml'); }],
+  ['Models: download, picker, delete', 'Start a download, cancel it, download again: when it completes it becomes active by itself. Then in voice mode tap the model pill, switch models or download one from the list (it is selected when done), and try deleting the active model (blocked).', () => navigate('models')],
+  ['Phrase rules on, dictate phrase 3', 'Open Speech phrase rules and turn on the master switch. In Try it dictate until phrase 3: the text contains T3 Code. (Phrases cycle 1 to 4.)', () => { navigate('dict'); S.tab = 'rules'; renderAll(); }],
+  ['Diagnostics', 'See each session with its transitions, word count and simulated latency. Compare with flows 4 to 8.', () => navigate('diag')],
+];
+function renderTour() {
+  $('tourList').innerHTML = TOUR.map((t, i) => `<li><button class="tstep" data-tour="${i}" aria-expanded="${R.tour === i + 1}"><span class="tnum">${i + 1}</span><span><span class="ttitle">${esc(t[0])}</span>${R.tour === i + 1 ? `<span class="tdesc">${esc(t[1])}</span>` : ''}</span></button></li>`).join('');
+}
+
+/* ---------------- events ---------------- */
+let rep = null, repT = null, repFired = false, lpT = null;
+function stopRepeat() { clearTimeout(repT); clearInterval(rep); repT = rep = null; }
+function longPress(el, ms, fn) { clearTimeout(lpT); lpT = setTimeout(fn, ms); }
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('#addMenu') && !$('addMenu').hidden && !R.suppress) closeAddMenu();
+  R.suppress = false;
+});
+$('page').addEventListener('click', e => {
+  const f = e.target.closest('.field[data-fid]');
+  if (f) { focusField(f.dataset.fid); return; }
+  const b = e.target.closest('[data-act]'); if (b) act(b.dataset.act, b);
+});
+$('appbar').addEventListener('click', e => { const b = e.target.closest('[data-act]'); if (b) act(b.dataset.act, b); });
+$('bnav').addEventListener('click', e => { const b = e.target.closest('[data-act]'); if (b) act(b.dataset.act, b); });
+$('dlgScrim').addEventListener('click', e => {
+  const f = e.target.closest('.field[data-fid]');
+  if (f) { focusField(f.dataset.fid); return; }
+  const b = e.target.closest('[data-act]'); if (b) act(b.dataset.act, b);
+});
+$('sysScrim').addEventListener('click', e => { const b = e.target.closest('[data-act]'); if (b && b.getAttribute('aria-disabled') !== 'true') act(b.dataset.act, b); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && R.picker && !R.sys) { e.preventDefault(); closeModelPicker(true); return; }
+  if (e.key === 'Escape' && R.sys) { e.preventDefault(); closeSys(); }
+  if (e.key === 'Tab' && R.sys) {
+    const f = [...$('sysScrim').querySelectorAll('button:not([disabled])')]; if (!f.length) return;
+    const a = document.activeElement;
+    if (e.shiftKey && a === f[0]) { e.preventDefault(); f[f.length - 1].focus(); } else if (!e.shiftKey && a === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+  }
+});
+document.addEventListener('keydown', e => {
+  const f = e.target.closest && e.target.closest('.field[data-fid]'); if (!f) return;
+  const id = f.dataset.fid;
+  if (e.key === 'Enter' && (!R.imeVisible || R.focus !== id)) { e.preventDefault(); focusField(id); return; }
+  if (R.focus !== id || R.mode !== 'keys' || !R.imeVisible || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === 'Backspace') { e.preventDefault(); backspace(); renderTyping(); }
+  else if (e.key === 'Enter') { e.preventDefault(); doEnter(); renderTyping(); }
+  else if (e.key.length === 1) { e.preventDefault(); typeWithCorr(e.key, true); renderTyping(); }
+});
+$('page').addEventListener('pointerdown', e => {
+  const f = e.target.closest('.field[data-fid]'); if (!f) return;
+  const id = f.dataset.fid;
+  longPress(f, 600, () => { if (R.focus === id && R.imeVisible && R.mode === 'keys') { const w = trailingWord(T[id]); if (w) openAddMenu(w, true); } });
+});
+['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => $('page').addEventListener(ev, () => clearTimeout(lpT)));
+
+$('toggle').addEventListener('click', () => toggleMode());
+$('navHide').addEventListener('click', () => hideIme());
+$('navBack').addEventListener('click', () => {
+  if (R.picker) closeModelPicker(true); else if (R.imeVisible) hideIme(); else if (R.dlg) { R.dlg = null; renderAll(); } else if (SUB.includes(S.page)) navigate(R.back || 'home'); else if (S.page !== 'home') navigate('home');
+});
+
+$('lead').addEventListener('pointerdown', e => {
+  const c = e.target.closest('[data-act="suggest"]'); if (!c) return;
+  longPress(c, 550, () => openAddMenu(c.dataset.w, true));
+});
+['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => $('lead').addEventListener(ev, () => clearTimeout(lpT)));
+$('lead').addEventListener('click', e => {
+  if (R.suppress) return;
+  const b = e.target.closest('button'); if (!b) return;
+  const a = b.dataset.act;
+  if (a === 'dict') { navigate('dict'); return; }
+  if (a === 'pill') { if (R.picker) closeModelPicker(true); else openModelPicker(); return; }
+  if (a === 'stop') { stop(); return; }
+  if (a === 'talk') { if (voiceBlock() === 'nomodel') openModelPicker(); else startCapture(); return; }
+  if (a === 'v-perm') { navigate('home'); return; }
+  if (a === 'suggest') { buzz(); applySuggestion(slots()[Number(b.dataset.i)]); }
+  else if (a === 'undo' && R.corr) {
+    const c = R.corr, id = R.focus;
+    T[id] = T[id].slice(0, c.at) + c.from + T[id].slice(c.at + c.to.length);
+    R.noCorrect.push(c.from.toLowerCase()); R.corr = null; afterText(id);
+    toast(`Restored “${c.from}”. It won't be corrected again this session.`);
+  }
+  renderAll();
+});
+$('addMenu').addEventListener('click', e => {
+  const b = e.target.closest('[data-act="addword"]'); if (!b || b.disabled) return;
+  const r = addTerm(b.dataset.w); closeAddMenu(); toast(r.msg); renderAll();
+});
+
+$('keysPane').addEventListener('pointerdown', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const a = b.dataset.act; repFired = false;
+  if (a === 'bksp') { repT = setTimeout(() => { repFired = true; rep = setInterval(() => { backspace(); buzz(); renderLead(); renderKeys(); }, 55); backspace(); renderLead(); }, 420); }
+  if (a === 'globe') { clearTimeout(lpT); lpT = setTimeout(() => { R.suppress = true; R.sys = 'picker'; $('sysScrim').dataset.open = ''; renderSys(); }, 550); }
+});
+['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => $('keysPane').addEventListener(ev, () => { stopRepeat(); clearTimeout(lpT); }));
+let lastShiftTap = 0;
+$('keysPane').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (R.suppress) return;
+  if (repFired) { repFired = false; return; }
+  const a = b.dataset.act;
+  buzz();
+  if (a === 'char') typeWithCorr(b.dataset.ch, false);
+  else if (a === 'bksp') backspace();
+  else if (a === 'enter') doEnter();
+  else if (a === 'shift') {
+    const now = Date.now();
+    if (R.shift === 'lock') R.shift = 'off';
+    else if (now - lastShiftTap < 380) R.shift = 'lock';
+    else R.shift = R.shift === 'once' ? 'off' : 'once';
+    lastShiftTap = now;
+  }
+  else if (a === 'symbols' || a === 'layer1') R.layer = 1;
+  else if (a === 'layer2') R.layer = 2;
+  else if (a === 'letters') { R.layer = 0; autoShift(); }
+  else if (a === 'globe') cycleLayout();
+  renderTyping();
+});
+function cycleLayout() {
+  const en = enabledLayouts();
+  if (en.length < 2) { toast('Only one typing layout is enabled. Add more in Settings.'); return; }
+  S.layout = en[(en.indexOf(S.layout) + 1) % en.length]; R.corr = null; persist();
+  announce('Typing layout ' + LANGS[S.layout]);
+}
+$('picker').addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const a = b.dataset.act, id = b.dataset.id;
+  if (a === 'pick') pickModel(id);
+  else if (a === 'pk-dl') startDownload(id);
+  else if (a === 'pk-cancel') cancelDownload(id);
+  else if (a === 'pk-manage') navigate('models');
+  else if (a === 'pk-voice') navigate('settings', 'grp-voice');
+});
+$('picker').addEventListener('scroll', e => { if (e.target.classList && e.target.classList.contains('plist')) markMore(e.target); }, true);
+$('picker').addEventListener('keydown', e => {
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+  const items = [...$('picker').querySelectorAll('button')], i = items.indexOf(document.activeElement);
+  if (!items.length) return;
+  e.preventDefault();
+  items[e.key === 'ArrowDown' ? Math.min(items.length - 1, i + 1) : Math.max(0, i < 0 ? 0 : i - 1)].focus();
+});
+// tapping outside the picker (and not on the pill) closes it without changes
+document.addEventListener('click', e => {
+  if (!R.picker) return;
+  if (e.target.closest('#picker') || e.target.closest('.mpill') || e.target.closest('#sysScrim') || e.target.closest('.navbar')) return;
+  closeModelPicker(false);
+}, true);
+
+function act(a, el) {
+  const d = el.dataset;
+  switch (a) {
+    case 'nav': navigate(d.p); break;
+    case 'back': navigate(SUB.includes(S.page) ? (R.back || 'home') : 'home'); break;
+    case 'goto-models': navigate('models'); break;
+    case 'goto-tryit': navigate('tryit'); break;
+    case 'goto-diag': navigate('diag'); break;
+    case 'goto-about': navigate('about'); break;
+    case 'sys-enable': R.sys = 'enable'; $('sysScrim').dataset.open = ''; renderSys(); break;
+    case 'sys-picker': R.sys = 'picker'; $('sysScrim').dataset.open = ''; renderSys(); break;
+    case 'sys-perm': R.sys = 'perm'; $('sysScrim').dataset.open = ''; renderSys(); break;
+    case 'sys-toggle-enable': S.setup.enabled = !S.setup.enabled; if (!S.setup.enabled) S.setup.selected = false; persist(); renderAll(); $('sysScrim').querySelector('[data-act="sys-toggle-enable"]').focus(); break;
+    case 'sys-pick': if (d.v === 'slim' && !S.setup.enabled) break; S.setup.selected = d.v === 'slim'; persist(); closeSys(); renderAll(); break;
+    case 'sys-close': closeSys(); renderAll(); break;
+    case 'perm-allow': S.setup.mic = true; persist(); closeSys(); afterMic(); break;
+    case 'perm-deny': S.setup.mic = false; persist(); closeSys(); afterMic(); break;
+    case 'mic-revoke': S.setup.mic = false; persist(); toast('Microphone permission revoked (MOCK system settings).'); afterMic(); break;
+    case 'sample': { const id = 'ml', c = T[id]; T[id] = c + (c && !/\s$/.test(c) ? ' ' : '') + d.t; persist(); renderFields(); break; }
+    case 'clear-try': S.texts.ml = ''; S.texts.search = ''; S.texts.send = ''; S.sent = []; R.results = {}; R.prov = ''; if (R.focus) { cancelCapture('cleared'); autoShift(); } persist(); renderAll(); break;
+    case 'clear-log': S.log = []; curLog = null; persist(); renderPage(); toast('Session log cleared.'); break;
+    case 'download': startDownload(d.id); break;
+    case 'cancel-dl': cancelDownload(d.id); break;
+    case 'use': useModel(d.id); break;
+    case 'menu': R.menu = R.menu === d.id ? null : d.id; renderPage(); break;
+    case 'delete': deleteModel(d.id); break;
+    case 'tab': S.tab = d.v; T.dictSearch = ''; persist(); renderPage(); renderFields(); break;
+    case 'add-term': openDlg('term', null); break;
+    case 'add-rule': openDlg('rule', null); break;
+    case 'edit-term': openDlg('term', Number(d.i)); break;
+    case 'edit-rule': openDlg('rule', Number(d.i)); break;
+    case 'del-term': { const t = S.terms.splice(Number(d.i), 1)[0]; persist(); toast(`Deleted “${t}”.`); renderDictList(); break; }
+    case 'del-rule': { const r = S.rules.splice(Number(d.i), 1)[0]; persist(); toast(`Deleted rule “${r.spoken}”.`); renderDictList(); break; }
+    case 'rule-on': { const r = S.rules[Number(d.i)]; r.on = !r.on; persist(); renderDictList(); break; }
+    case 'dlg-cancel': closeDlg(); break;
+    case 'dlg-save': saveDlg(); break;
+    case 'toggle': S.set[d.k] = !S.set[d.k]; if (d.k === 'strip') R.corr = null; persist(); renderAll(); break;
+    case 'setv': { const v = d.k === 'autoStop' ? Number(d.v) : d.v; S.set[d.k] = v; persist(); renderAll(); break; }
+    case 'layout': {
+      const k = d.k, on = enabledLayouts();
+      if (S.set.layouts[k] && on.length === 1) { toast('Keep at least one typing layout enabled.'); break; }
+      S.set.layouts[k] = !S.set.layouts[k];
+      if (!S.set.layouts[S.layout]) S.layout = enabledLayouts()[0];
+      persist(); renderAll(); break;
+    }
+  }
+}
+function afterMic() {
+  if (R.imeVisible && R.mode === 'voice' && R.phase === 'blocked') enterVoiceState();
+  renderAll();
+}
+function openDlg(type, idx) {
+  closeAddMenu();
+  R.dlg = { type, idx, err: '' };
+  if (type === 'term') T.dlgTerm = idx != null ? S.terms[idx] : '';
+  else { T.dlgSpoken = idx != null ? S.rules[idx].spoken : ''; T.dlgWritten = idx != null ? S.rules[idx].written : ''; }
+  renderDlg(); renderFields();
+  const c = $('dlgScrim').querySelector('.field'); if (c) c.focus();
+}
+function closeDlg() {
+  if (R.imeVisible || R.focus) { cancelCapture('keyboard hidden'); bump(); R.imeVisible = false; R.picker = false; R.focus = null; R.phase = 'idle'; R.prov = ''; }
+  R.dlg = null; renderAll();
+}
+function saveDlg() {
+  const d = R.dlg; if (!d) return;
+  if (d.type === 'term') {
+    const term = T.dlgTerm.trim().replace(/\s+/g, ' ');
+    if (!term) { d.err = 'Type the exact spelling first.'; }
+    else {
+      const dup = S.terms.findIndex((t, i) => t.toLowerCase() === term.toLowerCase() && i !== d.idx);
+      if (dup >= 0) d.err = `“${S.terms[dup]}” is already in the dictionary.`;
+      else { if (d.idx != null) S.terms[d.idx] = term; else S.terms.push(term); persist(); toast(`${d.idx != null ? 'Saved' : 'Added'} “${term}”.`); closeDlg(); return; }
+    }
+  } else {
+    const sp = T.dlgSpoken.trim().replace(/\s+/g, ' '), wr = T.dlgWritten.trim();
+    if (!sp || !wr) d.err = 'Both the spoken and written form are required.';
+    else if (S.rules.some((r, i) => r.spoken.toLowerCase() === sp.toLowerCase() && i !== d.idx)) d.err = 'A rule for this spoken phrase already exists.';
+    else { if (d.idx != null) Object.assign(S.rules[d.idx], { spoken: sp, written: wr }); else S.rules.push({ id: 'r' + Date.now().toString(36), spoken: sp, written: wr, on: true }); persist(); toast(`Saved rule “${sp} → ${wr}”.`); closeDlg(); return; }
+  }
+  renderDlg(); renderFields();
+}
+
+$('tourList').addEventListener('click', e => {
+  const b = e.target.closest('[data-tour]'); if (!b) return;
+  const i = Number(b.dataset.tour);
+  R.tour = i + 1; TOUR[i][2](); renderAll(); renderTour();
+  if (document.activeElement === document.body) { const nb = $('tourList').querySelector(`[data-tour="${i}"]`); if (nb) nb.focus(); }
+});
+$('quickSetup').addEventListener('click', quickSetup);
+$('resetDemo').addEventListener('click', () => reset());
+if (window.matchMedia) matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (S.set.theme === 'system') applyTheme(); });
+
+/* ---------------- API ---------------- */
+function state() {
+  const sg = suggestions().map(s => s.text), sl = slots().map(s => s ? s.text : '');
+  const ime = $('ime');
+  return JSON.parse(JSON.stringify({
+    page: S.page, tab: S.tab, imeVisible: R.imeVisible, focus: R.focus, mode: R.mode, lastMode: S.lastMode, phase: R.phase, block: R.block,
+    imeHeight: R.imeVisible ? Math.round(ime.getBoundingClientRect().height) : 0, picker: R.picker, note: R.note ? R.note.text : null,
+    text: Object.fromEntries(['ml', 'search', 'send'].map(k => [k, S.texts[k]])), provisional: R.prov, heard: R.heard,
+    suggestions: sg, slots: sl, correction: R.corr, shift: R.shift, layer: R.layer, layout: S.layout,
+    last: R.last, lastCancel: R.lastCancel, toast: R.toast, sys: R.sys, dialog: R.dlg ? { type: R.dlg.type, err: R.dlg.err } : null,
+    setup: S.setup, steps: setupSteps().map(s => s.done), active: S.active,
+    models: Object.fromEntries(CATALOG.map(c => [c.id, { status: S.models[c.id].st, progress: Math.round(S.models[c.id].p) }])),
+    terms: S.terms, rules: S.rules, settings: S.set, sent: S.sent, haptics: R.haptics,
+    log: S.log.map(l => ({ id: l.id, outcome: l.outcome, trans: l.trans, words: l.words, discarded: l.discarded, firstMs: l.firstMs, finMs: l.finMs, model: l.model, phrase: l.phrase })),
+  }));
+}
+function reset() {
+  bump(); clearNote(); Object.keys(dl).forEach(k => { clearInterval(dl[k]); delete dl[k]; });
+  clearTimeout(toastTimer); $('toast').hidden = true; stopRepeat();
+  try { localStorage.removeItem(LS_KEY); } catch (_) {}
+  S = defaults(); R = newR(); curLog = null; keysSig = ''; renderedPage = null; $('sysScrim').dataset.open = '';
+  renderAll(); renderTour();
+  return state();
+}
+function pressKey(label) {
+  const pane = $('keysPane');
+  const b = [...pane.querySelectorAll('button')].find(x => x.dataset.ch === label || x.getAttribute('aria-label') === label || (label === 'Enter' && x.dataset.act === 'enter'));
+  if (b) b.click();
+  return state();
+}
+window.prototypeApi = {
+  state, reset, navigate: (p, a) => navigate(p, a), focusField, hide: hideIme, show: () => { if (R.focus) return focusField(R.focus); return focusField('ml'); },
+  type: s => { inputText(s); return state(); }, pressKey, toggleMode, stop: () => stop(), quickSetup,
+  tapSuggestion: t => { const i = slots().findIndex(s => s && s.text === t); if (i < 0) return false; const b = document.querySelector(`#lead [data-act="suggest"][data-i="${i}"]`); b.click(); return true; },
+  longPressSuggestion: t => { openAddMenu(t); return state(); },
+  addTerm: t => { const r = addTerm(t); renderAll(); return r; },
+  setSetting: (k, v) => { S.set[k] = v; persist(); renderAll(); return state(); },
+  setSetup: (k, v) => { S.setup[k] = !!v; persist(); afterMic(); return state(); },
+  setRule: (spoken, on) => { const r = S.rules.find(x => x.spoken === spoken); if (r) r.on = on; persist(); renderAll(); return state(); },
+  startDownload, cancelDownload, useModel, deleteModel,
+  openModelPicker, closeModelPicker: () => closeModelPicker(true), pickModel, downloadFromPicker,
+  cancelPickerDownload: id => { cancelDownload(id); return state(); },
+  tour: n => { R.tour = n; TOUR[n - 1][2](); renderAll(); renderTour(); return state(); },
+};
+
+/* ---------------- boot ---------------- */
+window.addEventListener('beforeunload', saveNow);
+renderAll(); renderTour();
+})();
+</script>
+</body>
+</html>

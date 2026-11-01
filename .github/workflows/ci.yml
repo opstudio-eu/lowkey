@@ -1,0 +1,254 @@
+# Checks for leaks, then tests and builds every pull request and push to main. A push to main whose
+# versionName has no release yet publishes one (tag v<versionName>) with the APK attached.
+name: CI
+
+on:
+  pull_request:
+    # "edited" rechecks the title and body; edits skip the build.
+    types: [opened, synchronize, reopened, edited]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# A new push to a pull request cancels its older run. Runs on main never share a group: GitHub
+# keeps only one pending run per group, so a queued version bump could be dropped unbuilt.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && format('{0}-{1}', github.ref, github.event.action == 'edited' && 'text' || 'code') || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  # The repository is public. Fails on private hostnames and addresses, home-directory paths,
+  # personal email addresses, keys, tokens and media files in the files, the new commits, and the
+  # pull request text. It prints locations only, never the matched text (see scripts/check-leaks.py).
+  leaks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The owner's exact private strings, from the LEAK_DENYLIST secret. GitHub masks secret values in
+    # logs, and the check never prints matches. Pull requests from forks get no secrets and run the
+    # general patterns only; pushes to main require the list.
+    env:
+      LEAK_DENYLIST_TEXT: ${{ secrets.LEAK_DENYLIST }}
+      REQUIRE: ${{ github.event_name == 'push' && '--require-denylist' || '' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Leak check tests
+        run: python3 -I scripts/test_check_leaks.py
+
+      - name: Files
+        run: python3 -I scripts/check-leaks.py $REQUIRE files
+
+      # New commits of a pull request or push; manual runs and first pushes check the whole history.
+      - name: Commits
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if [ -z "$BASE" ] || [ "$BASE" = 0000000000000000000000000000000000000000 ]; then
+            python3 -I scripts/check-leaks.py $REQUIRE commits "$HEAD"
+          else
+            python3 -I scripts/check-leaks.py $REQUIRE commits "$HEAD" "^$BASE"
+          fi
+
+      # Reads the title, body and branch from the event file, so they never appear in the log.
+      - name: Pull request text
+        if: github.event_name == 'pull_request'
+        run: python3 -I scripts/check-leaks.py github-pr
+
+  build:
+    needs: leaks
+    if: github.event.action != 'edited'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      version-name: ${{ steps.version.outputs.name }}
+      version-code: ${{ steps.version.outputs.code }}
+      apk-name: ${{ steps.version.outputs.apk }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      # Also validates the Gradle wrapper JAR against Gradle's published checksums.
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: Read app version
+        id: version
+        run: |
+          name=$(sed -nE 's/^ *versionName = "([^"]+)".*/\1/p' app/build.gradle.kts)
+          code=$(sed -nE 's/^ *versionCode = ([0-9]+).*/\1/p' app/build.gradle.kts)
+          if [ -z "$name" ] || [ -z "$code" ]; then echo "::error::versionName/versionCode not found"; exit 1; fi
+          printf 'name=%s\ncode=%s\napk=lowkey-%s.apk\n' "$name" "$code" "$name" >> "$GITHUB_OUTPUT"
+          echo "Version $name ($code)"
+
+      # Separate from the APK build so timing-sensitive tests don't compete with compilation.
+      - name: Unit tests
+        run: ./gradlew --stacktrace testDebugUnitTest
+
+      - name: Release APK
+        run: ./gradlew --stacktrace assembleRelease
+
+      # The app promises no network requests besides model downloads. ONNX Runtime's telemetry only
+      # runs on Android with its Java transport (ai.onnxruntime.*, from Microsoft's Maven package),
+      # so that must never be packaged.
+      - name: No ONNX Runtime telemetry transport
+        run: |
+          apk=app/build/outputs/apk/release/app-release-unsigned.apk
+          unzip -p "$apk" 'classes*.dex' > "$RUNNER_TEMP/classes.dex"
+          if grep -a -q 'Lai/onnxruntime/' "$RUNNER_TEMP/classes.dex"; then
+            echo "::error::The APK contains ONNX Runtime's Java classes (telemetry transport)."
+            exit 1
+          fi
+
+      # The committed dependency manifest and NOTICE files must match what this build resolves.
+      - name: Dependency notices up to date
+        run: |
+          ./gradlew --stacktrace generateDependencyNotices
+          if [ -n "$(git status --porcelain -- app/src/main/assets/licenses/dependencies)" ]; then
+            echo "::error::Run ./gradlew generateDependencyNotices and commit app/src/main/assets/licenses/dependencies."
+            exit 1
+          fi
+
+      # Signs with the release key plus the rotation lineage from the old debug key, so the APK
+      # updates existing installs (see scripts/sign-release-apk.sh). Without the secrets, for
+      # example in a fork's pull request, the APK stays unsigned; main refuses to continue.
+      - name: Sign APK
+        id: sign
+        env:
+          KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          APK: ${{ steps.version.outputs.apk }}
+        run: |
+          unsigned=app/build/outputs/apk/release/app-release-unsigned.apk
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$RELEASE_KEYSTORE_PASSWORD" ]; then
+            if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF" = refs/heads/main ]; then
+              echo "::error::RELEASE_KEYSTORE_BASE64 and RELEASE_KEYSTORE_PASSWORD must be set to build main."
+              exit 1
+            fi
+            echo "::warning::Release signing secrets are not available; uploading an unsigned APK."
+            mv "$unsigned" "${APK%.apk}-unsigned.apk"
+            echo "file=${APK%.apk}-unsigned.apk" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          export RELEASE_KEYSTORE="$RUNNER_TEMP/release.p12"
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RELEASE_KEYSTORE"
+          scripts/sign-release-apk.sh "$unsigned" "$APK"
+          rm -f "$RELEASE_KEYSTORE"
+          echo "file=$APK" >> "$GITHUB_OUTPUT"
+
+      # Every entry of the APK, before it is uploaded anywhere.
+      - name: APK leak check
+        env:
+          LEAK_DENYLIST_TEXT: ${{ secrets.LEAK_DENYLIST }}
+          REQUIRE: ${{ github.event_name == 'push' && '--require-denylist' || '' }}
+          FILE: ${{ steps.sign.outputs.file }}
+        run: python3 -I scripts/check-leaks.py $REQUIRE apk "$FILE"
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-reports
+          path: app/build/reports/tests/
+          retention-days: 7
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: apk
+          path: ${{ steps.sign.outputs.file }}
+          retention-days: 14
+          compression-level: 0
+
+  release:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    # Per version: runs for one version publish once, and different versions never displace each other.
+    concurrency:
+      group: release-${{ needs.build.outputs.version-name }}
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      LEAK_DENYLIST_TEXT: ${{ secrets.LEAK_DENYLIST }}
+      TAG: v${{ needs.build.outputs.version-name }}
+      VERSION_CODE: ${{ needs.build.outputs.version-code }}
+      APK: ${{ needs.build.outputs.apk-name }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            scripts/check-leaks.py
+          sparse-checkout-cone-mode: false
+
+      - name: Check for an existing release
+        id: existing
+        run: |
+          # Only published releases have a tag, so this ignores drafts.
+          if gh api "repos/$GH_REPO/releases/tags/$TAG" > /dev/null 2>&1; then
+            echo "::notice::$TAG is already released; bump versionName and versionCode to publish a new one."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if gh api "repos/$GH_REPO/git/ref/tags/$TAG" > /dev/null 2>&1; then
+            echo "::error::Tag $TAG exists without a release. Delete the tag, or bump versionName, then re-run this job."
+            exit 1
+          fi
+          # gh release create uploads to a draft and then publishes it. Remove drafts left by an
+          # interrupted run so this run starts over.
+          gh api --paginate "repos/$GH_REPO/releases?per_page=100" \
+            --jq '.[] | select(.draft and .tag_name == env.TAG) | .id' |
+            while read -r id; do
+              echo "Deleting unpublished draft $id for $TAG"
+              gh api -X DELETE "repos/$GH_REPO/releases/$id"
+            done
+
+      - uses: actions/download-artifact@v8
+        if: steps.existing.outputs.skip != 'true'
+        with:
+          name: apk
+
+      - name: Publish release
+        if: steps.existing.outputs.skip != 'true'
+        run: |
+          sha256sum "$APK" > "$APK.sha256"
+          {
+            echo "Version code $VERSION_CODE. Signed with the release key; installs over earlier builds and keeps their data."
+            echo
+            echo "SHA-256: \`$(cut -d' ' -f1 "$APK.sha256")\`"
+          } > notes.md
+          gh release create "$TAG" "$APK" "$APK.sha256" \
+            --draft \
+            --target "$GITHUB_SHA" \
+            --title "Lowkey ${TAG#v}" \
+            --notes-file notes.md \
+            --generate-notes
+          ids=$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" \
+            --jq '.[] | select(.draft and .tag_name == env.TAG) | .id')
+          if [ "$(printf '%s\n' "$ids" | grep -c .)" != 1 ]; then
+            echo "::error::Expected one draft for $TAG, found: ${ids:-none}"
+            exit 1
+          fi
+          # Generated notes quote pull request titles, which can change after their checks ran.
+          if ! gh api "repos/$GH_REPO/releases/$ids" --jq '.name + "\n" + .body' |
+              python3 -I scripts/check-leaks.py --require-denylist text "release notes"; then
+            gh api -X DELETE "repos/$GH_REPO/releases/$ids"
+            echo "::error::The release notes failed the leak check; the draft was deleted."
+            exit 1
+          fi
+          # Publishing creates the tag. "legacy" marks the highest version as Latest, even when an
+          # older version finishes publishing after a newer one (gh would send make_latest=true).
+          gh api -X PATCH "repos/$GH_REPO/releases/$ids" -F draft=false -f make_latest=legacy --jq .html_url

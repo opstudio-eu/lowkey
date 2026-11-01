@@ -1,0 +1,120 @@
+package com.rheerkens.androidkeyboard.settings
+
+import android.content.Context
+import android.content.SharedPreferences
+import androidx.core.content.edit
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+
+/**
+ * Persistent settings shared by the companion app and the input method (same process).
+ * Reads once at start-up and writes through on every [update].
+ */
+class SettingsStore(context: Context) {
+    private val prefs: SharedPreferences =
+        context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+
+    private val _settings = MutableStateFlow(load())
+    val settings: StateFlow<Settings> = _settings.asStateFlow()
+
+    val current: Settings get() = _settings.value
+
+    fun update(transform: (Settings) -> Settings) {
+        _settings.update(transform)
+        save(_settings.value)
+    }
+
+    private fun load(): Settings {
+        val d = Settings()
+        return Settings(
+            keyboardHeight = enumOr(prefs.getString(K_HEIGHT, null), d.keyboardHeight),
+            vibrateOnKeyPress = prefs.getBoolean(K_VIBRATE, d.vibrateOnKeyPress),
+            autoCapitalize = prefs.getBoolean(K_AUTOCAP, d.autoCapitalize),
+            autocorrect = prefs.getBoolean(K_AUTOCORRECT, d.autocorrect),
+            suggestionStrip = prefs.getBoolean(K_STRIP, d.suggestionStrip),
+            enabledLayouts = prefs.getStringSet(K_LAYOUTS, null)
+                ?.mapNotNull { name -> TypingLayout.entries.firstOrNull { it.name == name } }
+                ?.toSet()?.ifEmpty { null } ?: d.enabledLayouts,
+            currentLayout = enumOr(prefs.getString(K_LAYOUT, null), d.currentLayout),
+            showWithPhysicalKeyboard = prefs.getBoolean(K_SHOW_WITH_PHYSICAL, d.showWithPhysicalKeyboard),
+            recentScreenshots = prefs.getBoolean(K_SCREENSHOTS, d.recentScreenshots),
+            autoStartVoice = prefs.getBoolean(K_AUTOSTART, d.autoStartVoice),
+            keyboardFirstDictation = prefs.getBoolean(K_KEYBOARD_FIRST, d.keyboardFirstDictation),
+            rememberLastMode = prefs.getBoolean(K_REMEMBER, d.rememberLastMode),
+            liveTextInEditor = prefs.getBoolean(K_LIVE, d.liveTextInEditor),
+            autoStop = enumOr(prefs.getString(K_AUTOSTOP, null), d.autoStop),
+            continuousDictation = prefs.getBoolean(K_CONTINUOUS, d.continuousDictation),
+            applyPhraseRules = prefs.getBoolean(K_RULES, d.applyPhraseRules),
+            theme = enumOr(prefs.getString(K_THEME, null), d.theme),
+            loupeCorners = enumOr(prefs.getString(K_LOUPE_CORNERS, null), d.loupeCorners),
+            matchTermCase = prefs.getBoolean(K_TERM_CASE, d.matchTermCase),
+            speechLanguage = prefs.getString(K_SPEECH_LANGUAGE, null) ?: d.speechLanguage,
+            modelRetention = enumOr(prefs.getString(K_MODEL_RETENTION, null), d.modelRetention),
+            audioInput = enumOr(prefs.getString(K_AUDIO_INPUT, null), d.audioInput),
+            lastMode = enumOr(prefs.getString(K_LAST_MODE, null), d.lastMode),
+            minimizedWithPhysicalKeyboard = prefs.getBoolean(K_MINIMIZED_PHYSICAL, d.minimizedWithPhysicalKeyboard),
+            minimizedWithoutPhysicalKeyboard = prefs.getBoolean(K_MINIMIZED_TOUCH, d.minimizedWithoutPhysicalKeyboard),
+        )
+    }
+
+    private fun save(s: Settings) = prefs.edit {
+        putString(K_HEIGHT, s.keyboardHeight.name)
+        putBoolean(K_VIBRATE, s.vibrateOnKeyPress)
+        putBoolean(K_AUTOCAP, s.autoCapitalize)
+        putBoolean(K_AUTOCORRECT, s.autocorrect)
+        putBoolean(K_STRIP, s.suggestionStrip)
+        putStringSet(K_LAYOUTS, s.enabledLayouts.map { it.name }.toSet())
+        putString(K_LAYOUT, s.currentLayout.name)
+        putBoolean(K_SHOW_WITH_PHYSICAL, s.showWithPhysicalKeyboard)
+        putBoolean(K_SCREENSHOTS, s.recentScreenshots)
+        putBoolean(K_AUTOSTART, s.autoStartVoice)
+        putBoolean(K_KEYBOARD_FIRST, s.keyboardFirstDictation)
+        putBoolean(K_REMEMBER, s.rememberLastMode)
+        putBoolean(K_LIVE, s.liveTextInEditor)
+        putString(K_AUTOSTOP, s.autoStop.name)
+        putBoolean(K_CONTINUOUS, s.continuousDictation)
+        putBoolean(K_RULES, s.applyPhraseRules)
+        putString(K_THEME, s.theme.name)
+        putString(K_LOUPE_CORNERS, s.loupeCorners.name)
+        putBoolean(K_TERM_CASE, s.matchTermCase)
+        putString(K_SPEECH_LANGUAGE, s.speechLanguage)
+        putString(K_MODEL_RETENTION, s.modelRetention.name)
+        putString(K_AUDIO_INPUT, s.audioInput.name)
+        putString(K_LAST_MODE, s.lastMode.name)
+        putBoolean(K_MINIMIZED_PHYSICAL, s.minimizedWithPhysicalKeyboard)
+        putBoolean(K_MINIMIZED_TOUCH, s.minimizedWithoutPhysicalKeyboard)
+    }
+
+    private inline fun <reified E : Enum<E>> enumOr(name: String?, default: E): E =
+        enumValues<E>().firstOrNull { it.name == name } ?: default
+
+    private companion object {
+        const val K_HEIGHT = "keyboard_height"
+        const val K_LOUPE_CORNERS = "loupe_corner_choice"
+        const val K_VIBRATE = "vibrate"
+        const val K_AUTOCAP = "auto_capitalize"
+        const val K_AUTOCORRECT = "autocorrect"
+        const val K_STRIP = "suggestion_strip"
+        const val K_LAYOUTS = "enabled_layouts"
+        const val K_LAYOUT = "current_layout"
+        const val K_AUTOSTART = "auto_start_voice"
+        const val K_KEYBOARD_FIRST = "keyboard_first_dictation"
+        const val K_REMEMBER = "remember_last_mode"
+        const val K_LIVE = "live_text"
+        const val K_AUTOSTOP = "auto_stop"
+        const val K_CONTINUOUS = "continuous"
+        const val K_RULES = "apply_phrase_rules"
+        const val K_THEME = "theme"
+        const val K_TERM_CASE = "match_term_case"
+        const val K_SPEECH_LANGUAGE = "speech_language"
+        const val K_MODEL_RETENTION = "model_retention"
+        const val K_AUDIO_INPUT = "audio_input"
+        const val K_LAST_MODE = "last_mode"
+        const val K_SHOW_WITH_PHYSICAL = "show_with_physical_keyboard"
+        const val K_SCREENSHOTS = "recent_screenshots"
+        const val K_MINIMIZED_PHYSICAL = "minimized_with_physical_keyboard"
+        const val K_MINIMIZED_TOUCH = "minimized_without_physical_keyboard"
+    }
+}
