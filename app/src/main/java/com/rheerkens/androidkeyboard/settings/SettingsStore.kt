@@ -49,6 +49,7 @@ class SettingsStore(context: Context) {
             applyPhraseRules = prefs.getBoolean(K_RULES, d.applyPhraseRules),
             theme = enumOr(prefs.getString(K_THEME, null), d.theme),
             loupeCorners = enumOr(prefs.getString(K_LOUPE_CORNERS, null), d.loupeCorners),
+            checkForUpdates = prefs.getBoolean(K_CHECK_UPDATES, d.checkForUpdates),
             matchTermCase = prefs.getBoolean(K_TERM_CASE, d.matchTermCase),
             speechLanguage = prefs.getString(K_SPEECH_LANGUAGE, null) ?: d.speechLanguage,
             modelRetention = enumOr(prefs.getString(K_MODEL_RETENTION, null), d.modelRetention),
@@ -78,6 +79,7 @@ class SettingsStore(context: Context) {
         putBoolean(K_RULES, s.applyPhraseRules)
         putString(K_THEME, s.theme.name)
         putString(K_LOUPE_CORNERS, s.loupeCorners.name)
+        putBoolean(K_CHECK_UPDATES, s.checkForUpdates)
         putBoolean(K_TERM_CASE, s.matchTermCase)
         putString(K_SPEECH_LANGUAGE, s.speechLanguage)
         putString(K_MODEL_RETENTION, s.modelRetention.name)
@@ -93,6 +95,7 @@ class SettingsStore(context: Context) {
     private companion object {
         const val K_HEIGHT = "keyboard_height"
         const val K_LOUPE_CORNERS = "loupe_corner_choice"
+        const val K_CHECK_UPDATES = "check_for_updates"
         const val K_VIBRATE = "vibrate"
         const val K_AUTOCAP = "auto_capitalize"
         const val K_AUTOCORRECT = "autocorrect"

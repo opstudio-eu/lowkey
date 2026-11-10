@@ -24,6 +24,8 @@ import com.rheerkens.androidkeyboard.speech.ClipAudioSource
 import com.rheerkens.androidkeyboard.speech.LoadableModel
 import com.rheerkens.androidkeyboard.speech.LocalSpeechEngine
 import com.rheerkens.androidkeyboard.speech.MicAudioSource
+import com.rheerkens.androidkeyboard.updates.UpdateManager
+import com.rheerkens.androidkeyboard.updates.Updates
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
@@ -51,6 +53,8 @@ object AppGraph {
     lateinit var speechEngine: LocalSpeechEngine
         private set
     lateinit var crashLog: CrashLog
+        private set
+    lateinit var updates: UpdateManager
         private set
 
     /** Bundled WAV clips under `assets/test-clips/`; only debug builds ship any. */
@@ -80,6 +84,7 @@ object AppGraph {
         models = DiskModelStore(app, appScope)
         sessionLog = SessionLog(app)
         crashLog = CrashLog(app)
+        updates = Updates.create(app)
         testClips = app.assets.list(CLIP_DIR).orEmpty().filter { it.endsWith(".wav") }.sorted()
         val mic = MicAudioSource(app)
         val clips = ClipAudioSource(
@@ -111,6 +116,9 @@ object AppGraph {
             // Release the old model even if the IME service is not currently alive.
             combine(models.state, settings.settings) { _, _ -> activeModelKey() }
                 .distinctUntilChanged().drop(1).collect { speechEngine.unload() }
+        }
+        appScope.launch {
+            settings.settings.map { it.checkForUpdates }.distinctUntilChanged().collect { Updates.schedule(app, it) }
         }
         preloadLexicon(settings.current.currentLayout)
         initialized = true

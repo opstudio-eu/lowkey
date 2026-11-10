@@ -212,6 +212,8 @@ fun SettingsScreen(modifier: Modifier, focusVoice: Boolean, navigate: (Destinati
                 subtitle = "Where the magnifier sits while you draw: the top corners, or the left (for a right hand) or right (for a left hand) ones.",
             )
         }
+        item { SectionTitle("Updates") }
+        item { UpdatesSection() }
         // Links
         item { SectionTitle("More") }
         item { LinkRow("Try it", "Playground for typing and dictation") { navigate(Destination.TRY_IT) } }

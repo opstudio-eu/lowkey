@@ -78,6 +78,9 @@ data class Settings(
     val modelRetention: ModelRetention = ModelRetention.TWO_MINUTES,
     // Appearance
     val theme: ThemeMode = ThemeMode.SYSTEM,
+    // Updates
+    /** Check GitHub for a newer release about once a day and when the app opens. */
+    val checkForUpdates: Boolean = true,
     // Image editor
     val loupeCorners: LoupeCorners = LoupeCorners.TOP,
     // Diagnostics

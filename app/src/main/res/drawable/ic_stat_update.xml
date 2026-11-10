@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status-bar icon of the "update available" notification: an arrow down onto a line. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M11,3h2v10.2l3.6,-3.6l1.4,1.4l-6,6l-6,-6l1.4,-1.4l3.6,3.6z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M5,19h14v2h-14z" />
+</vector>

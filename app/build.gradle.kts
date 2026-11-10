@@ -103,8 +103,14 @@ android {
         minSdk = 28
         targetSdk = 37
         testInstrumentationRunner = "com.rheerkens.androidkeyboard.test.KeyboardTouchProbe"
-        versionCode = 41
-        versionName = "0.5.0"
+        versionCode = 42
+        versionName = "0.5.1"
+
+        // The release feed the in-app updater reads. -PupdateFeedUrl=https://… points a test build elsewhere.
+        val updateFeedUrl = providers.gradleProperty("updateFeedUrl")
+            .getOrElse("https://github.com/opstudio-eu/lowkey/releases/latest/download/update.properties")
+        require(updateFeedUrl.startsWith("https://") && '"' !in updateFeedUrl) { "updateFeedUrl must be an HTTPS URL" }
+        buildConfigField("String", "UPDATE_FEED_URL", "\"$updateFeedUrl\"")
 
         ndk {
             // Phones (arm64) and the x86_64 emulator; drops 32-bit ARM to keep the APK smaller.
@@ -114,6 +120,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     compileOptions {
