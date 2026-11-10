@@ -116,8 +116,9 @@ fun AboutScreen(modifier: Modifier) {
 
         SectionTitle("Privacy")
         Body(
-            "Everything stays on the device. The app makes no network requests except model downloads " +
-                "you start. Typed text, audio, dictation, and your dictionary never leave the phone. " +
+            "Everything stays on the device. The app goes online only for model downloads you start and, " +
+                "unless you turn it off in Settings → Updates, a daily check of its GitHub releases for a newer " +
+                "version. Typed text, audio, dictation, and your dictionary never leave the phone. " +
                 "Audio is recorded only while voice mode is listening and is not saved."
         )
 

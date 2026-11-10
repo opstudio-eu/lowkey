@@ -1,0 +1,198 @@
+package com.rheerkens.androidkeyboard.updates
+
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.io.File
+
+/** What the Updates card shows. */
+sealed interface UpdateStatus {
+    /** Not checked yet, or the last check found nothing newer. */
+    data object Idle : UpdateStatus
+    data object Checking : UpdateStatus
+    data object UpToDate : UpdateStatus
+    data class Available(val update: AvailableUpdate) : UpdateStatus
+    data class Downloading(val update: AvailableUpdate, val bytes: Long) : UpdateStatus
+    /** The APK was handed to Android's installer; it may be waiting for the user to confirm. */
+    data class Installing(val update: AvailableUpdate) : UpdateStatus
+    data class Failed(val message: String, val update: AvailableUpdate?) : UpdateStatus
+}
+
+data class UpdateState(val status: UpdateStatus = UpdateStatus.Idle, val lastCheckedAt: Long? = null) {
+    /** The newer release this state knows of, whatever is happening with it. */
+    val update: AvailableUpdate?
+        get() = when (status) {
+            is UpdateStatus.Available -> status.update
+            is UpdateStatus.Downloading -> status.update
+            is UpdateStatus.Installing -> status.update
+            is UpdateStatus.Failed -> status.update
+            else -> null
+        }
+
+    val busy: Boolean get() = status is UpdateStatus.Checking || status is UpdateStatus.Downloading
+}
+
+/** What survives a process restart: the last check time, the newer release, and what was notified. */
+interface UpdatePrefs {
+    var lastCheckedAt: Long?
+    var available: AvailableUpdate?
+    var notifiedVersionCode: Long
+}
+
+/** The Android side of the updater, injected so the logic can be tested on the JVM. */
+interface UpdatePlatform {
+    fun installedVersionCode(): Long
+    fun now(): Long
+
+    /** The feed's text, or null when the latest release has no feed (HTTP 404). Throws on other errors. */
+    suspend fun fetchFeed(): String?
+
+    /** Downloads [update] into [target], checking its size and SHA-256. Throws on any mismatch. */
+    suspend fun download(update: AvailableUpdate, target: File, onBytes: (Long) -> Unit)
+
+    /** Starts Android's package installer for [apk]; the result arrives in [UpdateManager.onInstallResult]. */
+    fun install(apk: File, update: AvailableUpdate)
+
+    /** Shows the "update available" notification, if notifications are allowed. Returns whether it was shown. */
+    fun notifyAvailable(update: AvailableUpdate): Boolean
+}
+
+/**
+ * Checks the release feed and installs updates. Background checks never show errors, only a
+ * notification for a newer release (once per version); checks the user starts show every outcome.
+ */
+class UpdateManager(
+    private val platform: UpdatePlatform,
+    private val prefs: UpdatePrefs,
+    private val downloadDir: File,
+    private val scope: CoroutineScope,
+) {
+    private val _state = MutableStateFlow(initialState())
+    val state: StateFlow<UpdateState> = _state.asStateFlow()
+
+    private val checkLock = Mutex()
+    private var downloadJob: Job? = null
+
+    private fun initialState(): UpdateState {
+        val stored = prefs.available
+        val pending = stored?.takeIf { it.versionCode > platform.installedVersionCode() }
+        if (pending == null) {
+            // Installed (or never known): forget it and the APK it left behind.
+            prefs.available = null
+            downloadDir.listFiles()?.forEach { it.delete() }
+        }
+        val status = if (pending != null) UpdateStatus.Available(pending) else UpdateStatus.Idle
+        return UpdateState(status, prefs.lastCheckedAt)
+    }
+
+    /** Whether an automatic check is due: never checked, or not within [intervalMillis]. */
+    fun checkDue(intervalMillis: Long): Boolean {
+        val last = prefs.lastCheckedAt ?: return true
+        val now = platform.now()
+        return now - last >= intervalMillis || now < last
+    }
+
+    /**
+     * Checks the feed. With [userStarted], progress and failures are shown. With [notify], a newer
+     * release posts a notification once per version (not when the user is looking at the app).
+     */
+    suspend fun check(userStarted: Boolean, notify: Boolean = !userStarted) {
+        checkLock.withLock {
+            val before = _state.value
+            if (before.status is UpdateStatus.Downloading || before.status is UpdateStatus.Installing) return
+            if (userStarted) _state.value = before.copy(status = UpdateStatus.Checking)
+            val result = runCatching { platform.fetchFeed()?.let(AvailableUpdate::parse) }
+            result.exceptionOrNull()?.let { if (it is CancellationException) throw it }
+            val now = platform.now()
+            val feed = result.getOrElse { error ->
+                _state.value = if (userStarted) {
+                    before.copy(status = UpdateStatus.Failed(checkFailure(error), before.update))
+                } else {
+                    before
+                }
+                return
+            }
+            prefs.lastCheckedAt = now
+            val newer = feed?.takeIf { it.versionCode > platform.installedVersionCode() }
+            prefs.available = newer
+            if (newer == null) {
+                _state.value = UpdateState(UpdateStatus.UpToDate, now)
+                return
+            }
+            _state.value = UpdateState(UpdateStatus.Available(newer), now)
+            if (notify && prefs.notifiedVersionCode != newer.versionCode && platform.notifyAvailable(newer)) {
+                prefs.notifiedVersionCode = newer.versionCode
+            }
+        }
+    }
+
+    /** Downloads the known update, verifies it, and hands it to Android's installer. */
+    fun startUpdate() {
+        val update = _state.value.update ?: return
+        if (downloadJob?.isActive == true) return
+        _state.value = _state.value.copy(status = UpdateStatus.Downloading(update, 0))
+        downloadJob = scope.launch {
+            try {
+                downloadDir.mkdirs()
+                val apk = File(downloadDir, update.fileName)
+                if (!apk.isFile || apk.length() != update.sizeBytes) {
+                    downloadDir.listFiles()?.forEach { it.delete() }
+                    val part = File(downloadDir, update.fileName + ".part")
+                    platform.download(update, part) { total ->
+                        _state.value = _state.value.copy(status = UpdateStatus.Downloading(update, total))
+                    }
+                    check(part.renameTo(apk)) { "Could not save the download." }
+                }
+                _state.value = _state.value.copy(status = UpdateStatus.Installing(update))
+                platform.install(apk, update)
+            } catch (e: CancellationException) {
+                _state.value = _state.value.copy(status = UpdateStatus.Available(update))
+                throw e
+            } catch (e: Exception) {
+                downloadDir.listFiles()?.forEach { it.delete() }
+                _state.value = _state.value.copy(status = UpdateStatus.Failed(downloadFailure(e), update))
+            }
+        }
+    }
+
+    fun cancelDownload() {
+        downloadJob?.cancel()
+    }
+
+    /** Android's installer finished without replacing the app (success ends this process instead). */
+    fun onInstallResult(result: InstallResult) {
+        val update = _state.value.update ?: return
+        _state.value = _state.value.copy(
+            status = when (result) {
+                InstallResult.Cancelled -> UpdateStatus.Available(update)
+                is InstallResult.Failed -> UpdateStatus.Failed(result.message, update)
+            },
+        )
+    }
+
+    private fun checkFailure(error: Throwable): String = when (error) {
+        is IllegalArgumentException -> "The update information is invalid (${error.message})."
+        else -> "Couldn't check for updates. Check your connection and try again."
+    }
+
+    private fun downloadFailure(error: Throwable): String = when (error) {
+        is ChecksumMismatchException -> "The download was damaged. Try again."
+        is NotEnoughSpaceException -> "Not enough storage for the update (about ${error.neededMb} MB)."
+        else -> "The download failed. Check your connection and try again."
+    }
+}
+
+sealed interface InstallResult {
+    data object Cancelled : InstallResult
+    data class Failed(val message: String) : InstallResult
+}
+
+class ChecksumMismatchException(message: String) : Exception(message)
+
+class NotEnoughSpaceException(val neededMb: Long) : Exception("Not enough space")

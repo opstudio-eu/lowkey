@@ -13,7 +13,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rheerkens.androidkeyboard.AppGraph
 import com.rheerkens.androidkeyboard.companion.theme.SlimTheme
 import com.rheerkens.androidkeyboard.companion.theme.isDarkTheme
+import com.rheerkens.androidkeyboard.updates.Updates
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 
 /** Companion app host. Also the input method's settings activity. */
 class MainActivity : ComponentActivity() {
@@ -44,6 +46,15 @@ class MainActivity : ComponentActivity() {
                     onDestinationConsumed = { pendingDestination.value = null },
                 )
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Opening the app also checks when the daily background check hasn't run lately; the
+        // result shows on Home, so no notification.
+        if (AppGraph.settings.current.checkForUpdates && AppGraph.updates.checkDue(Updates.APP_OPEN_CHECK_AFTER_MILLIS)) {
+            AppGraph.appScope.launch { AppGraph.updates.check(userStarted = false, notify = false) }
         }
     }
 

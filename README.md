@@ -1,6 +1,8 @@
 # Lowkey
 
-**Lowkey Keyboard** is a slim Android keyboard with on-device voice input. Speech recognition, suggestions and autocorrect run on the phone; nothing you type or say leaves it. It is a selectable input method plus a Compose companion app for setup, speech models, the dictionary and settings. Voice mode is one row with an in-keyboard model picker.
+**[Download Lowkey for Android](https://github.com/opstudio-eu/lowkey/releases/latest/download/lowkey.apk)** (Android 9 or later). Open the downloaded file on your phone to install it; Android asks once to allow installs from your browser. After that, Lowkey updates itself. Release notes and checksums are on the [releases page](https://github.com/opstudio-eu/lowkey/releases/latest).
+
+**Lowkey Keyboard** is a slim Android keyboard with on-device voice input. Speech recognition, suggestions and autocorrect run on the phone; nothing you type or say leaves it. The app only goes online to download the speech models you choose and to check for updates. It is a selectable input method plus a Compose companion app for setup, speech models, the dictionary and settings. Voice mode is one row with an in-keyboard model picker.
 
 Lowkey is a personal project, published as source and signed APKs. It is not on the Play Store.
 
@@ -8,10 +10,11 @@ Lowkey is a personal project, published as source and signed APKs. It is not on 
 
 Lowkey needs Android 9 or later. Signed APKs are attached to each [release](https://github.com/opstudio-eu/lowkey/releases).
 
-- **With automatic updates (recommended):** install [Obtainium](https://github.com/ImranR98/Obtainium), tap **Add app**, and enter `https://github.com/opstudio-eu/lowkey`. Obtainium checks the releases, notifies you of new versions and installs them. No account or token is needed.
-- **Manually:** download `lowkey-<version>.apk` from the latest release, check its SHA-256 against the release notes, and open it. Android asks once to allow installs from your browser or file manager.
+Download [`lowkey.apk`](https://github.com/opstudio-eu/lowkey/releases/latest/download/lowkey.apk) (always the newest version; the same file as `lowkey-<version>.apk` on the [latest release](https://github.com/opstudio-eu/lowkey/releases/latest)), optionally check its SHA-256 against the release notes, and open it. Android asks once to allow installs from your browser or file manager. Then open **Lowkey** and follow the setup steps to enable the keyboard and allow the microphone.
 
-Then open **Lowkey** and follow the setup steps to enable the keyboard and allow the microphone. Updates install over the previous version and keep your settings, dictionary and downloaded models.
+**Updates (0.5.1):** Lowkey updates itself; no other app is needed. About once a day, and when you open the app if the last check is more than 6 hours old, it reads the `update.properties` file of the latest release (version, APK link, size and SHA-256). A newer version shows a notification and a card on the Home page; tap **Update** to download it, check its size and SHA-256, and hand it to Android's installer. The first time, Android asks you to allow Lowkey to install apps (*Install unknown apps*) and to confirm the update. On Android 12 and later, once Lowkey has installed a version itself, the next updates install without that confirmation (tested on Android 16); older Android versions ask each time. The app closes while it updates; the keyboard keeps working, and your settings, dictionary and models stay. Android also refuses any APK not signed with Lowkey's key. **Settings → Updates** has **Check now** and turns the automatic check off; with it off, Lowkey only goes online for model downloads. On Android 13 and later the notification needs the notification permission, which that section can ask for; without it, new versions show only on the Home page. Versions before 0.5.1 have no updater: install 0.5.1 once by hand.
+
+Updates install over the previous version and keep your settings, dictionary and downloaded models. [Obtainium](https://github.com/ImranR98/Obtainium) also works with `https://github.com/opstudio-eu/lowkey` if you prefer it.
 
 ## Features
 
@@ -51,7 +54,7 @@ The build uses Gradle 9.8.1, Android Gradle Plugin 9.4.1 with built-in Kotlin (K
 
 GitHub Actions (`.github/workflows/ci.yml`) runs the leak check, unit tests and `assembleRelease` on every pull request and push to `main`, signs the release APK, and attaches it to the run. Runs without the signing secrets, such as pull requests from forks, attach an unsigned APK that can't be installed.
 
-A push to `main` whose `versionName` has no `v<versionName>` release yet publishes one, with `lowkey-<version>.apk` and its SHA-256. To release, bump `versionName` and `versionCode` in `app/build.gradle.kts` in the pull request.
+A push to `main` whose `versionName` has no `v<versionName>` release yet publishes one, with `lowkey-<version>.apk`, its SHA-256, the same APK as `lowkey.apk` (for the README's download link), and the `update.properties` file the in-app updater reads. To release, bump `versionName` and `versionCode` in `app/build.gradle.kts` in the pull request.
 
 ### Signing
 

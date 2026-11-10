@@ -225,12 +225,19 @@ jobs:
         if: steps.existing.outputs.skip != 'true'
         run: |
           sha256sum "$APK" > "$APK.sha256"
+          # Read by the app's updater through releases/latest/download/update.properties.
+          printf 'versionCode=%s\nversionName=%s\nurl=https://github.com/%s/releases/download/%s/%s\nsize=%s\nsha256=%s\n' \
+            "$VERSION_CODE" "${TAG#v}" "$GH_REPO" "$TAG" "$APK" "$(stat -c %s "$APK")" "$(cut -d' ' -f1 "$APK.sha256")" \
+            > update.properties
+          cat update.properties
+          # A fixed name, so releases/latest/download/lowkey.apk always serves the newest version.
+          cp "$APK" lowkey.apk
           {
             echo "Version code $VERSION_CODE. Signed with the release key; installs over earlier builds and keeps their data."
             echo
             echo "SHA-256: \`$(cut -d' ' -f1 "$APK.sha256")\`"
           } > notes.md
-          gh release create "$TAG" "$APK" "$APK.sha256" \
+          gh release create "$TAG" "$APK" "$APK.sha256" lowkey.apk update.properties \
             --draft \
             --target "$GITHUB_SHA" \
             --title "Lowkey ${TAG#v}" \

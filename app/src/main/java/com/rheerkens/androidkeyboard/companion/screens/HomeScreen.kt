@@ -86,6 +86,7 @@ fun HomeScreen(modifier: Modifier, navigate: (Destination) -> Unit) {
     val done = steps.count { it }
 
     Column(modifier.verticalScroll(rememberScrollState()).padding(bottom = 16.dp)) {
+        UpdateBanner(Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
         Text(
             "A slim keyboard with local voice input. Speech runs on this device; nothing you type or say leaves it.",
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
