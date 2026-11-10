@@ -60,8 +60,19 @@ object Updates {
         )
     }
 
-    /** Schedules the daily background check, or cancels it when automatic checks are off. */
+    /**
+     * Schedules the daily background check, or cancels it when automatic checks are off. Never
+     * throws: the keyboard runs in this process, and a missing check must not stop it.
+     */
     fun schedule(context: Context, enabled: Boolean) {
+        try {
+            scheduleOrThrow(context, enabled)
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "Couldn't schedule the update check", e)
+        }
+    }
+
+    private fun scheduleOrThrow(context: Context, enabled: Boolean) {
         val scheduler = context.getSystemService(JobScheduler::class.java) ?: return
         if (!enabled) {
             scheduler.cancel(UpdateCheckJob.JOB_ID)
@@ -83,6 +94,7 @@ object Updates {
         return granted && NotificationManagerCompat.from(context).areNotificationsEnabled()
     }
 
+    private const val TAG = "LowkeyUpdates"
     const val CHANNEL_ID = "updates"
     const val NOTIFICATION_ID = 1
 
@@ -241,10 +253,10 @@ class UpdateInstallReceiver : BroadcastReceiver() {
         when (val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
                 val confirm = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_INTENT, Intent::class.java)
-                if (confirm == null) {
+                val opened = confirm != null &&
+                    runCatching { context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
+                if (!opened) {
                     AppGraph.updates.onInstallResult(InstallResult.Failed("Android's installer didn't open. Try again."))
-                } else {
-                    context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
             }
             PackageInstaller.STATUS_SUCCESS -> Unit // This process is replaced by the new version.

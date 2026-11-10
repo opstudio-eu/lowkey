@@ -120,7 +120,9 @@ fun UpdatesSection() {
 
 private fun statusLine(state: UpdateState): String {
     val checked = state.lastCheckedAt?.let {
-        "checked " + DateUtils.getRelativeTimeSpanString(it, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS)
+        val now = System.currentTimeMillis()
+        if (now - it in 0 until DateUtils.MINUTE_IN_MILLIS) "checked just now"
+        else "checked " + DateUtils.getRelativeTimeSpanString(it, now, DateUtils.MINUTE_IN_MILLIS)
     }
     val status = when (val s = state.status) {
         UpdateStatus.Checking -> "Checking…"
@@ -202,4 +204,5 @@ private fun UpdateActions(state: UpdateState) {
     }
 }
 
-private const val MB = 1024 * 1024
+/** Decimal megabytes, as Android's storage settings and GitHub show sizes. */
+private const val MB = 1_000_000L

@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Installs Lowkey's own updates from its GitHub releases; the user allows it once. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Lets the daily update check wait for a network connection. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Optional: the "update available" notification. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Optional: recent screenshots in the keyboard's minimized bar (Settings → Keyboard). -->
