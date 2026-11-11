@@ -146,16 +146,13 @@ class UpdateManager(
                 return
             }
             prefs.lastCheckedAt = now
-            // The user started the update while the feed loaded: leave it, its saved release and
-            // its notifications alone.
-            if (inProgress(_state.value.status)) return
             val newer = feed?.takeIf { it.versionCode > platform.installedVersionCode() }
+            val checked = UpdateState(if (newer == null) UpdateStatus.UpToDate else UpdateStatus.Available(newer), now)
+            // If the user started an update while the feed loaded, or it failed, the card keeps
+            // that, and so do its saved release and notifications; only the check time moves.
+            if (!setIfStill(shown, attempt, checked, checkedAt = now)) return
             prefs.available = newer
-            if (newer == null) {
-                setIfStill(shown, attempt, UpdateState(UpdateStatus.UpToDate, now), checkedAt = now)
-                return
-            }
-            setIfStill(shown, attempt, UpdateState(UpdateStatus.Available(newer), now), checkedAt = now)
+            if (newer == null) return
             if (notify && prefs.notifiedVersionCode != newer.versionCode && platform.notifyAvailable(newer)) {
                 prefs.notifiedVersionCode = newer.versionCode
             }
@@ -171,18 +168,21 @@ class UpdateManager(
     }
 
     /**
-     * Writes [next] only if the card still shows [shown] and no update was started since [attempt].
-     * Otherwise it keeps the newer status, but still shows the time of a successful check
-     * ([checkedAt]).
+     * Writes [next] only if the card still shows [shown] and no update was started since [attempt],
+     * and returns whether it did. Otherwise it keeps the newer status, but still shows the time of
+     * a successful check ([checkedAt]).
      */
-    private fun setIfStill(shown: UpdateStatus, attempt: Long, next: UpdateState, checkedAt: Long?) {
+    private fun setIfStill(shown: UpdateStatus, attempt: Long, next: UpdateState, checkedAt: Long?): Boolean {
+        var wrote = false
         _state.update { current ->
+            wrote = current.status == shown && attempts.get() == attempt
             when {
-                current.status == shown && attempts.get() == attempt -> next
+                wrote -> next
                 checkedAt != null -> current.copy(lastCheckedAt = checkedAt)
                 else -> current
             }
         }
+        return wrote
     }
 
     /** Downloads the known update, verifies it, and hands it to Android's installer. */
