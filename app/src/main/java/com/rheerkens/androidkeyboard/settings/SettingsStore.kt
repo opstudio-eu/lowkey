@@ -21,10 +21,16 @@ class SettingsStore(context: Context) {
 
     val current: Settings get() = _settings.value
 
-    fun update(transform: (Settings) -> Settings) {
+    /**
+     * Applies [transform] and saves the result as one step, so updates from other threads (a
+     * finished download enabling its language) can't save an older snapshot over a newer one.
+     */
+    fun update(transform: (Settings) -> Settings) = synchronized(lock) {
         _settings.update(transform)
         save(_settings.value)
     }
+
+    private val lock = Any()
 
     private fun load(): Settings {
         val d = Settings()
@@ -70,8 +76,8 @@ class SettingsStore(context: Context) {
         putBoolean(K_AUTOCAP, s.autoCapitalize)
         putBoolean(K_AUTOCORRECT, s.autocorrect)
         putBoolean(K_STRIP, s.suggestionStrip)
-        putStringSet(K_KEYBOARDS, s.enabledKeyboards.map { it.id }.toSet())
-        putString(K_KEYBOARD, s.currentKeyboard.id)
+        putStringSet(K_KEYBOARDS, s.enabledKeyboards)
+        putString(K_KEYBOARD, s.currentKeyboard)
         remove(K_LAYOUTS)
         remove(K_LAYOUT)
         putBoolean(K_SHOW_WITH_PHYSICAL, s.showWithPhysicalKeyboard)
@@ -100,17 +106,32 @@ class SettingsStore(context: Context) {
 
     internal companion object {
         /**
-         * Enabled and current keyboards from stored ids (see [TypingKeyboard.parse]). Unknown ids
-         * are dropped; nothing usable falls back to [default]'s, and the current keyboard is
-         * always one of the enabled ones.
+         * Enabled and current keyboard ids from what is stored, in today's form (see
+         * `TypingKeyboard.id`). Nothing stored falls back to [default]'s, and the current keyboard
+         * is always one of the enabled ones. Ids the catalog doesn't know are dropped later, when
+         * the keyboard resolves them.
          */
-        fun loadKeyboards(enabledIds: Set<String>?, currentId: String?, default: Settings): Pair<Set<TypingKeyboard>, TypingKeyboard> {
-            val enabled = enabledIds?.mapNotNull(TypingKeyboard::parse)?.toSet()?.ifEmpty { null } ?: default.enabledKeyboards
-            val current = currentId?.let(TypingKeyboard::parse)?.takeIf { it in enabled }
+        fun loadKeyboards(enabledIds: Set<String>?, currentId: String?, default: Settings): Pair<Set<String>, String> {
+            val enabled = enabledIds?.map(::keyboardId)?.toSet()?.ifEmpty { null } ?: default.enabledKeyboards
+            val current = currentId?.let(::keyboardId)?.takeIf { it in enabled }
                 ?: default.currentKeyboard.takeIf { it in enabled }
-                ?: TypingKeyboard.ordered(enabled).first()
+                ?: enabled.sorted().first()
             return enabled to current
         }
+
+        /**
+         * A stored keyboard id in today's form. Up to 0.5.5 only English (US) and Dutch existed,
+         * stored as `EN_US` or `EN_US:AZERTY`; both are QWERTY languages, so `:QWERTY` means their
+         * own layout (`en_US`).
+         */
+        fun keyboardId(stored: String): String {
+            val language = stored.substringBefore(':')
+            val legacy = LEGACY_LANGUAGES[language] ?: return stored
+            val arrangement = stored.substringAfter(':', "")
+            return if (arrangement.isEmpty() || arrangement == "QWERTY") legacy else "$legacy:$arrangement"
+        }
+
+        private val LEGACY_LANGUAGES = mapOf("EN_US" to "en_US", "NL_NL" to "nl")
 
         const val K_HEIGHT = "keyboard_height"
         const val K_LOUPE_CORNERS = "loupe_corner_choice"

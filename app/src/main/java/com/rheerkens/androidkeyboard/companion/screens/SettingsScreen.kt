@@ -33,6 +33,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rheerkens.androidkeyboard.AppGraph
 import com.rheerkens.androidkeyboard.clipboard.RecentScreenshots
+import com.rheerkens.androidkeyboard.models.resolveLanguage
+import com.rheerkens.androidkeyboard.models.speechLanguageCode
+import com.rheerkens.androidkeyboard.dictionary.LanguagePackState
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.Role
 import com.rheerkens.androidkeyboard.companion.Destination
 import com.rheerkens.androidkeyboard.models.resolveLanguage
 import com.rheerkens.androidkeyboard.settings.AutoStop
@@ -41,9 +47,8 @@ import com.rheerkens.androidkeyboard.settings.KeyboardHeight
 import com.rheerkens.androidkeyboard.settings.LoupeCorners
 import com.rheerkens.androidkeyboard.settings.ModelRetention
 import com.rheerkens.androidkeyboard.settings.Settings
+import com.rheerkens.androidkeyboard.models.SpeechLanguage
 import com.rheerkens.androidkeyboard.settings.ThemeMode
-import com.rheerkens.androidkeyboard.settings.TypingKeyboard
-import com.rheerkens.androidkeyboard.settings.TypingLayout
 import com.rheerkens.androidkeyboard.ui.SlimIcons
 
 private const val KEYBOARDS_INDEX = 8
@@ -56,6 +61,8 @@ enum class SettingsFocus(val index: Int?) { TOP(null), KEYBOARDS(KEYBOARDS_INDEX
 fun SettingsScreen(modifier: Modifier, focus: SettingsFocus, navigate: (Destination) -> Unit) {
     val s by AppGraph.settings.settings.collectAsStateWithLifecycle()
     val models by AppGraph.models.state.collectAsStateWithLifecycle()
+    // Recomposes the language summary when a download finishes or a word list is deleted.
+    val packs by AppGraph.languagePacks.state.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     fun update(t: (Settings) -> Settings) = AppGraph.settings.update(t)
     val context = LocalContext.current
@@ -105,7 +112,7 @@ fun SettingsScreen(modifier: Modifier, focus: SettingsFocus, navigate: (Destinat
                 subtitle = "Show screenshots from the last day next to copied clips in the minimized bar. Needs access to photos.",
             )
         }
-        item { KeyboardsSetting(s, ::update) }
+        item { KeyboardsSetting(s, packs, ::update, navigate) }
         item { Spacer8() }
         // Voice (index VOICE_SECTION_INDEX)
         item { SectionTitle("Voice") }
@@ -171,12 +178,18 @@ fun SettingsScreen(modifier: Modifier, focus: SettingsFocus, navigate: (Destinat
         }
         item {
             val active = models.activeModel
-            val chosen = active?.resolveLanguage(s.speechLanguage)
+            val chosen = active?.resolveLanguage(AppGraph.speechLanguage(s))
             if (active != null && chosen != null) {
+                val keyboardLanguage = AppGraph.currentLanguage(s)
+                val follow = SpeechLanguage(Settings.FOLLOW_KEYBOARD, "Same as keyboard")
+                // What following the keyboard gives with this model now, e.g. "German".
+                val followed = active.resolveLanguage(speechLanguageCode(Settings.FOLLOW_KEYBOARD, keyboardLanguage))
                 DropdownRow(
-                    "Voice language", active.languages, chosen, { it.label },
+                    "Voice language", listOf(follow) + active.languages,
+                    if (s.speechLanguage == Settings.FOLLOW_KEYBOARD) follow else chosen,
+                    { if (it == follow) "${it.label} (${followed?.label ?: chosen.label})" else it.label },
                     { v -> update { it.copy(speechLanguage = v.code) } },
-                    subtitle = "For ${active.name}. Typing layouts don't change the speech language.",
+                    subtitle = "For ${active.name}. Same as keyboard follows the globe key and reloads the model.",
                 )
             } else {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
@@ -216,12 +229,13 @@ fun SettingsScreen(modifier: Modifier, focus: SettingsFocus, navigate: (Destinat
 }
 
 /**
- * Languages, each with a chip per letter layout. Every chip that's on is one stop of the globe
- * key's cycle (in the order shown) and a row of the space bar's long-press chooser. Chips sit in a
- * fixed grid, so a checkmark appearing never moves the others.
+ * The languages on the phone, each with a chip per letter layout: its own first, then (for
+ * Latin-script languages) the alternatives. Every chip that's on is one stop of the globe key's
+ * cycle (in the order shown) and a row of the space bar's long-press chooser. Chips sit in a fixed
+ * grid, so a checkmark appearing never moves the others. More languages download on their own page.
  */
 @Composable
-private fun KeyboardsSetting(s: Settings, update: ((Settings) -> Settings) -> Unit) {
+private fun KeyboardsSetting(s: Settings, packs: LanguagePackState, update: ((Settings) -> Settings) -> Unit, navigate: (Destination) -> Unit) {
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
         Text("Keyboard layouts", style = MaterialTheme.typography.bodyLarge)
@@ -232,27 +246,29 @@ private fun KeyboardsSetting(s: Settings, update: ((Settings) -> Settings) -> Un
             style = MaterialTheme.typography.bodySmall,
             color = muted,
         )
-        val onlyOne = s.enabledKeyboards.size == 1
+        val installed = remember(packs.installed) { AppGraph.installedKeyboards() }
+        val usableIds = installed.map { it.id }
+        val onlyOne = usableIds.count { it in s.enabledKeyboards } == 1
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             val columns = if (maxWidth >= 560.dp) KeyArrangement.entries.size else 3
             Column {
-                TypingLayout.entries.forEach { language ->
-                    Text(language.label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 12.dp, bottom = 2.dp))
-                    KeyArrangement.entries.chunked(columns).forEach { row ->
+                installed.groupBy { it.language.id }.values.forEach { options ->
+                    val language = options.first().language
+                    Text(language.name, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 12.dp, bottom = 2.dp))
+                    options.chunked(columns).forEach { row ->
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            row.forEach { arrangement ->
-                                val keyboard = TypingKeyboard(language, arrangement)
-                                val on = keyboard in s.enabledKeyboards
+                            row.forEach { keyboard ->
+                                val on = keyboard.id in s.enabledKeyboards
                                 val required = on && onlyOne
                                 FilterChip(
                                     selected = on,
-                                    onClick = { update { it.toggleKeyboard(keyboard) } },
+                                    onClick = { update { it.toggleKeyboard(keyboard.id, usableIds) } },
                                     enabled = !required,
                                     // The chip's description names the language too; don't read the label twice.
-                                    label = { Text(arrangement.label, Modifier.clearAndSetSemantics {}, maxLines = 1) },
+                                    label = { Text(keyboard.layoutLabel, Modifier.clearAndSetSemantics {}, maxLines = 1) },
                                     leadingIcon = if (on) ({ Icon(SlimIcons.Check, null, Modifier.size(FilterChipDefaults.IconSize)) }) else null,
                                     modifier = Modifier.weight(1f).semantics {
-                                        contentDescription = "${language.label}, ${arrangement.label}"
+                                        contentDescription = "${language.name}, ${keyboard.layoutLabel}"
                                         if (required) stateDescription = "On, required: the last layout that's on"
                                     },
                                 )
@@ -267,7 +283,7 @@ private fun KeyboardsSetting(s: Settings, update: ((Settings) -> Settings) -> Un
             Text("Keep at least one layout on.", style = MaterialTheme.typography.bodySmall, color = muted, modifier = Modifier.padding(top = 4.dp))
         }
         Text(
-            "Current keyboard: ${s.currentKeyboard.fullLabel}",
+            "Current keyboard: ${AppGraph.currentKeyboard(s).fullLabel}",
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.padding(top = 10.dp),
         )
@@ -276,8 +292,31 @@ private fun KeyboardsSetting(s: Settings, update: ((Settings) -> Settings) -> Un
             style = MaterialTheme.typography.bodySmall,
             color = muted,
         )
+        Row(
+            Modifier.fillMaxWidth().padding(top = 8.dp).clickable(role = Role.Button) { navigate(Destination.LANGUAGES) }
+                .padding(vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("More languages", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
+                Text(
+                    moreLanguagesSummary(AppGraph.languages.languages.filter { !it.bundled && it.id !in packs.installed }.map { it.englishName }),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = muted,
+                )
+            }
+            Icon(SlimIcons.ChevronRight, null, tint = muted)
+        }
     }
 }
 
 @Composable
 private fun Spacer8() = androidx.compose.foundation.layout.Spacer(Modifier.padding(8.dp))
+
+/** "Download Dutch, Polish, German and 15 more, or delete them", naming what isn't on the phone yet. */
+internal fun moreLanguagesSummary(available: List<String>): String = when {
+    available.isEmpty() -> "Every language is on the phone; delete the ones you don't use"
+    available.size == 1 -> "Download ${available.single()}, or delete languages"
+    available.size <= 4 -> "Download ${available.dropLast(1).joinToString(", ")} or ${available.last()}, or delete languages"
+    else -> "Download ${available.take(3).joinToString(", ")} and ${available.size - 3} more, or delete languages"
+}

@@ -1,6 +1,5 @@
 package com.rheerkens.androidkeyboard.keyboard
 
-import com.rheerkens.androidkeyboard.settings.TypingKeyboard
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -12,7 +11,7 @@ data class KeyboardState(
     val layer: Layer = Layer.LETTERS,
     val shift: ShiftState = ShiftState.OFF,
     /** Language and letter arrangement. */
-    val keyboard: TypingKeyboard = TypingKeyboard.DEFAULT,
+    val keyboard: TypingKeyboard,
 )
 
 /** Shift, caps lock, layer, and typing-keyboard state for keys mode. No Android dependencies. */
@@ -60,9 +59,12 @@ class KeyboardController(
 
     fun reset() = _state.update { it.copy(layer = Layer.LETTERS, shift = ShiftState.OFF) }
 
-    /** Cycles to the next enabled keyboard (language, then arrangement order) and returns it. */
-    fun cycleKeyboard(enabled: Collection<TypingKeyboard>): TypingKeyboard {
-        val order = TypingKeyboard.ordered(enabled).ifEmpty { listOf(TypingKeyboard.DEFAULT) }
+    /**
+     * Switches to the keyboard after the current one in [order] (the usable keyboards, in globe
+     * order) and returns it.
+     */
+    fun cycleKeyboard(order: List<TypingKeyboard>): TypingKeyboard {
+        if (order.isEmpty()) return _state.value.keyboard
         _state.update {
             // A keyboard that is no longer enabled continues from the start of the cycle.
             val i = order.indexOf(it.keyboard)

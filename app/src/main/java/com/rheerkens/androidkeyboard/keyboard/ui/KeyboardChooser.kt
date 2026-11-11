@@ -42,7 +42,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.rheerkens.androidkeyboard.settings.TypingKeyboard
+import com.rheerkens.androidkeyboard.keyboard.TypingKeyboard
 import com.rheerkens.androidkeyboard.ui.SlimIcons
 
 /** The enabled keyboards, in globe order, and the one in use. */
@@ -143,12 +143,12 @@ private fun ChoiceRow(keyboard: TypingKeyboard, current: Boolean, onTap: () -> U
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            keyboard.language.label,
+            keyboard.language.name,
             color = c.keyText, fontSize = 15.sp, fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal,
             maxLines = 1, overflow = TextOverflow.Ellipsis,
         )
         Spacer(Modifier.width(10.dp))
-        Text(keyboard.arrangement.label, color = c.muted, fontSize = 13.sp, maxLines = 1)
+        Text(keyboard.layoutLabel, color = c.muted, fontSize = 13.sp, maxLines = 1)
         Spacer(Modifier.weight(1f))
         Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
             if (current) Icon(SlimIcons.Check, null, tint = c.enter, modifier = Modifier.size(18.dp))

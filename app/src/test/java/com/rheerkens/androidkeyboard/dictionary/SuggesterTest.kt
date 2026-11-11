@@ -2,8 +2,6 @@ package com.rheerkens.androidkeyboard.dictionary
 
 import com.rheerkens.androidkeyboard.keyboard.KeyboardController
 import com.rheerkens.androidkeyboard.keyboard.ShiftState
-import com.rheerkens.androidkeyboard.settings.TypingKeyboard
-import com.rheerkens.androidkeyboard.settings.TypingLayout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -65,7 +63,7 @@ class SuggesterTest {
     @Test
     fun shiftTapDoubleTapAndLock() {
         var now = 0L
-        val kc = KeyboardController(TypingKeyboard.DEFAULT) { now }
+        val kc = KeyboardController(TestLanguages.keyboard("en_US")) { now }
         kc.onShiftTap()
         assertEquals(ShiftState.ONCE, kc.state.value.shift)
         kc.onCharTyped()
@@ -77,9 +75,13 @@ class SuggesterTest {
         assertEquals(ShiftState.LOCKED, kc.state.value.shift)
         now = 3_000; kc.onShiftTap()
         assertEquals(ShiftState.OFF, kc.state.value.shift)
-        val both = TypingLayout.entries.map { TypingKeyboard(it) }
-        assertEquals(TypingKeyboard(TypingLayout.NL_NL), kc.cycleKeyboard(both))
-        assertEquals(TypingKeyboard.DEFAULT, kc.cycleKeyboard(both))
+        val order = listOf("en_US", "nl", "pl").map(TestLanguages::keyboard)
+        assertEquals("nl", kc.cycleKeyboard(order).id)
+        assertEquals("pl", kc.cycleKeyboard(order).id)
+        assertEquals("en_US", kc.cycleKeyboard(order).id)
+        // A keyboard that is no longer usable continues from the start of the cycle.
+        kc.setKeyboard(TestLanguages.keyboard("de"))
+        assertEquals("en_US", kc.cycleKeyboard(order).id)
     }
 
     @Test

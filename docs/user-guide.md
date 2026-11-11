@@ -14,13 +14,23 @@ Switching to keys, hiding the keyboard, changing editor, moving the cursor, or o
 
 Under **Settings → Voice → Keep model loaded**, choose how long to keep an idle model in memory. The default is two minutes. Releasing it does not delete the downloaded files. Recording and transcription do not expire, but changing the model or language can release it, as can Android memory pressure.
 
+## Add keyboard languages
+
+English (US) is built in. Dutch, Polish, English (UK), German, French, Spanish, Italian, Portuguese (Brazil and Portugal), Swedish, Danish, Norwegian (Bokmål), Finnish, Czech, Croatian, Slovenian, Romanian, Lithuanian, Latvian and Russian download on request: open **Settings → Keyboard → More languages** and tap **Download**. Each word list is 0.4–5.2 MB. Lowkey downloads it from the Android Open Source Project at a fixed version, checks it against a known checksum, and converts it on your phone. A downloaded language is turned on at once; delete it on the same page.
+
+Each language has its own suggestions, autocorrect, layout and accents. Words typed without their accents get them back (`zolw` becomes `żółw`, `konnen` becomes `können`), and suggestions ignore missing accents. Polish also restores the accents of common words such as `juz` → `już`, and German capitalizes nouns typed in lowercase (`zeit` → `Zeit`).
+
+To dictate in the language you type in, set **Settings → Voice → Voice language** to **Same as keyboard**. Switching languages then reloads the speech model in the new language.
+
+If Dutch was enabled in an earlier version, where it was built in, it downloads again by itself after the update.
+
 ## Choose layouts and type accents
 
-Enable layouts under **Settings → Keyboard → Keyboard layouts**. Tap the globe key to cycle through them, or hold the space bar to choose one. Holding the globe opens Android's picker for other keyboard apps.
+Enable layouts under **Settings → Keyboard → Keyboard layouts**. Each language on your phone is listed with its own layout first. Languages written in the Latin alphabet also offer QWERTY, AZERTY, QWERTZ, Dvorak and Colemak. Tap the globe key to cycle through the layouts that are on, or hold the space bar to choose one. Holding the globe opens Android's picker for other keyboard apps.
 
 The selected language controls suggestions and autocorrect. Changing the letter layout does not change that language.
 
-Hold a top-row letter to select a number. Hold a letter with accents, slide to the desired character, and release to type it. Slide off the choices and key to cancel. Shift and Caps Lock also apply to accented letters.
+Hold a top-row letter to select a number. Hold a letter with accents, slide to the desired character, and release to type it. The language's own accents come first: on Polish, hold A for ą, L for ł or Z for ż. Slide off the choices and key to cancel. Shift and Caps Lock also apply to accented letters.
 
 Space and punctuation apply autocorrections. Press Backspace immediately after a correction to restore what you typed. Add terms to the personal dictionary to use them in suggestions and preserve their casing in dictated text. Spoken-phrase replacement rules are opt-in. Next-word prediction is not available.
 

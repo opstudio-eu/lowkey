@@ -33,6 +33,7 @@ import com.rheerkens.androidkeyboard.companion.screens.SettingsFocus
 import com.rheerkens.androidkeyboard.companion.screens.SettingsScreen
 import com.rheerkens.androidkeyboard.companion.screens.TryItScreen
 import com.rheerkens.androidkeyboard.companion.screens.KeyboardTestSheet
+import com.rheerkens.androidkeyboard.companion.screens.LanguagesScreen
 import com.rheerkens.androidkeyboard.ui.SlimIcons
 
 private val tabs = listOf(
@@ -126,6 +127,7 @@ fun SlimApp(pendingDestination: Destination?, onDestinationConsumed: () -> Unit)
             Destination.TRY_IT -> TryItScreen(modifier)
             Destination.DIAGNOSTICS -> DiagnosticsScreen(modifier)
             Destination.ABOUT -> AboutScreen(modifier)
+            Destination.LANGUAGES -> LanguagesScreen(modifier, ::navigate)
         }
     }
     if (testOpen) {

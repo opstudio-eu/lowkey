@@ -1,6 +1,6 @@
 # Lowkey
 
-Lowkey is a slim Android keyboard with on-device voice typing. Speech recognition, suggestions, and autocorrect run on your phone. Lowkey uses the internet to download speech models and check for and download app updates.
+Lowkey is a slim Android keyboard with on-device voice typing. Speech recognition, suggestions, and autocorrect run on your phone. Lowkey uses the internet to download speech models and keyboard languages, and to check for and download app updates.
 
 **[Download Lowkey for Android](https://github.com/opstudio-eu/lowkey/releases/latest/download/lowkey.apk)** · Android 9 or later
 
@@ -17,15 +17,15 @@ The app checks for updates automatically. Use **Settings → Updates → Check n
 ## Features
 
 - Voice typing with downloadable English and multilingual speech models.
-- English and Dutch suggestions and autocorrect, plus a personal dictionary for saved terms and dictation casing.
-- QWERTY, AZERTY, QWERTZ, Dvorak, and Colemak layouts, with long-press numbers and accents.
+- Suggestions and autocorrect in English, with Dutch, Polish and 18 more languages to download, plus a personal dictionary for saved terms and dictation casing.
+- Each language's own layout (such as German QWERTZ with Ü, Ö and Ä, or Russian ЙЦУКЕН), plus QWERTY, AZERTY, QWERTZ, Dvorak, and Colemak, with long-press numbers and accents.
 - A minimized keyboard for voice input or use with a physical keyboard, and gestures for deleting words.
 - Clipboard history for text and images, with previews and an image editor for cropping, annotation, and blur.
 - A built-in test field to try the keyboard without leaving settings.
 
 ## Documentation
 
-- [User guide](docs/user-guide.md): voice typing, layouts, gestures, clipboard, and image editing.
+- [User guide](docs/user-guide.md): voice typing, languages and layouts, gestures, clipboard, and image editing.
 - [Build and contribute](CONTRIBUTING.md): development setup, checks, signing, and releases.
 
 ## License

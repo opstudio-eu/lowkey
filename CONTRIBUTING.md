@@ -40,6 +40,10 @@ The check covers pushed commits, author and tag metadata, and ref names. CI also
 
 Use `.leak-allowlist` only for manually reviewed third-party texts and binary assets that must ship. `scripts/check-leaks.py allow <path>` records a file's checksum; changing that file requires another review. Do not use the allowlist to exempt your own content.
 
+## Add a keyboard language
+
+Keyboard languages are data: add a section to `app/src/main/assets/dict/languages.txt` with the language's name, key rows, layout name, accents, Whisper code, and the size and SHA-256 of its AOSP LatinIME word list (see the file's header). Then run `python3 -I scripts/build-dictionaries.py --check`, which verifies every pinned list and updates `app/src/main/assets/dict/NOTICE`. Only English (US) is bundled; other lists download on the phone. A bundled list is written to the app's assets and must be added to `.leak-allowlist` after review. `python3 -I scripts/test_build_dictionaries.py` and the unit tests check the catalog.
+
 ## Update dependencies
 
 Add only dependencies with licenses compatible with the project's policy, such as Apache-2.0, MIT, BSD, or MPL-2.0. Do not add GPL or LGPL code.

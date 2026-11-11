@@ -8,16 +8,8 @@ enum class KeyboardHeight(val label: String, val rowHeightDp: Int) {
 }
 
 /**
- * Typing languages: each picks the word list for suggestions and autocorrect. Which letters sit
- * where is the separate [KeyArrangement]. Voice dictation stays English-only.
- */
-enum class TypingLayout(val label: String, val shortLabel: String, val localeTag: String) {
-    EN_US("English (US)", "EN", "en-US"),
-    NL_NL("Nederlands", "NL", "nl-NL"),
-}
-
-/**
- * Letter arrangements of the main key layer, as three rows of key labels (top to bottom), in
+ * Alternative letter arrangements for Latin-script keyboard languages (`TypingKeyboard`), as
+ * three rows of key labels (top to bottom), in
  * their usual phone form: the letter rows of the traditional layout, with the keys around them
  * (Shift, Backspace, the bottom row, numbers and symbols) the same for all of them. Rows with
  * fewer than ten keys are centred; the third row sits between Shift and Backspace. The top row's
@@ -33,42 +25,6 @@ enum class KeyArrangement(val label: String, val rows: List<String>) {
     /** Simplified Dvorak; the semicolon before Q is left out (it's on the symbols layer). */
     DVORAK("Dvorak", listOf("',.pyfgcrl", "aoeuidhtns", "qjkxbmwvz")),
     COLEMAK("Colemak", listOf("qwfpgjluy;", "arstdhneio", "zxcvbkm")),
-}
-
-/** One entry of the globe key's cycle: a typing language shown with a letter arrangement. */
-data class TypingKeyboard(val language: TypingLayout, val arrangement: KeyArrangement = KeyArrangement.QWERTY) {
-    /** Short name; QWERTY, the usual arrangement, isn't spelled out. */
-    val label: String
-        get() = if (arrangement == KeyArrangement.QWERTY) language.label else "${language.label} · ${arrangement.label}"
-
-    /** Name with the layout always spelled out, e.g. `English (US) · QWERTY`: for Settings and announcements. */
-    val fullLabel: String get() = "${language.label} · ${arrangement.label}"
-
-    /** Space-bar name: like [label], but with the short language code next to a layout so it fits on a phone. */
-    val spaceLabel: String
-        get() = if (arrangement == KeyArrangement.QWERTY) language.label else "${language.shortLabel} · ${arrangement.label}"
-
-    /** Stable preference value, e.g. `EN_US:AZERTY`. */
-    val id: String get() = "${language.name}:${arrangement.name}"
-
-    companion object {
-        val DEFAULT = TypingKeyboard(TypingLayout.EN_US)
-
-        /** Every combination, in globe order: by language, then by arrangement. */
-        val ALL: List<TypingKeyboard> =
-            TypingLayout.entries.flatMap { language -> KeyArrangement.entries.map { TypingKeyboard(language, it) } }
-
-        /** Parses an [id]; a bare language name (older preferences) means QWERTY. */
-        fun parse(id: String): TypingKeyboard? {
-            val language = TypingLayout.entries.firstOrNull { it.name == id.substringBefore(':') } ?: return null
-            if (':' !in id) return TypingKeyboard(language)
-            val arrangement = KeyArrangement.entries.firstOrNull { it.name == id.substringAfter(':') } ?: return null
-            return TypingKeyboard(language, arrangement)
-        }
-
-        /** [keyboards] in globe order. */
-        fun ordered(keyboards: Collection<TypingKeyboard>): List<TypingKeyboard> = ALL.filter { it in keyboards }
-    }
 }
 
 enum class AutoStop(val label: String, val millis: Long) {
@@ -116,9 +72,13 @@ data class Settings(
     val autoCapitalize: Boolean = true,
     val autocorrect: Boolean = true,
     val suggestionStrip: Boolean = true,
-    /** Keyboards the globe key cycles through; never empty. */
-    val enabledKeyboards: Set<TypingKeyboard> = TypingLayout.entries.map { TypingKeyboard(it) }.toSet(),
-    val currentKeyboard: TypingKeyboard = TypingKeyboard.DEFAULT,
+    /**
+     * Ids of the keyboards the globe key cycles through (`TypingKeyboard.id`: `pl` for Polish
+     * on its own layout, `en_US:AZERTY` for an alternative one). Only English (US) is built in;
+     * a keyboard counts once its language's word list is on the phone.
+     */
+    val enabledKeyboards: Set<String> = setOf(DEFAULT_KEYBOARD),
+    val currentKeyboard: String = DEFAULT_KEYBOARD,
     /** Keep the keyboard on screen with a physical keyboard connected (Android hides it otherwise). */
     val showWithPhysicalKeyboard: Boolean = true,
     /** Show recent screenshots next to clipboard history in the minimized bar (photos permission). */
@@ -132,7 +92,10 @@ data class Settings(
     val continuousDictation: Boolean = false,
     val applyPhraseRules: Boolean = false,
     val matchTermCase: Boolean = true,
-    /** Preferred speech language code for multilingual models (`auto` = detect). */
+    /**
+     * Preferred speech language code for multilingual models (`auto` = detect,
+     * [FOLLOW_KEYBOARD] = the current keyboard language's).
+     */
     val speechLanguage: String = "en",
     val modelRetention: ModelRetention = ModelRetention.TWO_MINUTES,
     // Appearance
@@ -150,11 +113,24 @@ data class Settings(
     val minimizedWithPhysicalKeyboard: Boolean = true,
     val minimizedWithoutPhysicalKeyboard: Boolean = false,
 ) {
-    /** Turns [keyboard] on or off. The last enabled keyboard stays on; the current one moves on if needed. */
-    fun toggleKeyboard(keyboard: TypingKeyboard): Settings {
-        val next = if (keyboard in enabledKeyboards) enabledKeyboards - keyboard else enabledKeyboards + keyboard
-        if (next.isEmpty()) return this
-        val current = if (currentKeyboard in next) currentKeyboard else TypingKeyboard.ordered(next).first()
+    /**
+     * Turns keyboard [id] on or off. [usable] lists, in globe order, the ids of every keyboard
+     * whose word list is on the phone: the last usable one that is on stays on, and the current
+     * keyboard moves to the first usable one if it is turned off.
+     */
+    fun toggleKeyboard(id: String, usable: List<String>): Settings {
+        val next = if (id in enabledKeyboards) enabledKeyboards - id else enabledKeyboards + id
+        val stillUsable = usable.filter { it in next }
+        if (stillUsable.isEmpty()) return this
+        val current = if (currentKeyboard in stillUsable) currentKeyboard else stillUsable.first()
         return copy(enabledKeyboards = next, currentKeyboard = current)
+    }
+
+    companion object {
+        /** English (US) on its own (QWERTY) layout: built in, so always usable. */
+        const val DEFAULT_KEYBOARD = "en_US"
+
+        /** [speechLanguage] value: dictate in the language the keyboard is set to. */
+        const val FOLLOW_KEYBOARD = "keyboard"
     }
 }

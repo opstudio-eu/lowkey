@@ -48,7 +48,7 @@ class AutocorrectQualityTest {
 
     @Test
     fun dutchTyposStillUseTheDutchDictionary() {
-        val dutch = File("src/main/assets/dict/nl.dict").inputStream().use(Lexicon::parseGzip)
+        val dutch = File("src/test/resources/dict/nl.dict").inputStream().use(Lexicon::parseGzip)
             .withExtraWords(BuiltInWords.ENGLISH + BuiltInWords.TECH, 120)
         val expected = mapOf(
             "wroden" to "worden", "hebbne" to "hebben", "mischien" to "misschien",

@@ -7,7 +7,7 @@ import com.rheerkens.androidkeyboard.clipboard.ClipboardContent
 import com.rheerkens.androidkeyboard.keyboard.BackspaceScrub
 import com.rheerkens.androidkeyboard.keyboard.FanCommand
 import com.rheerkens.androidkeyboard.keyboard.Key
-import com.rheerkens.androidkeyboard.settings.TypingKeyboard
+import com.rheerkens.androidkeyboard.keyboard.TypingKeyboard
 
 /** What the Enter key does in the current editor. */
 enum class EnterKind(val label: String?) {

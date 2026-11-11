@@ -1,5 +1,8 @@
 package com.rheerkens.androidkeyboard.models
 
+import com.rheerkens.androidkeyboard.dictionary.KeyboardLanguage
+import com.rheerkens.androidkeyboard.settings.Settings
+
 /** One file of a model package, pinned by size and SHA-256. */
 data class ModelArtifact(
     val name: String,
@@ -113,7 +116,8 @@ object ModelCatalog {
     private val WHISPER_LANGUAGES = langs(
         "en" to "English", "nl" to "Dutch", "de" to "German", "fr" to "French", "es" to "Spanish", "it" to "Italian",
         "pt" to "Portuguese", "pl" to "Polish", "sv" to "Swedish", "da" to "Danish", "no" to "Norwegian",
-        "fi" to "Finnish", "cs" to "Czech", "ro" to "Romanian", "hu" to "Hungarian", "tr" to "Turkish",
+        "fi" to "Finnish", "cs" to "Czech", "hr" to "Croatian", "sl" to "Slovenian", "lt" to "Lithuanian",
+        "lv" to "Latvian", "ro" to "Romanian", "hu" to "Hungarian", "tr" to "Turkish",
         "ru" to "Russian", "uk" to "Ukrainian", "ar" to "Arabic", "hi" to "Hindi", "ja" to "Japanese",
         "ko" to "Korean", "zh" to "Chinese", "vi" to "Vietnamese",
     )
@@ -167,15 +171,45 @@ object ModelCatalog {
     )
 
     fun byId(id: String?): ModelInfo? = models.firstOrNull { it.id == id }
+
+    /**
+     * Every language multilingual Whisper (v1 to v3) knows, by code, from OpenAI's tokenizer.
+     * Models list a shorter choice ([WHISPER_LANGUAGES]); a keyboard language may use any of these
+     * (`speech` in `languages.txt`) and "Same as keyboard" then dictates in it.
+     */
+    val WHISPER_CODES: Map<String, String> = """
+        en English|zh Chinese|de German|es Spanish|ru Russian|ko Korean|fr French|ja Japanese|pt Portuguese
+        tr Turkish|pl Polish|ca Catalan|nl Dutch|ar Arabic|sv Swedish|it Italian|id Indonesian|hi Hindi
+        fi Finnish|vi Vietnamese|he Hebrew|uk Ukrainian|el Greek|ms Malay|cs Czech|ro Romanian|da Danish
+        hu Hungarian|ta Tamil|no Norwegian|th Thai|ur Urdu|hr Croatian|bg Bulgarian|lt Lithuanian|la Latin
+        mi Maori|ml Malayalam|cy Welsh|sk Slovak|te Telugu|fa Persian|lv Latvian|bn Bengali|sr Serbian
+        az Azerbaijani|sl Slovenian|kn Kannada|et Estonian|mk Macedonian|br Breton|eu Basque|is Icelandic
+        hy Armenian|ne Nepali|mn Mongolian|bs Bosnian|kk Kazakh|sq Albanian|sw Swahili|gl Galician
+        mr Marathi|pa Punjabi|si Sinhala|km Khmer|sn Shona|yo Yoruba|so Somali|af Afrikaans|oc Occitan
+        ka Georgian|be Belarusian|tg Tajik|sd Sindhi|gu Gujarati|am Amharic|yi Yiddish|lo Lao|uz Uzbek
+        fo Faroese|ht Haitian Creole|ps Pashto|tk Turkmen|nn Nynorsk|mt Maltese|sa Sanskrit
+        lb Luxembourgish|my Myanmar|bo Tibetan|tl Tagalog|mg Malagasy|as Assamese|tt Tatar|haw Hawaiian
+        ln Lingala|ha Hausa|ba Bashkir|jw Javanese|su Sundanese
+    """.trimIndent().split('|', '\n').associate { it.trim().substringBefore(' ') to it.trim().substringAfter(' ') }
 }
 
 /**
- * The language to load [this] model with: the user's [preferred] code if the model offers it,
- * else English, else its first option. Null for models without a language choice.
+ * The speech language code the Voice language [setting] asks for: the setting itself, or for
+ * [Settings.FOLLOW_KEYBOARD] the [keyboard] language's Whisper code (auto-detect if it has none).
+ * [ModelInfo.resolveLanguage] then picks what the model offers.
+ */
+fun speechLanguageCode(setting: String, keyboard: KeyboardLanguage): String =
+    if (setting == Settings.FOLLOW_KEYBOARD) keyboard.speech ?: SpeechLanguage.AUTO.code else setting
+
+/**
+ * The language to load [this] model with: the user's [preferred] code if the model offers it or
+ * Whisper knows it ([ModelCatalog.WHISPER_CODES], for keyboard languages outside the model's
+ * list), else English, else its first option. Null for models without a language choice.
  */
 fun ModelInfo.resolveLanguage(preferred: String): SpeechLanguage? {
     if (languages.isEmpty()) return null
     return languages.firstOrNull { it.code == preferred }
+        ?: (engine as? EngineSpec.SherpaWhisper)?.let { ModelCatalog.WHISPER_CODES[preferred]?.let { SpeechLanguage(preferred, it) } }
         ?: languages.firstOrNull { it.code == "en" }
         ?: languages.first()
 }

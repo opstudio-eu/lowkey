@@ -1,8 +1,7 @@
 package com.rheerkens.androidkeyboard.keyboard
 
 import com.rheerkens.androidkeyboard.dictionary.KeyGrid
-import com.rheerkens.androidkeyboard.settings.KeyArrangement
-import com.rheerkens.androidkeyboard.settings.TypingKeyboard
+import java.util.concurrent.ConcurrentHashMap
 
 /** One key. [weight] is its share of the row width (a letter key is 1). */
 sealed interface Key {
@@ -38,12 +37,16 @@ data class KeyboardLayout(val rows: List<List<Key>>)
 object Layouts {
     private fun chars(s: String): List<Key> = s.split(' ').filter { it.isNotEmpty() }.map { Key.Char(it) }
 
-    /** Accents per letter, most common first (Dutch, French, German, Spanish, Nordic, Polish, Czech). */
+    /**
+     * Accents per letter, most common first (Dutch, French, German, Spanish, Nordic, Polish, Czech).
+     * A keyboard language puts its own accents (`languages.txt`) before these.
+     */
     val ACCENTS: Map<String, List<String>> = mapOf(
-        "a" to "á à â ä ã å æ",
+        "a" to "á à â ä ã å æ ą",
         "c" to "ç ć č",
         "e" to "é è ê ë ē ę ė",
         "i" to "í ì î ï ī",
+        "l" to "ł",
         "n" to "ñ ń",
         "o" to "ó ò ô ö õ ø œ",
         "s" to "ß ś š",
@@ -52,33 +55,41 @@ object Layouts {
         "z" to "ž ź ż",
     ).mapValues { it.value.split(' ') }
 
+    /** Long-press accents for [letter]: the language's own first, then the general list. */
+    private fun accents(letter: String, keyboard: TypingKeyboard): List<String> =
+        (keyboard.language.accents[letter].orEmpty() + ACCENTS[letter].orEmpty()).distinct()
+
     private fun bottomRow(switchKey: Key.LayerSwitch) = listOf(
         switchKey, Key.Globe(), Key.Char(","), Key.Space(), Key.Char("."), Key.Enter(),
     )
 
     /**
-     * The letter layer for [keyboard]'s arrangement. The language changes only suggestions and
-     * the space-bar label. The top row offers the digits 1–0 on long-press; shorter middle rows
-     * are centred with gaps; Shift and Backspace share what the third row leaves of ten keys,
-     * but stay a key and a half wide (Dvorak's nine-letter row is then twelve keys wide, and its
-     * letters a little narrower).
+     * The letter layer for [keyboard]: its language's own rows (QWERTZ with Ü, Ö and Ä for German,
+     * ЙЦУКЕН for Russian) or an alternative arrangement, with the language's accents first on
+     * long-press. The first ten keys of the top row offer the digits 1–0 on long-press. Rows are
+     * as wide as the widest of ten keys and the top two rows; shorter rows are centred with gaps,
+     * and Shift and Backspace share what the third row leaves, but stay a key and a half wide
+     * (Dvorak's nine-letter row is then twelve keys wide, and its letters a little narrower).
      */
-    fun letters(keyboard: TypingKeyboard): KeyboardLayout = lettersCache.getValue(keyboard.arrangement)
+    fun letters(keyboard: TypingKeyboard): KeyboardLayout = lettersCache.getOrPut(keyboard.id) { buildLetters(keyboard) }
 
-    private val lettersCache: Map<KeyArrangement, KeyboardLayout> =
-        KeyArrangement.entries.associateWith(::buildLetters)
+    private val lettersCache = ConcurrentHashMap<String, KeyboardLayout>()
 
-    private fun buildLetters(arrangement: KeyArrangement): KeyboardLayout {
-        val (top, middle, bottom) = arrangement.rows.map { row -> row.map { letter -> letterKey(letter.toString()) } }
+    private fun buildLetters(keyboard: TypingKeyboard): KeyboardLayout {
+        val (top, middle, bottom) = keyboard.rows.map { row -> row.map { letter -> letterKey(letter.toString(), keyboard) } }
+        val width = maxOf(ROW_KEYS, top.size, middle.size).toFloat()
         val digits = top.mapIndexed { index, key ->
-            if (top.size == ROW_KEYS) key.copy(longPressOutput = ((index + 1) % 10).toString()) else key
+            if (index < ROW_KEYS) key.copy(longPressOutput = ((index + 1) % 10).toString()) else key
         }
-        val gap = (ROW_KEYS - middle.size) / 2f
-        val side = maxOf(MIN_SIDE_KEY, (ROW_KEYS - bottom.size) / 2f)
+        fun centred(keys: List<Key>): List<Key> {
+            val gap = (width - keys.size) / 2f
+            return if (gap > 0f) listOf(Key.Gap(gap)) + keys + Key.Gap(gap) else keys
+        }
+        val side = maxOf(MIN_SIDE_KEY, (width - bottom.size) / 2f)
         return KeyboardLayout(
             listOf(
-                digits,
-                if (gap > 0f) listOf(Key.Gap(gap)) + middle + Key.Gap(gap) else middle,
+                centred(digits),
+                centred(middle),
                 listOf(Key.Shift(side)) + bottom + Key.Backspace(side),
                 bottomRow(Key.LayerSwitch(Layer.SYMBOLS, "?123")),
             )
@@ -86,23 +97,21 @@ object Layouts {
     }
 
     /**
-     * Neighbouring letters for autocorrect on [arrangement]: where its keys are drawn, except
-     * QWERTY, which keeps the grid its corrections were tuned on ([KeyGrid.QWERTY]).
+     * Neighbouring letters for autocorrect on [keyboard]: where its keys are drawn, except
+     * QWERTY rows, which keep the grid their corrections were tuned on ([KeyGrid.QWERTY]).
      */
-    fun keyGrid(arrangement: KeyArrangement): KeyGrid = gridCache.getValue(arrangement)
+    fun keyGrid(keyboard: TypingKeyboard): KeyGrid =
+        if (keyboard.rows == QWERTY_ROWS) KeyGrid.QWERTY else gridCache.getOrPut(keyboard.id) { KeyGrid(letterCentres(keyboard)) }
 
-    private val gridCache: Map<KeyArrangement, KeyGrid> by lazy {
-        KeyArrangement.entries.associateWith {
-            if (it == KeyArrangement.QWERTY) KeyGrid.QWERTY else KeyGrid(letterCentres(it))
-        }
-    }
+    private val gridCache = ConcurrentHashMap<String, KeyGrid>()
 
     /**
-     * Centres of [arrangement]'s letter keys as drawn, per letter row, in key widths of a
-     * ten-key row: rows wider than ten keys (Dvorak's third) are scaled down to fit, as on screen.
+     * Centres of [keyboard]'s letter keys as drawn, per letter row, in key widths of a
+     * ten-key row: rows wider than ten keys (Dvorak's third, Nordic rows) are scaled down to fit,
+     * as on screen.
      */
-    fun letterCentres(arrangement: KeyArrangement): List<List<Pair<Char, Double>>> =
-        lettersCache.getValue(arrangement).rows.take(3).map { row ->
+    fun letterCentres(keyboard: TypingKeyboard): List<List<Pair<Char, Double>>> =
+        letters(keyboard).rows.take(3).map { row ->
             val scale = ROW_KEYS / row.sumOf { it.weight.toDouble() }
             var left = 0.0
             row.mapNotNull { key ->
@@ -112,7 +121,9 @@ object Layouts {
             }
         }
 
-    private fun letterKey(letter: String) = Key.Char(letter, accents = ACCENTS[letter].orEmpty())
+    private fun letterKey(letter: String, keyboard: TypingKeyboard) = Key.Char(letter, accents = accents(letter, keyboard))
+
+    private val QWERTY_ROWS = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
 
     /** Width of Shift and Backspace at least, in keys: as on QWERTY, so they stay easy to hit. */
     private const val MIN_SIDE_KEY = 1.5f

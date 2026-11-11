@@ -72,14 +72,15 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
     fun autocorrection(word: String, terms: List<PersonalTerm>, atSentenceStart: Boolean = true): String? {
         if (terms.any { it.text == word }) return null
         terms.firstOrNull { it.text.equals(word, ignoreCase = true) }?.let { return it.text }
-        if (Corrector.looksLikeAWord(word) && word.length >= 4 && !lexicon().contains(word)) {
+        val lex = lexicon()
+        if (Corrector.looksLikeAWord(word) && word.length >= 4 && !lex.contains(word)) {
             terms.filter { ' ' !in it.text }
-                .map { it.text to Corrector.distance(word.lowercase(), it.text.lowercase(), 1.0, keys) }
+                .map { it.text to Corrector.distance(word.lowercase(), it.text.lowercase(), 1.0, keys, lex.folding) }
                 .filter { it.second <= 1.0 }
                 .minByOrNull { it.second }
                 ?.let { return it.first }
         }
-        return Corrector.autocorrect(word, lexicon(), atSentenceStart, keys)
+        return Corrector.autocorrect(word, lex, atSentenceStart, keys)
     }
 
     /**

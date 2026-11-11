@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Builds the keyboard's word lists from the AOSP LatinIME dictionaries (Apache 2.0).
+"""Builds the keyboard's bundled word lists from the AOSP LatinIME dictionaries (Apache 2.0).
 
-Downloads the pinned `*_wordlist.combined.gz` files, verifies their SHA-256, and writes
-`app/src/main/assets/dict/<locale>.dict` (gzip; not named `.gz` because the Android build unpacks
-`.gz` assets) with one entry per line:
+Reads the language catalog `app/src/main/assets/dict/languages.txt`. For every language marked
+`bundled = true` it downloads the pinned `<id>_wordlist.combined.gz`, verifies its size and SHA-256,
+and writes `app/src/main/assets/dict/<id>.dict` (gzip; not named `.gz` because the Android build
+unpacks `.gz` assets) with one entry per line:
 
     word<TAB>frequency(0-255)
 
@@ -13,9 +14,17 @@ followed by a `#whitelist` section of safe autocorrections:
 
 Offensive and "not a word" entries are dropped from the word list. From the AOSP whitelist only
 contractions (`ill` -> `I'll`) and corrections of non-words (`im` -> `I'm`) are kept; real-word
-swaps such as `hid` -> `his` are left out.
+swaps such as `hid` -> `his` are left out. At most MAX_WORDS words are kept, the most frequent.
 
-Usage: scripts/build-dictionaries.py   (run from the repo root; needs network)
+The lists in TEST_LISTS (Dutch and Polish) are also written to `app/src/test/resources/dict/`, so the
+autocorrect quality tests run on the real lists without shipping them in the APK.
+
+The app converts downloaded (not bundled) languages on the phone with the same rules
+(`AospWordList.kt`); `scripts/test_build_dictionaries.py` and `AospWordListTest` check that both
+give the same output for one fixture.
+
+Usage: scripts/build-dictionaries.py            (run from the repo root; needs network)
+       scripts/build-dictionaries.py --check    (also verify every downloadable language's pin)
 """
 import gzip
 import hashlib
@@ -24,31 +33,55 @@ import os
 import sys
 import urllib.request
 
-COMMIT = "127336e9f29d69607eab55982324b210279ae8c5"
-BASE = f"https://android.googlesource.com/platform/packages/inputmethods/LatinIME/+/{COMMIT}/dictionaries"
-SOURCES = {
-    "en_US": ("en_US_wordlist.combined.gz", "0f78dd455b532be169a23f233227b811fabced4b5bd7fc9c40cc05839793bcbd"),
-    "nl": ("nl_wordlist.combined.gz", "a647ed5fdd846d3240572c9cb10fb8c30880df2ebefea6184a378adb713cd0cd"),
-}
+MAX_WORDS = 250_000
 OUT_DIR = os.path.join("app", "src", "main", "assets", "dict")
-NOTICE = f"""Word lists derived from the Android Open Source Project LatinIME dictionaries
-(platform/packages/inputmethods/LatinIME, commit {COMMIT}).
+TEST_DIR = os.path.join("app", "src", "test", "resources", "dict")
+TEST_LISTS = ("nl", "pl")
+CATALOG = os.path.join(OUT_DIR, "languages.txt")
+NOTICE = """Word lists derived from the Android Open Source Project LatinIME dictionaries
+(platform/packages/inputmethods/LatinIME, commit {commit}).
 
 Copyright (c) 2008, The Android Open Source Project
 Licensed under the Apache License, Version 2.0: https://www.apache.org/licenses/LICENSE-2.0
 
-Changes: converted to word/frequency lists; offensive and non-word entries removed;
-whitelist reduced to contractions and corrections of non-words.
+Bundled in the APK: {bundled}.
+The other languages in languages.txt are downloaded on request from the same commit and converted
+on the phone with the same changes.
+
+Changes: converted to word/frequency lists of at most {max_words} words; offensive and non-word
+entries removed; whitelist reduced to contractions and corrections of non-words.
 """
 
 
-def fetch(name: str, sha256: str) -> bytes:
+def read_catalog(path: str = CATALOG):
+    """Returns (source, [section dicts with an "id" key]) from languages.txt."""
+    source, sections = None, []
+    with open(path, encoding="utf-8") as f:
+        for raw in f:
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("[") and line.endswith("]"):
+                sections.append({"id": line[1:-1].strip()})
+                continue
+            key, _, value = line.partition("=")
+            if sections:
+                sections[-1][key.strip()] = value.strip()
+            elif key.strip() == "source":
+                source = value.strip()
+    if not source or not source.startswith("https://"):
+        sys.exit(f"{path}: no HTTPS source")
+    return source, sections
+
+
+def fetch(source: str, lang: dict) -> bytes:
     import base64
-    with urllib.request.urlopen(f"{BASE}/{name}?format=TEXT", timeout=60) as r:
+    name = f"{lang['id']}_wordlist.combined.gz"
+    with urllib.request.urlopen(f"{source}/{name}?format=TEXT", timeout=60) as r:
         data = base64.b64decode(r.read())
     actual = hashlib.sha256(data).hexdigest()
-    if actual != sha256:
-        sys.exit(f"{name}: SHA-256 mismatch {actual}")
+    if actual != lang["sha256"] or len(data) != int(lang["size"]):
+        sys.exit(f"{name}: expected {lang['size']} bytes, SHA-256 {lang['sha256']}; got {len(data)}, {actual}")
     return data
 
 
@@ -82,22 +115,48 @@ def parse(data: bytes):
     return words, whitelist
 
 
+def render(words: dict, whitelist: dict) -> str:
+    buf = io.StringIO()
+    for word, freq in sorted(words.items(), key=lambda kv: (-kv[1], kv[0]))[:MAX_WORDS]:
+        buf.write(f"{word}\t{freq}\n")
+    buf.write("#whitelist\n")
+    for source, target in sorted(whitelist.items()):
+        buf.write(f"{source}\t{target}\n")
+    return buf.getvalue()
+
+
 def main():
+    check_all = "--check" in sys.argv[1:]
+    source, langs = read_catalog()
     os.makedirs(OUT_DIR, exist_ok=True)
-    for locale, (name, sha256) in SOURCES.items():
-        words, whitelist = parse(fetch(name, sha256))
-        buf = io.StringIO()
-        for word, freq in sorted(words.items(), key=lambda kv: (-kv[1], kv[0])):
-            buf.write(f"{word}\t{freq}\n")
-        buf.write("#whitelist\n")
-        for source, target in sorted(whitelist.items()):
-            buf.write(f"{source}\t{target}\n")
-        path = os.path.join(OUT_DIR, f"{locale}.dict")
+    os.makedirs(TEST_DIR, exist_ok=True)
+    for lang in langs:
+        bundled = lang.get("bundled") == "true"
+        out_dir = OUT_DIR if bundled else TEST_DIR if lang["id"] in TEST_LISTS else None
+        if out_dir is None and not check_all:
+            continue
+        data = fetch(source, lang)
+        if out_dir is None:
+            print(f"{lang['id']}: pin OK ({len(data)} bytes)")
+            continue
+        words, whitelist = parse(data)
+        path = os.path.join(out_dir, f"{lang['id']}.dict")
         with gzip.GzipFile(path, "wb", mtime=0) as f:
-            f.write(buf.getvalue().encode("utf-8"))
+            f.write(render(words, whitelist).encode("utf-8"))
         print(f"{path}: {len(words)} words, {len(whitelist)} whitelist entries, {os.path.getsize(path)} bytes")
+        # Binary files that ship are reviewed for the leak check (see AGENTS.md).
+        print(f"  review it, then: python3 -I scripts/check-leaks.py allow {path}")
     with open(os.path.join(OUT_DIR, "NOTICE"), "w") as f:
-        f.write(NOTICE)
+        f.write(notice(source, langs))
+
+
+def notice(source: str, langs: list) -> str:
+    """The NOTICE for the catalog: the pinned commit and the bundled lists."""
+    return NOTICE.format(
+        commit=source.split("/+/", 1)[1].split("/", 1)[0],
+        bundled=", ".join(l["id"] for l in langs if l.get("bundled") == "true"),
+        max_words=f"{MAX_WORDS:,}",
+    )
 
 
 if __name__ == "__main__":

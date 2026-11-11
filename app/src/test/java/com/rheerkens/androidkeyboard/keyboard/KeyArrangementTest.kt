@@ -5,8 +5,7 @@ import com.rheerkens.androidkeyboard.dictionary.KeyGrid
 import com.rheerkens.androidkeyboard.dictionary.Lexicon
 import com.rheerkens.androidkeyboard.dictionary.Suggester
 import com.rheerkens.androidkeyboard.settings.KeyArrangement
-import com.rheerkens.androidkeyboard.settings.TypingKeyboard
-import com.rheerkens.androidkeyboard.settings.TypingLayout
+import com.rheerkens.androidkeyboard.dictionary.TestLanguages
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -14,8 +13,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class KeyArrangementTest {
+    /** English (US) on [arrangement]: its own layout for QWERTY, else `en_US:<ARRANGEMENT>`. */
+    private fun en(arrangement: KeyArrangement): TypingKeyboard =
+        TestLanguages.keyboard(if (arrangement == KeyArrangement.QWERTY) "en_US" else "en_US:${arrangement.name}")
+
     private fun rowLabels(arrangement: KeyArrangement): List<String> =
-        Layouts.letters(TypingKeyboard(TypingLayout.EN_US, arrangement)).rows.take(3).map { row ->
+        Layouts.letters(en(arrangement)).rows.take(3).map { row ->
             row.filterIsInstance<Key.Char>().joinToString("") { it.label }
         }
 
@@ -43,7 +46,7 @@ class KeyArrangementTest {
     @Test
     fun rowsFillTheWidthLikeQwerty() {
         for (arrangement in KeyArrangement.entries) {
-            val rows = Layouts.letters(TypingKeyboard(TypingLayout.EN_US, arrangement)).rows
+            val rows = Layouts.letters(en(arrangement)).rows
             fun width(row: List<Key>) = row.sumOf { it.weight.toDouble() }.toFloat()
             // Top and middle rows are ten keys wide; centred with gaps when shorter.
             assertEquals(arrangement.name, 10f, width(rows[0]))
@@ -58,29 +61,29 @@ class KeyArrangementTest {
             assertEquals("1234567890", rows[0].joinToString("") { (it as Key.Char).longPressOutput.orEmpty() })
         }
         // QWERTY is unchanged: half-key gaps around a–l, Shift and Backspace one and a half keys.
-        val qwerty = Layouts.letters(TypingKeyboard.DEFAULT).rows
+        val qwerty = Layouts.letters(en(KeyArrangement.QWERTY)).rows
         assertEquals(Key.Gap(0.5f), qwerty[1].first())
         assertEquals(Key.Shift(1.5f), qwerty[2].first())
     }
 
     @Test
     fun letterCentresAreWhereTheKeysAreDrawn() {
-        val azerty = Layouts.letterCentres(KeyArrangement.AZERTY).map { it.toMap() }
+        val azerty = Layouts.letterCentres(en(KeyArrangement.AZERTY)).map { it.toMap() }
         assertEquals(0.5, azerty[0].getValue('a'), 1e-9)
         assertEquals(9.5, azerty[1].getValue('m'), 1e-9)
         // After Shift, one and a half keys wide.
         assertEquals(2.0, azerty[2].getValue('w'), 1e-9)
         // Dvorak's third row is twelve keys wide on screen, squeezed into the same width.
-        val dvorak = Layouts.letterCentres(KeyArrangement.DVORAK)[2].toMap()
+        val dvorak = Layouts.letterCentres(en(KeyArrangement.DVORAK))[2].toMap()
         assertEquals(2.0 * 10 / 12, dvorak.getValue('q'), 1e-9)
         assertEquals(10.0 * 10 / 12, dvorak.getValue('z'), 1e-9)
         // Punctuation keys aren't letters to correct.
-        assertTrue(Layouts.letterCentres(KeyArrangement.COLEMAK)[0].none { it.first == ';' })
+        assertTrue(Layouts.letterCentres(en(KeyArrangement.COLEMAK))[0].none { it.first == ';' })
     }
 
     @Test
     fun accentsFollowTheLetterNotItsPosition() {
-        val azerty = Layouts.letters(TypingKeyboard(TypingLayout.NL_NL, KeyArrangement.AZERTY))
+        val azerty = Layouts.letters(TestLanguages.keyboard("nl:AZERTY"))
             .rows.flatten().filterIsInstance<Key.Char>().associateBy { it.label }
         assertEquals(listOf("1") + Layouts.ACCENTS.getValue("a"), azerty.getValue("a").alternates)
         assertEquals(Layouts.ACCENTS.getValue("e"), azerty.getValue("e").accents)
@@ -90,42 +93,42 @@ class KeyArrangementTest {
     @Test
     fun globeCyclesLanguagesThenArrangements() {
         val enabled = setOf(
-            TypingKeyboard(TypingLayout.NL_NL, KeyArrangement.AZERTY),
-            TypingKeyboard(TypingLayout.EN_US, KeyArrangement.DVORAK),
-            TypingKeyboard(TypingLayout.EN_US),
+            TestLanguages.keyboard("nl:AZERTY"),
+            en(KeyArrangement.DVORAK),
+            en(KeyArrangement.QWERTY),
         )
-        val kc = KeyboardController(TypingKeyboard.DEFAULT)
-        assertEquals(TypingKeyboard(TypingLayout.EN_US, KeyArrangement.DVORAK), kc.cycleKeyboard(enabled))
-        assertEquals(TypingKeyboard(TypingLayout.NL_NL, KeyArrangement.AZERTY), kc.cycleKeyboard(enabled))
-        assertEquals(TypingKeyboard.DEFAULT, kc.cycleKeyboard(enabled))
+        val kc = KeyboardController(en(KeyArrangement.QWERTY))
+        assertEquals(en(KeyArrangement.DVORAK), kc.cycleKeyboard(TypingKeyboard.ordered(enabled)))
+        assertEquals(TestLanguages.keyboard("nl:AZERTY"), kc.cycleKeyboard(TypingKeyboard.ordered(enabled)))
+        assertEquals(en(KeyArrangement.QWERTY), kc.cycleKeyboard(TypingKeyboard.ordered(enabled)))
         // A keyboard switched off meanwhile continues from the start.
-        kc.setKeyboard(TypingKeyboard(TypingLayout.EN_US, KeyArrangement.COLEMAK))
-        assertEquals(TypingKeyboard.DEFAULT, kc.cycleKeyboard(enabled))
+        kc.setKeyboard(en(KeyArrangement.COLEMAK))
+        assertEquals(en(KeyArrangement.QWERTY), kc.cycleKeyboard(TypingKeyboard.ordered(enabled)))
     }
 
     @Test
     fun labelsNameTheArrangementUnlessQwerty() {
-        assertEquals("English (US)", TypingKeyboard.DEFAULT.label)
-        assertEquals("English (US)", TypingKeyboard.DEFAULT.spaceLabel)
-        assertEquals("English (US) · QWERTY", TypingKeyboard.DEFAULT.fullLabel)
-        val nlAzerty = TypingKeyboard(TypingLayout.NL_NL, KeyArrangement.AZERTY)
+        assertEquals("English (US)", en(KeyArrangement.QWERTY).label)
+        assertEquals("English (US)", en(KeyArrangement.QWERTY).spaceLabel)
+        assertEquals("English (US) · QWERTY", en(KeyArrangement.QWERTY).fullLabel)
+        val nlAzerty = TestLanguages.keyboard("nl:AZERTY")
         assertEquals("Nederlands · AZERTY", nlAzerty.label)
         assertEquals("NL · AZERTY", nlAzerty.spaceLabel)
     }
 
     // The grids the app's suggesters use.
-    private fun grid(arrangement: KeyArrangement) = Layouts.keyGrid(arrangement)
+    private fun grid(arrangement: KeyArrangement) = Layouts.keyGrid(en(arrangement))
 
     @Test
     fun appGridsAreQwertysOwnOrTheDrawnKeys() {
-        assertTrue(Layouts.keyGrid(KeyArrangement.QWERTY) === KeyGrid.QWERTY)
+        assertTrue(Layouts.keyGrid(en(KeyArrangement.QWERTY)) === KeyGrid.QWERTY)
         for (arrangement in KeyArrangement.entries - KeyArrangement.QWERTY) {
-            val drawn = KeyGrid(Layouts.letterCentres(arrangement))
+            val drawn = KeyGrid(Layouts.letterCentres(en(arrangement)))
             for (a in 'a'..'z') for (b in 'a'..'z') {
-                assertEquals("${arrangement.name} $a$b", drawn.adjacent(a, b), Layouts.keyGrid(arrangement).adjacent(a, b))
+                assertEquals("${arrangement.name} $a$b", drawn.adjacent(a, b), Layouts.keyGrid(en(arrangement)).adjacent(a, b))
             }
         }
-        assertTrue(Layouts.keyGrid(KeyArrangement.AZERTY).adjacent('m', 'l'))
+        assertTrue(Layouts.keyGrid(en(KeyArrangement.AZERTY)).adjacent('m', 'l'))
     }
 
     @Test
