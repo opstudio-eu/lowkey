@@ -60,6 +60,8 @@ class KeyboardColorsContrastTest {
         text("green", c.green, "pill", c.pill, AA_NON_TEXT)
         text("danger", c.danger, "popup", c.popup, AA_NON_TEXT)
         text("enter", c.enter, "background", c.background, AA_NON_TEXT)
+        // The keyboard chooser marks the current keyboard with an Enter-coloured check on the popup.
+        text("enter", c.enter, "popup", c.popup, AA_NON_TEXT)
         assertTrue("$name keyboard:\n" + failures.joinToString("\n"), failures.isEmpty())
     }
 }
