@@ -22,10 +22,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -38,6 +40,15 @@ import com.rheerkens.androidkeyboard.ui.SlimIcons
 
 /** The enabled keyboards, in globe order, and the one in use. */
 data class KeyboardChoices(val keyboards: List<TypingKeyboard>, val current: TypingKeyboard)
+
+private const val HEADER_DP = 36
+private const val ROW_DP = 48
+private const val FOOTER_DP = 44
+/** Margin around the card (top and bottom) plus its border. */
+private const val CHROME_DP = 18
+
+/** Height that shows [rows] keyboards without scrolling. */
+fun chooserHeightDp(rows: Int): Int = CHROME_DP + HEADER_DP + ROW_DP * rows + FOOTER_DP
 
 /**
  * Keyboard chooser, opened by long-pressing the space bar: every enabled language and layout in
@@ -69,7 +80,7 @@ fun KeyboardChooser(choices: KeyboardChoices, height: Dp, actions: KeyboardActio
                 // Swallow taps on the list background so they don't close the chooser.
                 .clickable(interactionSource = null, indication = null, enabled = true) {},
         ) {
-            Row(Modifier.fillMaxWidth().height(36.dp).padding(start = 14.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().height(HEADER_DP.dp).padding(start = 14.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "Keyboard", color = c.muted, fontSize = 12.sp, fontWeight = FontWeight.Medium,
                     modifier = Modifier.weight(1f).semantics { heading() },
@@ -81,13 +92,19 @@ fun KeyboardChooser(choices: KeyboardChoices, height: Dp, actions: KeyboardActio
                     ) { Icon(SlimIcons.Close, null, tint = c.keyText, modifier = Modifier.size(16.dp)) }
                 }
             }
-            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+            // When the list must scroll, open it at the current keyboard.
+            val scroll = rememberScrollState()
+            val rowPx = with(LocalDensity.current) { ROW_DP.dp.roundToPx() }
+            LaunchedEffect(choices.current) {
+                scroll.scrollTo((choices.keyboards.indexOf(choices.current).coerceAtLeast(0) * rowPx - rowPx).coerceAtLeast(0))
+            }
+            Column(Modifier.weight(1f).verticalScroll(scroll)) {
                 choices.keyboards.forEach { keyboard ->
                     ChoiceRow(keyboard, current = keyboard == choices.current) { actions.onChooseKeyboard(keyboard) }
                 }
             }
             Box(Modifier.fillMaxWidth().height(1.dp).background(c.popupBorder))
-            Row(Modifier.fillMaxWidth().height(44.dp)) {
+            Row(Modifier.fillMaxWidth().height(FOOTER_DP.dp)) {
                 FooterAction("Layouts", SlimIcons.Settings, Modifier.weight(1f), "Choose layouts in Settings", actions::onOpenKeyboardSettings)
                 Box(Modifier.width(1.dp).fillMaxHeight().padding(vertical = 10.dp).background(c.popupBorder))
                 FooterAction("Other keyboards", SlimIcons.Globe, Modifier.weight(1f), "Switch to another keyboard app", actions::onGlobeLongPress)
@@ -101,7 +118,7 @@ private fun ChoiceRow(keyboard: TypingKeyboard, current: Boolean, onTap: () -> U
     val c = LocalKeyboardColors.current
     PressTarget(
         if (current) "${keyboard.fullLabel}, current keyboard" else "Switch to ${keyboard.fullLabel}",
-        Modifier.fillMaxWidth().height(48.dp),
+        Modifier.fillMaxWidth().height(ROW_DP.dp),
         onTap = onTap,
     ) { pressed ->
         Row(
@@ -115,10 +132,11 @@ private fun ChoiceRow(keyboard: TypingKeyboard, current: Boolean, onTap: () -> U
             Text(
                 keyboard.language.label,
                 color = c.keyText, fontSize = 15.sp, fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal,
-                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.width(10.dp))
-            Text(keyboard.arrangement.label, color = c.muted, fontSize = 13.sp, maxLines = 1, modifier = Modifier.weight(1f))
+            Text(keyboard.arrangement.label, color = c.muted, fontSize = 13.sp, maxLines = 1)
+            Spacer(Modifier.weight(1f))
             Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
                 if (current) Icon(SlimIcons.Check, null, tint = c.enter, modifier = Modifier.size(18.dp))
             }

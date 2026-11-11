@@ -21,6 +21,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import com.rheerkens.androidkeyboard.keyboard.KeyboardLayout
 import com.rheerkens.androidkeyboard.keyboard.KeyboardState
@@ -94,7 +95,10 @@ fun KeyboardRoot(state: KeyboardUiState, clock: () -> Long, actions: KeyboardAct
                     }
                     val choices = state.keyboardChoices
                     if (choices != null) {
-                        KeyboardChooser(choices, (4 * state.rowHeightDp + 4).dp, actions)
+                        // Grow upward to show every enabled keyboard, up to about half the screen.
+                        val keysHeight = 4 * state.rowHeightDp + 4
+                        val cap = maxOf(keysHeight, (LocalConfiguration.current.screenHeightDp * 0.55f).toInt())
+                        KeyboardChooser(choices, chooserHeightDp(choices.keyboards.size).coerceIn(keysHeight, cap).dp, actions)
                     } else {
                         KeysPanel(state.layout, state.keyboard, state.rowHeightDp, state.enterKind, actions)
                     }
