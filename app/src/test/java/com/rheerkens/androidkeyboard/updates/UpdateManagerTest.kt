@@ -43,6 +43,8 @@ class UpdateManagerTest {
             onBytes(update.sizeBytes)
         }
         override fun install(apk: File, update: AvailableUpdate) { installs += apk }
+        var keptRunning = 0
+        override fun keepRunning() { keptRunning++ }
         override fun notifyAvailable(update: AvailableUpdate): Boolean { notified += update.versionCode; return true }
     }
 
@@ -133,12 +135,20 @@ class UpdateManagerTest {
         val m = manager(platform, dir = dir)
         m.check(userStarted = true)
         m.startUpdate()
+        // The process is kept running while the update downloads, also outside the app.
+        assertTrue(m.working.value)
+        assertEquals(1, platform.keptRunning)
         advanceUntilIdle()
+        assertFalse(m.working.value)
         assertEquals(UpdateStatus.Installing(update(42)), m.state.value.status)
         assertEquals(listOf(File(dir, "lowkey-0.5.42.apk")), platform.installs)
         assertFalse(File(dir, "lowkey-0.5.42.apk.part").exists())
 
-        // Dismissing Android's dialog returns to Available; updating again reuses the download.
+        // Android asks to confirm; dismissing its dialog returns to Available, and updating again
+        // reuses the download.
+        m.onConfirmationNeeded()
+        assertEquals(UpdateStatus.AwaitingConfirmation(update(42)), m.state.value.status)
+        assertEquals(update(42), m.state.value.update)
         m.onInstallResult(InstallResult.Cancelled)
         assertEquals(UpdateStatus.Available(update(42)), m.state.value.status)
         m.startUpdate()
@@ -157,6 +167,7 @@ class UpdateManagerTest {
         advanceUntilIdle()
         val status = m.state.value.status as UpdateStatus.Failed
         assertEquals(update(42), status.update)
+        assertFalse(m.working.value)
         assertTrue(platform.installs.isEmpty())
         assertTrue(dir.listFiles().isNullOrEmpty())
     }

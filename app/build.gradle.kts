@@ -103,14 +103,17 @@ android {
         minSdk = 28
         targetSdk = 37
         testInstrumentationRunner = "com.rheerkens.androidkeyboard.test.KeyboardTouchProbe"
-        versionCode = 43
-        versionName = "0.5.2"
+        versionCode = 44
+        versionName = "0.5.3"
 
         // The release feed the in-app updater reads. -PupdateFeedUrl=https://… points a test build elsewhere.
         val updateFeedUrl = providers.gradleProperty("updateFeedUrl")
             .getOrElse("https://github.com/opstudio-eu/lowkey/releases/latest/download/update.properties")
         require(updateFeedUrl.startsWith("https://") && '"' !in updateFeedUrl) { "updateFeedUrl must be an HTTPS URL" }
         buildConfigField("String", "UPDATE_FEED_URL", "\"$updateFeedUrl\"")
+        // -PupdateRequireUserAction=true makes Android ask to confirm every update, as some phones always do.
+        val updateRequireUserAction = providers.gradleProperty("updateRequireUserAction").getOrElse("false").toBoolean()
+        buildConfigField("boolean", "UPDATE_REQUIRE_USER_ACTION", "$updateRequireUserAction")
 
         ndk {
             // Phones (arm64) and the x86_64 emulator; drops 32-bit ARM to keep the APK smaller.

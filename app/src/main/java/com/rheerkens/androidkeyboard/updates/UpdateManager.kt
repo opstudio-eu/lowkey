@@ -21,6 +21,8 @@ sealed interface UpdateStatus {
     data class Downloading(val update: AvailableUpdate, val bytes: Long) : UpdateStatus
     /** The APK was handed to Android's installer; it may be waiting for the user to confirm. */
     data class Installing(val update: AvailableUpdate) : UpdateStatus
+    /** Android's installer waits for the user to confirm; the card offers to open it. */
+    data class AwaitingConfirmation(val update: AvailableUpdate) : UpdateStatus
     data class Failed(val message: String, val update: AvailableUpdate?) : UpdateStatus
 }
 
@@ -31,6 +33,7 @@ data class UpdateState(val status: UpdateStatus = UpdateStatus.Idle, val lastChe
             is UpdateStatus.Available -> status.update
             is UpdateStatus.Downloading -> status.update
             is UpdateStatus.Installing -> status.update
+            is UpdateStatus.AwaitingConfirmation -> status.update
             is UpdateStatus.Failed -> status.update
             else -> null
         }
@@ -59,6 +62,9 @@ interface UpdatePlatform {
     /** Starts Android's package installer for [apk]; the result arrives in [UpdateManager.onInstallResult]. */
     fun install(apk: File, update: AvailableUpdate)
 
+    /** Keeps the process running while [UpdateManager.working], also when the user leaves the app. */
+    fun keepRunning()
+
     /** Shows the "update available" notification, if notifications are allowed. Returns whether it was shown. */
     fun notifyAvailable(update: AvailableUpdate): Boolean
 }
@@ -75,6 +81,11 @@ class UpdateManager(
 ) {
     private val _state = MutableStateFlow(initialState())
     val state: StateFlow<UpdateState> = _state.asStateFlow()
+
+    private val _working = MutableStateFlow(false)
+
+    /** True from Update until the APK is handed to Android's installer, or the download fails. */
+    val working: StateFlow<Boolean> = _working.asStateFlow()
 
     private val checkLock = Mutex()
     private var downloadJob: Job? = null
@@ -105,7 +116,11 @@ class UpdateManager(
     suspend fun check(userStarted: Boolean, notify: Boolean = !userStarted) {
         checkLock.withLock {
             val before = _state.value
-            if (before.status is UpdateStatus.Downloading || before.status is UpdateStatus.Installing) return
+            if (before.status is UpdateStatus.Downloading || before.status is UpdateStatus.Installing ||
+                before.status is UpdateStatus.AwaitingConfirmation
+            ) {
+                return
+            }
             if (userStarted) _state.value = before.copy(status = UpdateStatus.Checking)
             val result = runCatching { platform.fetchFeed()?.let(AvailableUpdate::parse) }
             result.exceptionOrNull()?.let { if (it is CancellationException) throw it }
@@ -137,6 +152,7 @@ class UpdateManager(
         val update = _state.value.update ?: return
         if (downloadJob?.isActive == true) return
         _state.value = _state.value.copy(status = UpdateStatus.Downloading(update, 0))
+        _working.value = true
         downloadJob = scope.launch {
             try {
                 downloadDir.mkdirs()
@@ -157,12 +173,21 @@ class UpdateManager(
             } catch (e: Exception) {
                 downloadDir.listFiles()?.forEach { it.delete() }
                 _state.value = _state.value.copy(status = UpdateStatus.Failed(downloadFailure(e), update))
+            } finally {
+                _working.value = false
             }
         }
+        platform.keepRunning()
     }
 
     fun cancelDownload() {
         downloadJob?.cancel()
+    }
+
+    /** Android's installer waits for the user to confirm the update. */
+    fun onConfirmationNeeded() {
+        val update = _state.value.update ?: return
+        _state.value = _state.value.copy(status = UpdateStatus.AwaitingConfirmation(update))
     }
 
     /** Android's installer finished without replacing the app (success ends this process instead). */
