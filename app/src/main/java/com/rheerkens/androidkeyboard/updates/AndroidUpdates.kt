@@ -23,6 +23,7 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -397,11 +398,15 @@ class UpdateDownloadService : Service() {
         if (job == null) {
             job = AppGraph.appScope.launch {
                 val shown = launch {
-                    var lastMb = -1L
+                    // At most once a second: Android drops a notification updated much more often.
+                    var downloading = true
+                    var postedAt = 0L
                     AppGraph.updates.state.collect { state ->
-                        val mb = (state.status as? UpdateStatus.Downloading)?.bytes?.div(MB) ?: -2L
-                        if (mb != lastMb) {
-                            lastMb = mb
+                        val now = SystemClock.elapsedRealtime()
+                        val isDownloading = state.status is UpdateStatus.Downloading
+                        if (isDownloading != downloading || now - postedAt >= 1_000) {
+                            downloading = isDownloading
+                            postedAt = now
                             runCatching { manager?.notify(Updates.PROGRESS_NOTIFICATION_ID, progress(state)) }
                         }
                     }
