@@ -15,6 +15,7 @@ import com.rheerkens.androidkeyboard.dictionary.KeyboardLanguage
 import com.rheerkens.androidkeyboard.dictionary.LanguageCatalog
 import com.rheerkens.androidkeyboard.dictionary.LanguagePackStore
 import com.rheerkens.androidkeyboard.dictionary.Lexicon
+import com.rheerkens.androidkeyboard.dictionary.LexiconCache
 import com.rheerkens.androidkeyboard.dictionary.Suggester
 import com.rheerkens.androidkeyboard.keyboard.Layouts
 import com.rheerkens.androidkeyboard.models.DiskModelStore
@@ -75,19 +76,22 @@ object AppGraph {
 
     val appScope: CoroutineScope = MainScope()
 
+    /** Counts published word lists, so cached results computed on a fallback list can be redone. */
+    val lexiconLoads = kotlinx.coroutines.flow.MutableStateFlow(0)
+
     /**
-     * AOSP word lists by language id, loaded in the background on first use. Only the most
-     * recently used [MAX_LOADED_LEXICONS] stay in memory; each holds about 200,000 words.
+     * AOSP word lists, built one at a time on their own thread and kept for the
+     * [MAX_LOADED_LEXICONS] languages used most recently (see [LexiconCache]).
      */
-    private val lexicons = object : LinkedHashMap<String, Lexicon>(4, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Lexicon>?) = size > MAX_LOADED_LEXICONS
-    }
-    private val loading = ConcurrentHashMap.newKeySet<String>()
-    /**
-     * Bumped when a language's word list is deleted or replaced, so a load that started before
-     * never publishes the old list. Guarded by [lexicons].
-     */
-    private val generations = HashMap<String, Int>()
+    private val lexicons = LexiconCache(
+        capacity = MAX_LOADED_LEXICONS,
+        execute = run {
+            val loader = Dispatchers.IO.limitedParallelism(1)
+            ({ job: Runnable -> appScope.launch(loader) { job.run() } })
+        },
+        build = ::buildLexicon,
+        onPublished = { lexiconLoads.value++ },
+    )
     /** Small built-in lists used while a language's full list loads. */
     private val fallbackLexicons = ConcurrentHashMap<String, Lexicon>()
     private lateinit var assets: AssetManager
@@ -228,7 +232,7 @@ object AppGraph {
 
     /** The language's full word list, or a small built-in list while it loads. */
     fun lexicon(language: KeyboardLanguage): Lexicon {
-        synchronized(lexicons) { lexicons[language.id] }?.let { return it }
+        lexicons.get(language.id)?.let { return it }
         preloadLexicon(language)
         return fallbackLexicons.getOrPut(language.id) {
             val words = when (language.id) {
@@ -241,48 +245,19 @@ object AppGraph {
     }
 
     /** Drops a loaded word list and makes any load in progress discard its result. */
-    private fun invalidateLexicon(id: String) = synchronized(lexicons) {
-        lexicons.remove(id)
-        generations[id] = (generations[id] ?: 0) + 1
-    }
+    private fun invalidateLexicon(id: String) = lexicons.invalidate(id)
 
-    /** Counts published word lists, so cached results computed on a fallback list can be redone. */
-    val lexiconLoads = kotlinx.coroutines.flow.MutableStateFlow(0)
-
-    /**
-     * Builds word lists one at a time: a list being built holds its 200,000-odd words twice, so
-     * several at once (cycling quickly through many languages) could exhaust the heap.
-     */
-    private val lexiconLoader = Dispatchers.IO.limitedParallelism(1)
-
-    /** The languages asked for most recently, newest last; a queued load of another is skipped. Guarded by [lexicons]. */
-    private val wantedLexicons = ArrayDeque<String>()
-
+    /** Asks for [language]'s full list: the most recently asked-for ones are built and kept. */
     fun preloadLexicon(language: KeyboardLanguage) {
         // A downloaded list that isn't (or no longer) on the phone has nothing to load.
-        if (!languagePacks.isInstalled(language)) return
-        synchronized(lexicons) {
-            wantedLexicons.remove(language.id)
-            wantedLexicons.addLast(language.id)
-            while (wantedLexicons.size > MAX_LOADED_LEXICONS) wantedLexicons.removeFirst()
-        }
-        if (synchronized(lexicons) { lexicons.containsKey(language.id) } || !loading.add(language.id)) return
-        val generation = synchronized(lexicons) { generations[language.id] ?: 0 }
-        appScope.launch(lexiconLoader) {
-            try {
-                // Passed over while queued behind other loads: it would only push a wanted list out.
-                if (synchronized(lexicons) { language.id !in wantedLexicons }) return@launch
-                load(language, generation)
-            } finally {
-                loading.remove(language.id)
-            }
-        }
+        if (languagePacks.isInstalled(language)) lexicons.preload(language)
     }
 
-    private fun load(language: KeyboardLanguage, generation: Int) {
+    /** Builds [language]'s full list on the loader thread, or null if it can't be read. */
+    private fun buildLexicon(language: KeyboardLanguage): Lexicon? {
         val name = language.dictionaryFile
         val started = android.os.SystemClock.elapsedRealtime()
-        runCatching {
+        return runCatching {
             val input = if (language.bundled) assets.open("dict/$name") else languagePacks.file(language).inputStream()
             val base = input.use { Lexicon.parseGzip(it, language.folding, language.rules) }
             // Tech/chat words (and, outside English, the English basics people mix in) count as known.
@@ -293,13 +268,9 @@ object AppGraph {
                 Corrector.corrections("keyboard", it)
             }
         }.onSuccess {
-            val current = synchronized(lexicons) {
-                ((generations[language.id] ?: 0) == generation).also { fresh -> if (fresh) lexicons[language.id] = it }
-            }
-            if (current) lexiconLoads.value++
             val ms = android.os.SystemClock.elapsedRealtime() - started
-            Log.i(TAG, if (current) "Loaded $name: ${it.size} words in $ms ms" else "Discarded $name: deleted or replaced while loading")
-        }.onFailure { Log.e(TAG, "Failed to load $name", it) }
+            Log.i(TAG, "Built $name: ${it.size} words in $ms ms")
+        }.onFailure { Log.e(TAG, "Failed to load $name", it) }.getOrNull()
     }
 
     /** Key of the model the next capture would load (see `LoadableModel.key`), or null. */
