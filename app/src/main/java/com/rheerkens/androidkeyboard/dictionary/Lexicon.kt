@@ -128,7 +128,7 @@ class Lexicon private constructor(
      * The accented spelling to use for [typed], a known word typed without accents, when that
      * spelling is at least [SpellingRules.accentMargin] more frequent (`juz` → `już`), or null.
      * Off unless the language enables it: in Spanish or Italian the plain form is often a
-     * different everyday word (`esta`, `trovo`).
+     * different everyday word (`presento`, `trovo`).
      */
     fun accentRestoration(typed: String): String? {
         val accentMargin = rules.accentMargin
