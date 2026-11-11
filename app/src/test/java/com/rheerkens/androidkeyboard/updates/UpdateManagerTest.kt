@@ -45,6 +45,8 @@ class UpdateManagerTest {
          * the real fetcher, whose closed connection throws before the coroutine notices.
          */
         var downloadGate: CompletableDeferred<Unit>? = null
+        /** Runs when the download has finished, before it returns. */
+        var afterDownload: () -> Unit = {}
         override suspend fun download(update: AvailableUpdate, target: File, onBytes: (Long) -> Unit) {
             downloads++
             try {
@@ -55,6 +57,7 @@ class UpdateManagerTest {
             if (downloadFails) throw ChecksumMismatchException("bad")
             target.writeBytes(ByteArray(update.sizeBytes.toInt()))
             onBytes(update.sizeBytes)
+            afterDownload()
         }
         val installedOnIo = mutableListOf<Boolean>()
         override fun install(apk: File, update: AvailableUpdate) {
@@ -223,6 +226,28 @@ class UpdateManagerTest {
         assertEquals(UpdateStatus.Available(update(42)), m.state.value.status)
         assertTrue(platform.installs.isEmpty())
         assertFalse(File(dir, "lowkey-0.5.42.apk").exists())
+        // The partial download doesn't stay behind in the cache.
+        assertFalse(File(dir, "lowkey-0.5.42.apk.part").exists())
+    }
+
+    @Test
+    fun aCancelAsTheDownloadFinishesDoesNotOpenTheInstaller() = runTest {
+        val platform = FakePlatform().apply { feed = { update(42).toProperties() } }
+        val dir = tempDir()
+        val m = manager(platform, dir = dir)
+        m.check(userStarted = true)
+        platform.afterDownload = { m.cancelDownload() }
+        m.startUpdate()
+        advanceUntilIdle()
+        assertTrue(platform.installs.isEmpty())
+        assertFalse(m.working.value)
+        assertEquals(UpdateStatus.Available(update(42)), m.state.value.status)
+        // The complete download is kept, so updating again doesn't download it twice.
+        platform.afterDownload = {}
+        m.startUpdate()
+        advanceUntilIdle()
+        assertEquals(1, platform.downloads)
+        assertEquals(1, platform.installs.size)
     }
 
     @Test

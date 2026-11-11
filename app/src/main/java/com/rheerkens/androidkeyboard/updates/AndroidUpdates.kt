@@ -129,9 +129,14 @@ object Updates {
     @Volatile
     var confirmIntent: Intent? = null
 
-    /** The session whose result counts; results of an earlier, abandoned session are ignored. */
+    /**
+     * The session whose result counts; results of an earlier, abandoned session are ignored.
+     * [NO_SESSION] (after a restart) accepts any result; [STARTING_SESSION] accepts none.
+     */
     @Volatile
-    var currentSessionId: Int = -1
+    var currentSessionId: Int = NO_SESSION
+    const val NO_SESSION = -1
+    const val STARTING_SESSION = -2
 
     private val resumedActivities = AtomicInteger()
 
@@ -264,8 +269,10 @@ private class AndroidUpdatePlatform(private val context: Context) : UpdatePlatfo
         val installer = context.packageManager.packageInstaller
         // An earlier session (Install again, or one left by a process that was killed while Android
         // waited for confirmation) still holds a staged copy of the APK: drop it.
+        // Until the new session exists, ignore the results of the ones abandoned here.
+        Updates.currentSessionId = Updates.STARTING_SESSION
         installer.mySessions.forEach { runCatching { installer.abandonSession(it.sessionId) } }
-        Updates.confirmIntent = null
+        Updates.clearConfirmation(context)
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
             setAppPackageName(context.packageName)
             setSize(apk.length())
@@ -354,11 +361,12 @@ class UpdateInstallReceiver : BroadcastReceiver() {
         val sessionId = intent.getIntExtra(PackageInstaller.EXTRA_SESSION_ID, -1)
         Log.i(TAG, "Installer status $status ($detail) for session $sessionId, app visible: ${Updates.appVisible}")
         val current = Updates.currentSessionId
-        if (current != -1 && sessionId != -1 && sessionId != current) return // An abandoned, earlier session.
+        if (current != Updates.NO_SESSION && sessionId != current) return // An abandoned, earlier session.
         when (status) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
                 val confirm = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_INTENT, Intent::class.java)
                 if (confirm == null) {
+                    Updates.clearConfirmation(context)
                     AppGraph.updates.onInstallResult(InstallResult.Failed("Android's installer didn't open. Try again."))
                     return
                 }
@@ -426,12 +434,16 @@ class UpdateDownloadService : Service() {
             job = AppGraph.appScope.launch {
                 val shown = launch {
                     // At most once a second: Android drops a notification updated much more often.
+                    // Android 14+ lets the user swipe it away; don't bring it back during the download.
                     var downloading = true
                     var postedAt = 0L
                     AppGraph.updates.state.collect { state ->
                         val now = SystemClock.elapsedRealtime()
                         val isDownloading = state.status is UpdateStatus.Downloading
-                        if (isDownloading != downloading || now - postedAt >= 1_000) {
+                        val dismissed = isDownloading && downloading && manager != null &&
+                            runCatching { manager.activeNotifications.none { it.id == Updates.PROGRESS_NOTIFICATION_ID } }
+                                .getOrDefault(false)
+                        if (isDownloading != downloading || (now - postedAt >= 1_000 && !dismissed)) {
                             downloading = isDownloading
                             postedAt = now
                             runCatching { manager?.notify(Updates.PROGRESS_NOTIFICATION_ID, progress(state)) }

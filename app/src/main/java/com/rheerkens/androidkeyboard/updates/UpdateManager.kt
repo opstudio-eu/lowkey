@@ -3,11 +3,13 @@ package com.rheerkens.androidkeyboard.updates
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -156,9 +158,11 @@ class UpdateManager(
     fun startUpdate() {
         val update = _state.value.update ?: return
         if (downloadJob?.isActive == true) return
-        _state.value = _state.value.copy(status = UpdateStatus.Downloading(update, 0))
+        _state.update { it.copy(status = UpdateStatus.Downloading(update, 0)) }
         _working.value = true
-        val job = scope.launch(io) {
+        var committed = false
+        // Lazy, so it is the current job before it can run or complete.
+        val job = scope.launch(io, start = CoroutineStart.LAZY) {
             try {
                 downloadDir.mkdirs()
                 val apk = File(downloadDir, update.fileName)
@@ -166,12 +170,15 @@ class UpdateManager(
                     downloadDir.listFiles()?.forEach { it.delete() }
                     val part = File(downloadDir, update.fileName + ".part")
                     platform.download(update, part) { total ->
-                        _state.value = _state.value.copy(status = UpdateStatus.Downloading(update, total))
+                        _state.update { it.copy(status = UpdateStatus.Downloading(update, total)) }
                     }
                     check(part.renameTo(apk)) { "Could not save the download." }
                 }
-                _state.value = _state.value.copy(status = UpdateStatus.Installing(update))
+                // A Cancel tapped as the download finished must not still open the installer.
+                ensureActive()
+                _state.update { it.copy(status = UpdateStatus.Installing(update)) }
                 platform.install(apk, update)
+                committed = true
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -179,17 +186,25 @@ class UpdateManager(
                 // coroutine notices: that is the cancel, not a failed download.
                 ensureActive()
                 downloadDir.listFiles()?.forEach { it.delete() }
-                _state.value = _state.value.copy(status = UpdateStatus.Failed(downloadFailure(e), update))
+                _state.update { it.copy(status = UpdateStatus.Failed(downloadFailure(e), update)) }
             }
         }
-        // Runs however the job ends, also when it was cancelled before it started.
+        downloadJob = job
+        // Runs however the job ends, also when it was cancelled before it started. A newer job
+        // (Update tapped again while this one was finishing) owns the state from then on.
         job.invokeOnCompletion { cause ->
-            if (cause is CancellationException && _state.value.status is UpdateStatus.Downloading) {
-                _state.value = _state.value.copy(status = UpdateStatus.Available(update))
+            if (downloadJob !== job) return@invokeOnCompletion
+            if (cause is CancellationException && !committed) {
+                downloadDir.listFiles { f -> f.name.endsWith(".part") }?.forEach { it.delete() }
+                _state.update { state ->
+                    val s = state.status
+                    if (s is UpdateStatus.Downloading || s is UpdateStatus.Installing) state.copy(status = UpdateStatus.Available(update))
+                    else state
+                }
             }
             _working.value = false
         }
-        downloadJob = job
+        job.start()
         platform.keepRunning()
     }
 
@@ -199,19 +214,23 @@ class UpdateManager(
 
     /** Android's installer waits for the user to confirm the update. */
     fun onConfirmationNeeded() {
-        val update = _state.value.update ?: return
-        _state.value = _state.value.copy(status = UpdateStatus.AwaitingConfirmation(update))
+        _state.update { state ->
+            val update = state.update ?: return@update state
+            state.copy(status = UpdateStatus.AwaitingConfirmation(update))
+        }
     }
 
     /** Android's installer finished without replacing the app (success ends this process instead). */
     fun onInstallResult(result: InstallResult) {
-        val update = _state.value.update ?: return
-        _state.value = _state.value.copy(
-            status = when (result) {
-                InstallResult.Cancelled -> UpdateStatus.Available(update)
-                is InstallResult.Failed -> UpdateStatus.Failed(result.message, update)
-            },
-        )
+        _state.update { state ->
+            val update = state.update ?: return@update state
+            state.copy(
+                status = when (result) {
+                    InstallResult.Cancelled -> UpdateStatus.Available(update)
+                    is InstallResult.Failed -> UpdateStatus.Failed(result.message, update)
+                },
+            )
+        }
     }
 
     private fun checkFailure(error: Throwable): String = when (error) {
