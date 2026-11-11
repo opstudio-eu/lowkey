@@ -231,6 +231,28 @@ class UpdateManagerTest {
     }
 
     @Test
+    fun updatingAgainRightAfterCancelKeepsTheNewDownloadRunning() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val platform = FakePlatform().apply { feed = { update(42).toProperties() }; downloadGate = gate }
+        val m = manager(platform)
+        m.check(userStarted = true)
+        m.startUpdate()
+        advanceUntilIdle()
+        // Update again before the cancelled job's cleanup has run: that cleanup must leave the
+        // new download alone.
+        m.cancelDownload()
+        m.startUpdate()
+        advanceUntilIdle()
+        assertEquals(2, platform.downloads)
+        assertTrue(m.working.value)
+        assertTrue(m.state.value.status is UpdateStatus.Downloading)
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertFalse(m.working.value)
+        assertEquals(1, platform.installs.size)
+    }
+
+    @Test
     fun aCancelAsTheDownloadFinishesDoesNotOpenTheInstaller() = runTest {
         val platform = FakePlatform().apply { feed = { update(42).toProperties() } }
         val dir = tempDir()

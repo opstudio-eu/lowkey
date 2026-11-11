@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
@@ -190,19 +191,23 @@ class UpdateManager(
             }
         }
         downloadJob = job
-        // Runs however the job ends, also when it was cancelled before it started. A newer job
-        // (Update tapped again while this one was finishing) owns the state from then on.
+        // Runs however the job ends, also when it was cancelled before it started. The bookkeeping
+        // runs in [scope] (the main thread in the app), like startUpdate, so a new Update tap can't
+        // slip in between its check and its writes; a newer job owns the state from then on.
         job.invokeOnCompletion { cause ->
-            if (downloadJob !== job) return@invokeOnCompletion
-            if (cause is CancellationException && !committed) {
-                downloadDir.listFiles { f -> f.name.endsWith(".part") }?.forEach { it.delete() }
-                _state.update { state ->
-                    val s = state.status
-                    if (s is UpdateStatus.Downloading || s is UpdateStatus.Installing) state.copy(status = UpdateStatus.Available(update))
-                    else state
+            scope.launch {
+                if (downloadJob !== job) return@launch
+                if (cause is CancellationException && !committed) {
+                    withContext(io) { downloadDir.listFiles { f -> f.name.endsWith(".part") }?.forEach { it.delete() } }
+                    if (downloadJob !== job) return@launch
+                    _state.update { state ->
+                        val s = state.status
+                        if (s is UpdateStatus.Downloading || s is UpdateStatus.Installing) state.copy(status = UpdateStatus.Available(update))
+                        else state
+                    }
                 }
+                _working.value = false
             }
-            _working.value = false
         }
         job.start()
         platform.keepRunning()
