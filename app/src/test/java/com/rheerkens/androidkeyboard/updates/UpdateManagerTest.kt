@@ -3,6 +3,7 @@ package com.rheerkens.androidkeyboard.updates
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -39,7 +40,12 @@ class UpdateManagerTest {
 
         override fun installedVersionCode() = installed
         override fun now() = now
-        override suspend fun fetchFeed(): String? = feed()
+        /** When set, fetching the feed waits for it. */
+        var feedDelay: CompletableDeferred<Unit>? = null
+        override suspend fun fetchFeed(): String? {
+            feedDelay?.await()
+            return feed()
+        }
         /**
          * When set, the download waits for it, as a slow one would. Cancelling it then fails like
          * the real fetcher, whose closed connection throws before the coroutine notices.
@@ -60,7 +66,10 @@ class UpdateManagerTest {
             afterDownload()
         }
         val installedOnIo = mutableListOf<Boolean>()
+        /** Runs while the APK is handed to the installer. */
+        var onInstall: () -> Unit = {}
         override fun install(apk: File, update: AvailableUpdate) {
+            onInstall()
             installs += apk
             installedOnIo += onIo.get()
         }
@@ -238,9 +247,14 @@ class UpdateManagerTest {
         m.check(userStarted = true)
         m.startUpdate()
         advanceUntilIdle()
-        // Update again before the cancelled job's cleanup has run: that cleanup must leave the
-        // new download alone.
+        // Update again while the cancelled job is still finishing: it is ignored until that job,
+        // and its cleanup of the partial file, are done; then a new download starts and runs.
         m.cancelDownload()
+        m.startUpdate()
+        advanceUntilIdle()
+        assertEquals(1, platform.downloads)
+        assertFalse(m.working.value)
+        assertEquals(UpdateStatus.Available(update(42)), m.state.value.status)
         m.startUpdate()
         advanceUntilIdle()
         assertEquals(2, platform.downloads)
@@ -250,6 +264,41 @@ class UpdateManagerTest {
         advanceUntilIdle()
         assertFalse(m.working.value)
         assertEquals(1, platform.installs.size)
+    }
+
+    @Test
+    fun aCancelOnceTheInstallerHasTheApkLeavesItInstalling() = runTest {
+        val platform = FakePlatform().apply { feed = { update(42).toProperties() } }
+        val m = manager(platform)
+        m.check(userStarted = true)
+        platform.onInstall = { m.cancelDownload() }
+        m.startUpdate()
+        advanceUntilIdle()
+        // Android's installer has the APK: the result arrives through the receiver.
+        assertEquals(1, platform.installs.size)
+        assertEquals(UpdateStatus.Installing(update(42)), m.state.value.status)
+        assertFalse(m.working.value)
+    }
+
+    @Test
+    fun aCheckWaitingForTheFeedDoesNotOverwriteAStartedUpdate() = runTest {
+        val feedGate = CompletableDeferred<Unit>()
+        val platform = FakePlatform().apply { feed = { update(42).toProperties() }; downloadGate = CompletableDeferred() }
+        val m = manager(platform)
+        m.check(userStarted = true)
+        // A background check is waiting for the feed while the user taps Update.
+        platform.feedDelay = feedGate
+        val check = launch { m.check(userStarted = false) }
+        advanceUntilIdle()
+        m.startUpdate()
+        advanceUntilIdle()
+        feedGate.complete(Unit)
+        advanceUntilIdle()
+        check.join()
+        assertTrue(m.state.value.status is UpdateStatus.Downloading)
+        platform.downloadGate!!.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(UpdateStatus.Installing(update(42)), m.state.value.status)
     }
 
     @Test

@@ -11,8 +11,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
@@ -124,41 +124,44 @@ class UpdateManager(
     suspend fun check(userStarted: Boolean, notify: Boolean = !userStarted) {
         checkLock.withLock {
             val before = _state.value
-            if (before.status is UpdateStatus.Downloading || before.status is UpdateStatus.Installing ||
-                before.status is UpdateStatus.AwaitingConfirmation
-            ) {
-                return
-            }
-            if (userStarted) _state.value = before.copy(status = UpdateStatus.Checking)
+            if (inProgress(before.status)) return
+            if (userStarted) setUnlessInProgress(before.copy(status = UpdateStatus.Checking))
             val result = runCatching { platform.fetchFeed()?.let(AvailableUpdate::parse) }
             result.exceptionOrNull()?.let { if (it is CancellationException) throw it }
             val now = platform.now()
             val feed = result.getOrElse { error ->
-                _state.value = if (userStarted) {
-                    before.copy(status = UpdateStatus.Failed(checkFailure(error), before.update))
-                } else {
-                    before
-                }
+                setUnlessInProgress(
+                    if (userStarted) before.copy(status = UpdateStatus.Failed(checkFailure(error), before.update)) else before,
+                )
                 return
             }
             prefs.lastCheckedAt = now
             val newer = feed?.takeIf { it.versionCode > platform.installedVersionCode() }
             prefs.available = newer
             if (newer == null) {
-                _state.value = UpdateState(UpdateStatus.UpToDate, now)
+                setUnlessInProgress(UpdateState(UpdateStatus.UpToDate, now))
                 return
             }
-            _state.value = UpdateState(UpdateStatus.Available(newer), now)
+            setUnlessInProgress(UpdateState(UpdateStatus.Available(newer), now))
             if (notify && prefs.notifiedVersionCode != newer.versionCode && platform.notifyAvailable(newer)) {
                 prefs.notifiedVersionCode = newer.versionCode
             }
         }
     }
 
+    private fun inProgress(status: UpdateStatus) = status is UpdateStatus.Downloading ||
+        status is UpdateStatus.Installing || status is UpdateStatus.AwaitingConfirmation
+
+    /** A check that was waiting for the feed must not overwrite an update the user started meanwhile. */
+    private fun setUnlessInProgress(next: UpdateState) {
+        _state.update { current -> if (inProgress(current.status)) current else next }
+    }
+
     /** Downloads the known update, verifies it, and hands it to Android's installer. */
     fun startUpdate() {
         val update = _state.value.update ?: return
-        if (downloadJob?.isActive == true) return
+        // Also while a cancelled job is still finishing: it may still be cleaning up its files.
+        if (downloadJob?.isCompleted == false) return
         _state.update { it.copy(status = UpdateStatus.Downloading(update, 0)) }
         _working.value = true
         var committed = false
@@ -180,12 +183,14 @@ class UpdateManager(
                 _state.update { it.copy(status = UpdateStatus.Installing(update)) }
                 platform.install(apk, update)
                 committed = true
-            } catch (e: CancellationException) {
-                throw e
             } catch (e: Exception) {
                 // Cancelling closes the connection, so the read fails ("Socket closed") before the
-                // coroutine notices: that is the cancel, not a failed download.
-                ensureActive()
+                // coroutine notices: that is the cancel too, not a failed download. The partial
+                // download goes, inside the job, so it is gone before a new one can start.
+                if (e is CancellationException || !isActive) {
+                    runCatching { downloadDir.listFiles { f -> f.name.endsWith(".part") }?.forEach { it.delete() } }
+                    throw e as? CancellationException ?: CancellationException("Update cancelled").apply { initCause(e) }
+                }
                 downloadDir.listFiles()?.forEach { it.delete() }
                 _state.update { it.copy(status = UpdateStatus.Failed(downloadFailure(e), update)) }
             }
@@ -198,8 +203,6 @@ class UpdateManager(
             scope.launch {
                 if (downloadJob !== job) return@launch
                 if (cause is CancellationException && !committed) {
-                    withContext(io) { downloadDir.listFiles { f -> f.name.endsWith(".part") }?.forEach { it.delete() } }
-                    if (downloadJob !== job) return@launch
                     _state.update { state ->
                         val s = state.status
                         if (s is UpdateStatus.Downloading || s is UpdateStatus.Installing) state.copy(status = UpdateStatus.Available(update))

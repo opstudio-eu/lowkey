@@ -301,6 +301,8 @@ private class AndroidUpdatePlatform(private val context: Context) : UpdatePlatfo
             }
         } catch (e: Exception) {
             runCatching { installer.abandonSession(sessionId) }
+            // A late result of the session abandoned here must not overwrite the failure.
+            Updates.currentSessionId = Updates.STARTING_SESSION
             throw e
         }
     }
@@ -440,10 +442,9 @@ class UpdateDownloadService : Service() {
                     AppGraph.updates.state.collect { state ->
                         val now = SystemClock.elapsedRealtime()
                         val isDownloading = state.status is UpdateStatus.Downloading
-                        val dismissed = isDownloading && downloading && manager != null &&
-                            runCatching { manager.activeNotifications.none { it.id == Updates.PROGRESS_NOTIFICATION_ID } }
-                                .getOrDefault(false)
-                        if (isDownloading != downloading || (now - postedAt >= 1_000 && !dismissed)) {
+                        // The Installing notice is posted even then: it is short and says what happens next.
+                        val due = isDownloading != downloading || (now - postedAt >= 1_000 && !dismissed(manager))
+                        if (due) {
                             downloading = isDownloading
                             postedAt = now
                             runCatching { manager?.notify(Updates.PROGRESS_NOTIFICATION_ID, progress(state)) }
@@ -460,6 +461,10 @@ class UpdateDownloadService : Service() {
         }
         return START_NOT_STICKY
     }
+
+    /** Whether the user swiped the progress notification away (possible on Android 14 and later). */
+    private fun dismissed(manager: NotificationManager?): Boolean = manager != null &&
+        runCatching { manager.activeNotifications.none { it.id == Updates.PROGRESS_NOTIFICATION_ID } }.getOrDefault(false)
 
     private fun progress(state: UpdateState): Notification {
         val update = state.update
