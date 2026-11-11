@@ -83,6 +83,21 @@ object Layouts {
         )
     }
 
+    /**
+     * Centres of [arrangement]'s letter keys as drawn, per letter row, in key widths of a
+     * ten-key row: rows wider than ten keys (Dvorak's third) are scaled down to fit, as on screen.
+     */
+    fun letterCentres(arrangement: KeyArrangement): List<List<Pair<Char, Double>>> =
+        lettersCache.getValue(arrangement).rows.take(3).map { row ->
+            val scale = ROW_KEYS / row.sumOf { it.weight.toDouble() }
+            var left = 0.0
+            row.mapNotNull { key ->
+                val centre = (left + key.weight / 2.0) * scale
+                left += key.weight
+                (key as? Key.Char)?.label?.singleOrNull()?.takeIf { it.isLetter() }?.let { it to centre }
+            }
+        }
+
     private fun letterKey(letter: String) = Key.Char(letter, accents = ACCENTS[letter].orEmpty())
 
     /** Letter keys in a full row. */

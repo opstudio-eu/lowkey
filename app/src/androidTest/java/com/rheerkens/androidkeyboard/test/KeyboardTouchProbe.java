@@ -389,7 +389,7 @@ public final class KeyboardTouchProbe extends Instrumentation {
             final int index=i;
             runOnMainSync(() -> {
                 long start=SystemClock.elapsedRealtimeNanos();
-                graph.suggester(layout).autocorrection(words[index], java.util.Collections.emptyList(), true);
+                graph.suggester(new com.rheerkens.androidkeyboard.settings.TypingKeyboard(layout, com.rheerkens.androidkeyboard.settings.KeyArrangement.QWERTY)).autocorrection(words[index], java.util.Collections.emptyList(), true);
                 times[index]=(SystemClock.elapsedRealtimeNanos()-start)/1000000;
             });
         }

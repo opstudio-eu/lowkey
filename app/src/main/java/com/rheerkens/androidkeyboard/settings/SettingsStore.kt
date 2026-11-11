@@ -72,6 +72,8 @@ class SettingsStore(context: Context) {
         putBoolean(K_STRIP, s.suggestionStrip)
         putStringSet(K_KEYBOARDS, s.enabledKeyboards.map { it.id }.toSet())
         putString(K_KEYBOARD, s.currentKeyboard.id)
+        remove(K_LAYOUTS)
+        remove(K_LAYOUT)
         putBoolean(K_SHOW_WITH_PHYSICAL, s.showWithPhysicalKeyboard)
         putBoolean(K_SCREENSHOTS, s.recentScreenshots)
         putBoolean(K_AUTOSTART, s.autoStartVoice)

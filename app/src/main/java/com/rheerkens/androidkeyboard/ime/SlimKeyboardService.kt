@@ -78,8 +78,10 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
@@ -218,6 +220,14 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         pickerOpen.onEach(::updatePickerBack).launchIn(scope)
         // Refresh suggestions when the dictionary changes; readiness when models change.
         dictionary.state.drop(1).onEach { refreshStrip() }.launchIn(scope)
+        // Follow keyboards changed in Settings while the keyboard is open (e.g. the current one
+        // turned off), so the keys, the space bar and autocorrect stay on the same keyboard.
+        settings.settings.map { it.currentKeyboard }.distinctUntilChanged().onEach { current ->
+            if (keyboard.state.value.keyboard != current) {
+                keyboard.setKeyboard(current)
+                if (inputViewActive && mode.value == InputMode.KEYS) refreshStrip()
+            }
+        }.launchIn(scope)
         observedActiveId = AppGraph.models.state.value.activeId
         AppGraph.models.state.drop(1).onEach { s ->
             // A model switch (picker, companion page, or a finished download) ends any capture
@@ -1228,7 +1238,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         if (strip.value.note != null) strip.value = strip.value.copy(note = null)
     }
 
-    private fun suggester() = AppGraph.suggester(keyboard.state.value.keyboard.language)
+    private fun suggester() = AppGraph.suggester(keyboard.state.value.keyboard)
 
     private fun showVoiceOutcomeNote(outcome: VoiceOutcome.Cancelled) =
         showNote(VoiceNotes.outcome(outcome), warn = true)

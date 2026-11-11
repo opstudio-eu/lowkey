@@ -3,32 +3,31 @@ package com.rheerkens.androidkeyboard.dictionary
 import kotlin.math.abs
 
 /**
- * Which letters are neighbours on a keyboard of three letter [rows] (top to bottom), so a slip
- * onto the next key costs less in [Corrector]. Keys are a unit wide; shorter top and middle rows
- * are centred like the on-screen keys, and the third row starts a key in (after Shift) when it
- * has seven letters, half a key further per missing letter. Only `a`–`z` take part.
+ * Which letters are neighbours on a keyboard, so a slip onto the next key costs less in
+ * [Corrector]. [rows] gives each letter row's keys (top to bottom) with the x of their centres,
+ * in key widths. Two letters are neighbours when they're at most a key width apart horizontally,
+ * in the same or adjacent rows. Only `a`–`z` take part.
  */
-class KeyGrid(rows: List<String>) {
+class KeyGrid(rows: List<List<Pair<Char, Double>>>) {
     // Edit distance visits this relation for every candidate character pair. Precompute it
     // once to avoid boxed Char/hash-map/Pair lookups in the hot loop.
     private val adjacentKeys = BooleanArray(26 * 26)
 
     init {
         val x = DoubleArray(26) { Double.NaN }
-        val y = DoubleArray(26)
+        val y = IntArray(26)
         rows.forEachIndexed { r, row ->
-            val offset = if (r < 2) (FULL_ROW - row.length) / 2.0 else maxOf(0.0, 1.0 + (SHORT_ROW - row.length) / 2.0)
-            row.forEachIndexed { c, ch ->
+            for ((ch, centre) in row) {
                 val i = ch - 'a'
                 if (i in 0..25) {
-                    x[i] = c + offset
-                    y[i] = r.toDouble()
+                    x[i] = centre
+                    y[i] = r
                 }
             }
         }
         for (a in 0..25) for (b in 0..25) {
             adjacentKeys[a * 26 + b] = !x[a].isNaN() && !x[b].isNaN() &&
-                abs(x[a] - x[b]) <= 1.0 && abs(y[a] - y[b]) <= 1.0
+                abs(x[a] - x[b]) <= 1.0 + EPSILON && abs(y[a] - y[b]) <= 1
         }
     }
 
@@ -39,9 +38,17 @@ class KeyGrid(rows: List<String>) {
     }
 
     companion object {
-        private const val FULL_ROW = 10
-        private const val SHORT_ROW = 7
+        private const val EPSILON = 1e-6
 
-        val QWERTY = KeyGrid(listOf("qwertyuiop", "asdfghjkl", "zxcvbnm"))
+        /**
+         * QWERTY as autocorrect was tuned on: rows staggered by half a key each, so a key has
+         * two neighbours in the rows above and below. (On screen the third row sits a whole key
+         * in, after the wider Shift; this older model is kept so QWERTY corrections don't change.)
+         */
+        val QWERTY = KeyGrid(
+            listOf("qwertyuiop", "asdfghjkl", "zxcvbnm").mapIndexed { r, row ->
+                row.mapIndexed { c, ch -> ch to c + r * 0.5 }
+            }
+        )
     }
 }

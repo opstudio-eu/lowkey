@@ -17,25 +17,33 @@ enum class TypingLayout(val label: String, val shortLabel: String, val localeTag
 }
 
 /**
- * Letter arrangements of the main key layer, as three rows of key labels (top to bottom).
- * Rows with fewer than ten keys are centred; the third row sits between Shift and Backspace.
- * The top row's keys also offer the digits 1–0 on long-press.
+ * Letter arrangements of the main key layer, as three rows of key labels (top to bottom), in
+ * their usual phone form: the letter rows of the traditional layout, with the keys around them
+ * (Shift, Backspace, the bottom row, numbers and symbols) the same for all of them. Rows with
+ * fewer than ten keys are centred; the third row sits between Shift and Backspace. The top row's
+ * keys also offer the digits 1–0 on long-press. Accented letters stay on long-press of their
+ * base letter, also for AZERTY and QWERTZ, whose desktop forms have keys of their own for them.
  */
 enum class KeyArrangement(val label: String, val rows: List<String>) {
     QWERTY("QWERTY", listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")),
-    /** French and Belgian; the apostrophe takes the place of `m`, which moves up a row. */
+    /** French and Belgian. Phones put the apostrophe after N, where desktop AZERTY has the comma. */
     AZERTY("AZERTY", listOf("azertyuiop", "qsdfghjklm", "wxcvbn'")),
     /** German, Austrian, Swiss and most of Central Europe. */
     QWERTZ("QWERTZ", listOf("qwertzuiop", "asdfghjkl", "yxcvbnm")),
+    /** Simplified Dvorak; the semicolon before Q is left out (it's on the symbols layer). */
     DVORAK("Dvorak", listOf("',.pyfgcrl", "aoeuidhtns", "qjkxbmwvz")),
-    COLEMAK("Colemak", listOf("qwfpgjluy'", "arstdhneio", "zxcvbkm")),
+    COLEMAK("Colemak", listOf("qwfpgjluy;", "arstdhneio", "zxcvbkm")),
 }
 
 /** One entry of the globe key's cycle: a typing language shown with a letter arrangement. */
 data class TypingKeyboard(val language: TypingLayout, val arrangement: KeyArrangement = KeyArrangement.QWERTY) {
-    /** Space-bar and settings name; QWERTY, the usual arrangement, isn't spelled out. */
+    /** Settings and accessibility name; QWERTY, the usual arrangement, isn't spelled out. */
     val label: String
         get() = if (arrangement == KeyArrangement.QWERTY) language.label else "${language.label} · ${arrangement.label}"
+
+    /** Space-bar name: like [label], but with the short language code next to a layout so it fits on a phone. */
+    val spaceLabel: String
+        get() = if (arrangement == KeyArrangement.QWERTY) language.label else "${language.shortLabel} · ${arrangement.label}"
 
     /** Stable preference value, e.g. `EN_US:AZERTY`. */
     val id: String get() = "${language.name}:${arrangement.name}"

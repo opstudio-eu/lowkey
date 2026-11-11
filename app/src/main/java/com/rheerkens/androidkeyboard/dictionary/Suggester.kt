@@ -13,10 +13,10 @@ data class Suggestion(
  * Suggestions and autocorrect over a language [Lexicon] (AOSP word list) plus personal terms.
  * Personal terms keep their exact case and rank first; dictionary words follow the typed case
  * (`Kot` → `Kotlin`, `KO` → `KOTLIN`). Unknown words get spelling corrections from [Corrector].
- * [lexicon] is a provider so the word list can load in the background; [keys] gives the current
- * letter arrangement, whose neighbouring keys count as likely slips.
+ * [lexicon] is a provider so the word list can load in the background; [keys] are the letter
+ * keys typed on, whose neighbours count as likely slips.
  */
-class Suggester(private val lexicon: () -> Lexicon, private val keys: () -> KeyGrid = { KeyGrid.QWERTY }) {
+class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = KeyGrid.QWERTY) {
     /** A suggester over a fixed word list, most frequent first (tests and fallbacks). */
     constructor(words: List<String>) : this(constant(Lexicon.fromWords(words)))
 
@@ -47,7 +47,7 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: () -> KeyG
         val lex = lexicon()
         val completions = lex.completions(typed, limit * 2)
         val corrections = if (Corrector.looksLikeAWord(typed) && !lex.contains(typed)) {
-            listOfNotNull(lex.whitelist[lower]) + Corrector.corrections(typed, lex, limit, keys()).map { it.word }
+            listOfNotNull(lex.whitelist[lower]) + Corrector.corrections(typed, lex, limit, keys).map { it.word }
         } else {
             emptyList()
         }
@@ -74,12 +74,12 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: () -> KeyG
         terms.firstOrNull { it.text.equals(word, ignoreCase = true) }?.let { return it.text }
         if (Corrector.looksLikeAWord(word) && word.length >= 4 && !lexicon().contains(word)) {
             terms.filter { ' ' !in it.text }
-                .map { it.text to Corrector.distance(word.lowercase(), it.text.lowercase(), 1.0, keys()) }
+                .map { it.text to Corrector.distance(word.lowercase(), it.text.lowercase(), 1.0, keys) }
                 .filter { it.second <= 1.0 }
                 .minByOrNull { it.second }
                 ?.let { return it.first }
         }
-        return Corrector.autocorrect(word, lexicon(), atSentenceStart, keys())
+        return Corrector.autocorrect(word, lexicon(), atSentenceStart, keys)
     }
 
     /**

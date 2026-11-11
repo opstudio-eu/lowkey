@@ -8,12 +8,13 @@ import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
 import com.rheerkens.androidkeyboard.diagnostics.CrashLog
 import com.rheerkens.androidkeyboard.diagnostics.SessionLog
-import com.rheerkens.androidkeyboard.dictionary.Corrector
-import com.rheerkens.androidkeyboard.dictionary.KeyGrid
 import com.rheerkens.androidkeyboard.dictionary.BuiltInWords
+import com.rheerkens.androidkeyboard.dictionary.Corrector
 import com.rheerkens.androidkeyboard.dictionary.DictionaryStore
+import com.rheerkens.androidkeyboard.dictionary.KeyGrid
 import com.rheerkens.androidkeyboard.dictionary.Lexicon
 import com.rheerkens.androidkeyboard.dictionary.Suggester
+import com.rheerkens.androidkeyboard.keyboard.Layouts
 import com.rheerkens.androidkeyboard.models.DiskModelStore
 import com.rheerkens.androidkeyboard.models.ModelCatalog
 import com.rheerkens.androidkeyboard.models.ModelStore
@@ -21,6 +22,7 @@ import com.rheerkens.androidkeyboard.models.resolveLanguage
 import com.rheerkens.androidkeyboard.settings.AudioInput
 import com.rheerkens.androidkeyboard.settings.SettingsStore
 import com.rheerkens.androidkeyboard.settings.KeyArrangement
+import com.rheerkens.androidkeyboard.settings.TypingKeyboard
 import com.rheerkens.androidkeyboard.settings.TypingLayout
 import com.rheerkens.androidkeyboard.speech.ClipAudioSource
 import com.rheerkens.androidkeyboard.speech.LoadableModel
@@ -73,9 +75,11 @@ object AppGraph {
         TypingLayout.NL_NL to Lexicon.fromWords(BuiltInWords.DUTCH),
     )
     private lateinit var assets: AssetManager
-    private val keyGrids = KeyArrangement.entries.associateWith { KeyGrid(it.rows) }
-    private val suggesters = TypingLayout.entries.associateWith { layout ->
-        Suggester({ lexicon(layout) }, { keyGrids.getValue(settings.current.currentKeyboard.arrangement) })
+    private val keyGrids = KeyArrangement.entries.associateWith {
+        if (it == KeyArrangement.QWERTY) KeyGrid.QWERTY else KeyGrid(Layouts.letterCentres(it))
+    }
+    private val suggesters = TypingKeyboard.ALL.associateWith { keyboard ->
+        Suggester({ lexicon(keyboard.language) }, keyGrids.getValue(keyboard.arrangement))
     }
     private val nextClip = AtomicInteger(0)
     private var initialized = false
@@ -129,7 +133,8 @@ object AppGraph {
         initialized = true
     }
 
-    fun suggester(layout: TypingLayout): Suggester = suggesters.getValue(layout)
+    /** Suggestions in [keyboard]'s language, with slips judged on its letter arrangement. */
+    fun suggester(keyboard: TypingKeyboard): Suggester = suggesters.getValue(keyboard)
 
     /** The layout's full word list, or a small built-in list while it loads. */
     fun lexicon(layout: TypingLayout): Lexicon {

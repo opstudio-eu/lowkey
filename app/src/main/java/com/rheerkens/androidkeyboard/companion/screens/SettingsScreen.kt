@@ -217,7 +217,7 @@ private fun KeyboardsSetting(s: Settings, update: ((Settings) -> Settings) -> Un
     Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
         Text("Keyboards", style = MaterialTheme.typography.bodyLarge)
         Text(
-            "Turn on a layout per language. Tap the globe key to go to the next one you turned on. " +
+            "Turn on any number of layouts for each language. The globe key goes to the next one you turned on. " +
                 "Long-press it to switch to another input method.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

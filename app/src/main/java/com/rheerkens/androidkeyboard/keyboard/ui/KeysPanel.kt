@@ -121,7 +121,7 @@ private fun KeyView(
             "Space, ${state.keyboard.label}", modifier, gestureKey = key, onDown = actions::onKeyDown, onTap = { actions.onKey(key) },
         ) { pressed ->
             KeyCap(if (pressed) c.keyPressed else c.key) {
-                Text(state.keyboard.label, color = c.spaceText, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(state.keyboard.spaceLabel, color = c.spaceText, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
         is Key.Enter -> PressTarget(
@@ -156,7 +156,7 @@ private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardAction
     val choices = key.alternates
     var open by remember(key) { mutableStateOf(false) }
     var selected by remember(key) { mutableStateOf<Int?>(null) }
-    var placement by remember { mutableStateOf<KeyPlacement?>(null) }
+    var placement by remember(key) { mutableStateOf<KeyPlacement?>(null) }
     val popup = remember(placement, choices.size, density) {
         val p = placement
         if (p == null || choices.isEmpty()) null else with(density) {
