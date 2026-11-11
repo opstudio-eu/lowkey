@@ -300,7 +300,7 @@ private fun KeyboardsSetting(s: Settings, packs: LanguagePackState, update: ((Se
             Column(Modifier.weight(1f)) {
                 Text("More languages", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
                 Text(
-                    "Download Dutch, Polish, German, French and 16 more, or delete them",
+                    moreLanguagesSummary(AppGraph.languages.languages.filter { !it.bundled && it.id !in packs.installed }.map { it.englishName }),
                     style = MaterialTheme.typography.bodySmall,
                     color = muted,
                 )
@@ -312,3 +312,11 @@ private fun KeyboardsSetting(s: Settings, packs: LanguagePackState, update: ((Se
 
 @Composable
 private fun Spacer8() = androidx.compose.foundation.layout.Spacer(Modifier.padding(8.dp))
+
+/** "Download Dutch, Polish, German and 15 more, or delete them", naming what isn't on the phone yet. */
+internal fun moreLanguagesSummary(available: List<String>): String = when {
+    available.isEmpty() -> "Every language is on the phone; delete the ones you don't use"
+    available.size == 1 -> "Download ${available.single()}, or delete languages"
+    available.size <= 4 -> "Download ${available.dropLast(1).joinToString(", ")} or ${available.last()}, or delete languages"
+    else -> "Download ${available.take(3).joinToString(", ")} and ${available.size - 3} more, or delete languages"
+}

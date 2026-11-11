@@ -1,6 +1,7 @@
 package com.rheerkens.androidkeyboard.dictionary
 
 import com.rheerkens.androidkeyboard.companion.screens.downloadSize
+import com.rheerkens.androidkeyboard.companion.screens.moreLanguagesSummary
 import com.rheerkens.androidkeyboard.models.ModelCatalog
 import com.rheerkens.androidkeyboard.models.resolveLanguage
 import com.rheerkens.androidkeyboard.models.speechLanguageCode
@@ -27,5 +28,14 @@ class LanguageSettingsTest {
     fun downloadSizeCountsTheBase64Transfer() {
         assertEquals("1.5 MB download", downloadSize(TestLanguages.language("sv")))
         assertEquals("0.4 MB download", downloadSize(TestLanguages.language("sl")))
+    }
+
+    @Test
+    fun moreLanguagesNamesOnlyWhatIsNotOnThePhone() {
+        val all = TestLanguages.catalog.languages.filter { !it.bundled }.map { it.englishName }
+        assertEquals("Download English (UK), Dutch, Polish and 17 more, or delete languages", moreLanguagesSummary(all))
+        assertEquals("Download German or French, or delete languages", moreLanguagesSummary(listOf("German", "French")))
+        assertEquals("Download German, or delete languages", moreLanguagesSummary(listOf("German")))
+        assertEquals("Every language is on the phone; delete the ones you don't use", moreLanguagesSummary(emptyList()))
     }
 }
