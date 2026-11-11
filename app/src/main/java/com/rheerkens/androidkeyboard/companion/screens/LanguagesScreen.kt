@@ -56,28 +56,31 @@ fun LanguagesScreen(modifier: Modifier) {
         items(onPhone, key = { "on-" + it.id }) { language ->
             val checked = language.id in s.enabledLanguages
             val onlyOne = checked && usableIds.count { it in s.enabledLanguages } == 1
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clickable(enabled = !onlyOne, role = Role.Checkbox) {
-                        AppGraph.settings.update { toggleLanguage(it, language.id, usableIds) }
+            // The delete button sits outside the checkbox row, so each is its own accessibility target.
+            Row(Modifier.fillMaxWidth().padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier
+                        .weight(1f)
+                        .clickable(enabled = !onlyOne, role = Role.Checkbox) {
+                            AppGraph.settings.update { toggleLanguage(it, language.id, usableIds) }
+                        }
+                        .padding(start = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(checked = checked, onCheckedChange = null, enabled = !onlyOne)
+                    Column(Modifier.weight(1f).padding(start = 8.dp, top = 10.dp, bottom = 10.dp)) {
+                        Text(language.name, style = MaterialTheme.typography.bodyLarge)
+                        val notes = listOfNotNull(
+                            language.englishName.takeIf { it != language.name },
+                            if (language.bundled) "Built in" else "Downloaded",
+                            "Typing now".takeIf { language.id == current.id && checked },
+                        )
+                        Text(
+                            notes.joinToString(" · "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
-                    .padding(start = 8.dp, end = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Checkbox(checked = checked, onCheckedChange = null, enabled = !onlyOne)
-                Column(Modifier.weight(1f).padding(start = 8.dp, top = 10.dp, bottom = 10.dp)) {
-                    Text(language.name, style = MaterialTheme.typography.bodyLarge)
-                    val notes = listOfNotNull(
-                        language.englishName.takeIf { it != language.name },
-                        if (language.bundled) "Built in" else "Downloaded",
-                        "Typing now".takeIf { language.id == current.id && checked },
-                    )
-                    Text(
-                        notes.joinToString(" · "),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                 }
                 if (!language.bundled) {
                     IconButton(onClick = { AppGraph.deleteLanguage(language.id) }) {
