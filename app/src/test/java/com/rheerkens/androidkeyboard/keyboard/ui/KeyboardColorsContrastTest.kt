@@ -46,6 +46,13 @@ class KeyboardColorsContrastTest {
         text("amber", c.amber, "pill", c.pill, AA_NON_TEXT)
         text("enterInk", c.enterInk, "enter", c.enter)
         text("stopInk", c.stopInk, "stop", c.stop)
+        // Pressed states keep their ink: Enter and Stop switch to their own pressed fills, other
+        // keys, the Talk button, model picker rows and footer actions to keyPressed.
+        text("enterInk", c.enterInk, "enterPressed", c.enterPressed)
+        text("stopInk", c.stopInk, "stopPressed", c.stopPressed)
+        text("spaceText", c.spaceText, "keyPressed", c.keyPressed)
+        text("muted", c.muted, "keyPressed", c.keyPressed)
+        text("chipText", c.chipText, "keyPressed", c.keyPressed)
         text("noteText", c.noteText, "noteBg", c.noteBg)
         text("dangerInk", c.dangerInk, "danger", c.danger)
         // Icons and indicators: the level meter, the model dot, the danger zone and the Enter key.

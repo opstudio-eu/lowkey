@@ -38,6 +38,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.viewinterop.AndroidView
+import android.os.Build
 import android.text.InputType
 import android.widget.EditText
 import com.rheerkens.androidkeyboard.companion.SystemImeStatus
@@ -104,6 +105,7 @@ fun TryItScreen(modifier: Modifier) {
         Text("Android text field (EditText)", style = MaterialTheme.typography.labelLarge)
         val ink = MaterialTheme.colorScheme.onSurface.toArgb()
         val hint = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
+        val accent = MaterialTheme.colorScheme.primary
         AndroidView(
             factory = { ctx ->
                 EditText(ctx).apply {
@@ -116,7 +118,20 @@ fun TryItScreen(modifier: Modifier) {
                     contentDescription = "Android text field"
                 }
             },
-            update = { it.setTextColor(ink); it.setHintTextColor(hint) },
+            update = { field ->
+                field.setTextColor(ink)
+                field.setHintTextColor(hint)
+                // The view's context follows the system theme; tint the cursor, selection and
+                // handles with the app theme's accent so they show in the in-app Light or Dark.
+                field.highlightColor = accent.copy(alpha = 0.35f).toArgb()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val tint = accent.toArgb()
+                    field.textCursorDrawable?.mutate()?.setTint(tint)
+                    field.textSelectHandle?.mutate()?.setTint(tint)
+                    field.textSelectHandleLeft?.mutate()?.setTint(tint)
+                    field.textSelectHandleRight?.mutate()?.setTint(tint)
+                }
+            },
             modifier = Modifier.fillMaxWidth().testTag("tryit_edittext"),
         )
         OutlinedTextField(

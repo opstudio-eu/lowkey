@@ -99,6 +99,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rheerkens.androidkeyboard.AppGraph
 import com.rheerkens.androidkeyboard.clipboard.ClipboardHistory
 import com.rheerkens.androidkeyboard.companion.theme.SlimTheme
+import com.rheerkens.androidkeyboard.companion.theme.applyThemeToWindow
+import com.rheerkens.androidkeyboard.companion.theme.isDarkTheme
 import com.rheerkens.androidkeyboard.ui.SlimIcons
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -132,6 +134,8 @@ class ImageEditorActivity : ComponentActivity() {
         }
         setContent {
             val settings by AppGraph.settings.settings.collectAsStateWithLifecycle()
+            val dark = isDarkTheme(settings.theme)
+            LaunchedEffect(dark) { applyThemeToWindow(dark) }
             SlimTheme(settings.theme) {
                 ImageEditor(uri, keys, onCancel = ::finishAndRemoveTask, onAttach = ::onAttach)
             }
