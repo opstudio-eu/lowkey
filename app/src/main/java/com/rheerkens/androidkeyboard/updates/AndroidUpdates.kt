@@ -287,6 +287,7 @@ private class AndroidUpdatePlatform(private val context: Context) : UpdatePlatfo
         }
         val sessionId = installer.createSession(params)
         Updates.currentSessionId = sessionId
+        var committed = false
         try {
             installer.openSession(sessionId).use { session ->
                 session.openWrite("base.apk", 0, apk.length()).use { out ->
@@ -298,8 +299,15 @@ private class AndroidUpdatePlatform(private val context: Context) : UpdatePlatfo
                     (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
                 val status = PendingIntent.getBroadcast(context, sessionId, intent, flags)
                 session.commit(status.intentSender)
+                committed = true
             }
         } catch (e: Exception) {
+            // Committed, Android has the APK and its result comes through the receiver: closing
+            // the session failing afterwards is not a failed install.
+            if (committed) {
+                Log.w("LowkeyUpdates", "Closing the committed install session failed", e)
+                return
+            }
             runCatching { installer.abandonSession(sessionId) }
             // A late result of the session abandoned here must not overwrite the failure.
             Updates.currentSessionId = Updates.STARTING_SESSION
@@ -443,7 +451,11 @@ class UpdateDownloadService : Service() {
                         val now = SystemClock.elapsedRealtime()
                         val isDownloading = state.status is UpdateStatus.Downloading
                         // The Installing notice is posted even then: it is short and says what happens next.
-                        val due = isDownloading != downloading || (now - postedAt >= 1_000 && !dismissed(manager))
+                        var due = isDownloading != downloading
+                        if (!due && now - postedAt >= 1_000) {
+                            // Asked at most once a second, also while it stays dismissed.
+                            if (dismissed(manager)) postedAt = now else due = true
+                        }
                         if (due) {
                             downloading = isDownloading
                             postedAt = now

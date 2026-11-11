@@ -126,13 +126,15 @@ class UpdateManager(
             val before = _state.value
             if (inProgress(before.status)) return
             if (userStarted) setUnlessInProgress(before.copy(status = UpdateStatus.Checking))
+            // What the card showed when the fetch started. If it changed meanwhile (an update the
+            // user started, or its failure), that is newer than this check's result.
+            val shown = if (userStarted) UpdateStatus.Checking else before.status
             val result = runCatching { platform.fetchFeed()?.let(AvailableUpdate::parse) }
             result.exceptionOrNull()?.let { if (it is CancellationException) throw it }
             val now = platform.now()
             val feed = result.getOrElse { error ->
-                setUnlessInProgress(
-                    if (userStarted) before.copy(status = UpdateStatus.Failed(checkFailure(error), before.update)) else before,
-                )
+                // Background checks never show errors, so they have nothing to write.
+                if (userStarted) setIfStill(shown, before.copy(status = UpdateStatus.Failed(checkFailure(error), before.update)))
                 return
             }
             prefs.lastCheckedAt = now
@@ -142,10 +144,10 @@ class UpdateManager(
             val newer = feed?.takeIf { it.versionCode > platform.installedVersionCode() }
             prefs.available = newer
             if (newer == null) {
-                setUnlessInProgress(UpdateState(UpdateStatus.UpToDate, now))
+                setIfStill(shown, UpdateState(UpdateStatus.UpToDate, now))
                 return
             }
-            setUnlessInProgress(UpdateState(UpdateStatus.Available(newer), now))
+            setIfStill(shown, UpdateState(UpdateStatus.Available(newer), now))
             if (notify && prefs.notifiedVersionCode != newer.versionCode && platform.notifyAvailable(newer)) {
                 prefs.notifiedVersionCode = newer.versionCode
             }
@@ -158,6 +160,11 @@ class UpdateManager(
     /** A check that was waiting for the feed must not overwrite an update the user started meanwhile. */
     private fun setUnlessInProgress(next: UpdateState) {
         _state.update { current -> if (inProgress(current.status)) current else next }
+    }
+
+    /** Writes [next] only if the card still shows [shown]. */
+    private fun setIfStill(shown: UpdateStatus, next: UpdateState) {
+        _state.update { current -> if (current.status == shown) next else current }
     }
 
     /** Downloads the known update, verifies it, and hands it to Android's installer. */

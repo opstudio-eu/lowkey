@@ -308,6 +308,27 @@ class UpdateManagerTest {
     }
 
     @Test
+    fun aFailingBackgroundCheckKeepsAnErrorThatAppearedMeanwhile() = runTest {
+        val feedGate = CompletableDeferred<Unit>()
+        val platform = FakePlatform().apply { feed = { update(42).toProperties() } }
+        val m = manager(platform)
+        m.check(userStarted = true)
+        // A background check waits for the feed; meanwhile the user's update fails.
+        platform.feedDelay = feedGate
+        platform.feed = { throw IOException("offline") }
+        val check = launch { m.check(userStarted = false) }
+        advanceUntilIdle()
+        platform.downloadFails = true
+        m.startUpdate()
+        advanceUntilIdle()
+        val failed = m.state.value.status
+        assertTrue(failed is UpdateStatus.Failed)
+        feedGate.complete(Unit)
+        check.join()
+        assertEquals(failed, m.state.value.status)
+    }
+
+    @Test
     fun aCancelAsTheDownloadFinishesDoesNotOpenTheInstaller() = runTest {
         val platform = FakePlatform().apply { feed = { update(42).toProperties() } }
         val dir = tempDir()
