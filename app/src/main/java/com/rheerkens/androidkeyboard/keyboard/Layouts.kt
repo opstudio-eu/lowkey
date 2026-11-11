@@ -60,7 +60,8 @@ object Layouts {
      * The letter layer for [keyboard]'s arrangement. The language changes only suggestions and
      * the space-bar label. The top row offers the digits 1–0 on long-press; shorter middle rows
      * are centred with gaps; Shift and Backspace share what the third row leaves of ten keys,
-     * but stay at least a key wide.
+     * but stay a key and a half wide (Dvorak's nine-letter row is then twelve keys wide, and its
+     * letters a little narrower).
      */
     fun letters(keyboard: TypingKeyboard): KeyboardLayout = lettersCache.getValue(keyboard.arrangement)
 
@@ -73,7 +74,7 @@ object Layouts {
             if (top.size == ROW_KEYS) key.copy(longPressOutput = ((index + 1) % 10).toString()) else key
         }
         val gap = (ROW_KEYS - middle.size) / 2f
-        val side = maxOf(1f, (ROW_KEYS - bottom.size) / 2f)
+        val side = maxOf(MIN_SIDE_KEY, (ROW_KEYS - bottom.size) / 2f)
         return KeyboardLayout(
             listOf(
                 digits,
@@ -112,6 +113,9 @@ object Layouts {
         }
 
     private fun letterKey(letter: String) = Key.Char(letter, accents = ACCENTS[letter].orEmpty())
+
+    /** Width of Shift and Backspace at least, in keys: as on QWERTY, so they stay easy to hit. */
+    private const val MIN_SIDE_KEY = 1.5f
 
     /** Letter keys in a full row. */
     private const val ROW_KEYS = 10

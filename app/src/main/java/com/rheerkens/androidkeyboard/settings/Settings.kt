@@ -37,9 +37,12 @@ enum class KeyArrangement(val label: String, val rows: List<String>) {
 
 /** One entry of the globe key's cycle: a typing language shown with a letter arrangement. */
 data class TypingKeyboard(val language: TypingLayout, val arrangement: KeyArrangement = KeyArrangement.QWERTY) {
-    /** Settings and accessibility name; QWERTY, the usual arrangement, isn't spelled out. */
+    /** Short name; QWERTY, the usual arrangement, isn't spelled out. */
     val label: String
         get() = if (arrangement == KeyArrangement.QWERTY) language.label else "${language.label} · ${arrangement.label}"
+
+    /** Name with the layout always spelled out, e.g. `English (US) · QWERTY`: for Settings and announcements. */
+    val fullLabel: String get() = "${language.label} · ${arrangement.label}"
 
     /** Space-bar name: like [label], but with the short language code next to a layout so it fits on a phone. */
     val spaceLabel: String

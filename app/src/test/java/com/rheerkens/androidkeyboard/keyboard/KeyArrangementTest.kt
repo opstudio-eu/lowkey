@@ -48,11 +48,12 @@ class KeyArrangementTest {
             // Top and middle rows are ten keys wide; centred with gaps when shorter.
             assertEquals(arrangement.name, 10f, width(rows[0]))
             assertEquals(arrangement.name, 10f, width(rows[1]))
-            // The third row too, unless its letters leave Shift and Backspace less than a key each.
+            // The third row too, unless its letters leave Shift and Backspace less than 1.5 keys each.
             val third = rows[2]
             val letters = third.count { it is Key.Char }
             assertTrue(third.first() is Key.Shift && third.last() is Key.Backspace)
-            assertEquals(arrangement.name, maxOf(10f, letters + 2f), width(third))
+            assertTrue(arrangement.name, third.first().weight >= 1.5f && third.last().weight >= 1.5f)
+            assertEquals(arrangement.name, maxOf(10f, letters + 3f), width(third))
             // Top-row digits on long-press, 1 to 0.
             assertEquals("1234567890", rows[0].joinToString("") { (it as Key.Char).longPressOutput.orEmpty() })
         }
@@ -69,10 +70,10 @@ class KeyArrangementTest {
         assertEquals(9.5, azerty[1].getValue('m'), 1e-9)
         // After Shift, one and a half keys wide.
         assertEquals(2.0, azerty[2].getValue('w'), 1e-9)
-        // Dvorak's third row is eleven keys wide on screen, squeezed into the same width.
+        // Dvorak's third row is twelve keys wide on screen, squeezed into the same width.
         val dvorak = Layouts.letterCentres(KeyArrangement.DVORAK)[2].toMap()
-        assertEquals(1.5 * 10 / 11, dvorak.getValue('q'), 1e-9)
-        assertEquals(9.5 * 10 / 11, dvorak.getValue('z'), 1e-9)
+        assertEquals(2.0 * 10 / 12, dvorak.getValue('q'), 1e-9)
+        assertEquals(10.0 * 10 / 12, dvorak.getValue('z'), 1e-9)
         // Punctuation keys aren't letters to correct.
         assertTrue(Layouts.letterCentres(KeyArrangement.COLEMAK)[0].none { it.first == ';' })
     }
@@ -106,6 +107,7 @@ class KeyArrangementTest {
     fun labelsNameTheArrangementUnlessQwerty() {
         assertEquals("English (US)", TypingKeyboard.DEFAULT.label)
         assertEquals("English (US)", TypingKeyboard.DEFAULT.spaceLabel)
+        assertEquals("English (US) · QWERTY", TypingKeyboard.DEFAULT.fullLabel)
         val nlAzerty = TypingKeyboard(TypingLayout.NL_NL, KeyArrangement.AZERTY)
         assertEquals("Nederlands · AZERTY", nlAzerty.label)
         assertEquals("NL · AZERTY", nlAzerty.spaceLabel)
@@ -144,11 +146,11 @@ class KeyArrangementTest {
         assertTrue(qwertz.adjacent('z', 't'))
         assertTrue(qwertz.adjacent('y', 'x'))
         assertFalse(qwertz.adjacent('y', 't'))
-        // Dvorak's squeezed third row: q is under a and o.
+        // Dvorak's squeezed third row starts after a wide Shift: q is under o and e.
         val dvorak = grid(KeyArrangement.DVORAK)
-        assertTrue(dvorak.adjacent('q', 'a'))
         assertTrue(dvorak.adjacent('q', 'o'))
-        assertFalse(dvorak.adjacent('q', 'e'))
+        assertTrue(dvorak.adjacent('q', 'e'))
+        assertFalse(dvorak.adjacent('q', 'a'))
         // A slip onto a neighbour is cheaper than any other substitution.
         assertTrue(Corrector.distance("lilk", "milk", keys = azerty) < Corrector.distance("lilk", "milk"))
     }

@@ -11,6 +11,8 @@ enum class Destination(val title: String, val isTab: Boolean = false) {
     SETTINGS("Settings", isTab = true),
     /** Deep link: Settings scrolled to the Voice group. */
     SETTINGS_VOICE("Settings"),
+    /** Deep link: Settings scrolled to the keyboard layouts. */
+    SETTINGS_KEYBOARDS("Settings"),
     TRY_IT("Try it"),
     DIAGNOSTICS("Diagnostics"),
     ABOUT("About and licenses"),

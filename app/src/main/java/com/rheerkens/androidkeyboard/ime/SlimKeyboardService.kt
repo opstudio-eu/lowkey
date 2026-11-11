@@ -53,6 +53,7 @@ import com.rheerkens.androidkeyboard.keyboard.ui.ClipChip
 import com.rheerkens.androidkeyboard.keyboard.ui.EnterKind
 import com.rheerkens.androidkeyboard.keyboard.ui.FanSpec
 import com.rheerkens.androidkeyboard.keyboard.ui.KeyboardActions
+import com.rheerkens.androidkeyboard.keyboard.ui.KeyboardChoices
 import com.rheerkens.androidkeyboard.keyboard.ui.KeyboardRoot
 import com.rheerkens.androidkeyboard.keyboard.ui.KeyboardUiState
 import com.rheerkens.androidkeyboard.keyboard.ui.StripNote
@@ -104,6 +105,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     private val strip = MutableStateFlow(StripState())
     private val enterKind = MutableStateFlow(EnterKind.NEWLINE)
     private val pickerOpen = MutableStateFlow(false)
+    /** The keyboard chooser (long-press Space) is open, in keys mode. */
+    private val chooserOpen = MutableStateFlow(false)
     private var backspaceTarget: EditorBridge.Target? = null
     /** An active hold-and-slide Backspace, how much of its text before the cursor is in the field, and its level. */
     private var scrub: BackspaceScrub? = null
@@ -218,6 +221,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         physicalKeyboard.value = hasPhysicalKeyboard(resources.configuration)
         mode.value = initialMode()
         pickerOpen.onEach(::updatePickerBack).launchIn(scope)
+        chooserOpen.onEach(::updateChooserBack).launchIn(scope)
         // Refresh suggestions when the dictionary changes; readiness when models change.
         dictionary.state.drop(1).onEach { refreshStrip() }.launchIn(scope)
         // Follow keyboards changed in Settings while the keyboard is open (e.g. the current one
@@ -255,6 +259,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                 val ek by enterKind.collectAsState()
                 val aim by wordAim.collectAsState()
                 val picker by pickerOpen.collectAsState()
+                val chooser by chooserOpen.collectAsState()
                 val sensitive by sensitiveField.collectAsState()
                 val physical by physicalKeyboard.collectAsState()
                 val clips by clipChips.collectAsState()
@@ -284,6 +289,11 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                         inputSession = session,
                         fan = fan,
                         wordAim = aim,
+                        keyboardChoices = if (chooser && m == InputMode.KEYS) {
+                            KeyboardChoices(TypingKeyboard.ordered(s.enabledKeyboards), kb.keyboard)
+                        } else {
+                            null
+                        },
                     ),
                     clock = System::currentTimeMillis,
                     actions = this,
@@ -434,6 +444,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         voice.cancel(if (finishingInput) CancelReason.EDITOR_CHANGED else CancelReason.KEYBOARD_HIDDEN)
         onBackspaceHoldEnded()
         pickerOpen.value = false
+        chooserOpen.value = false
         clearPrompt()
         owner.onHide()
         super.onFinishInputView(finishingInput)
@@ -482,6 +493,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onKey(key: Key) {
+        chooserOpen.value = false
         clearPrompt()
         if (key !is Key.Shift && key !is Key.LayerSwitch) clearNote()
         // Any key other than Backspace accepts the last autocorrection (Space may set a new one).
@@ -786,7 +798,30 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onGlobeLongPress() {
+        chooserOpen.value = false
         getSystemService(InputMethodManager::class.java).showInputMethodPicker()
+    }
+
+    override fun onSpaceLongPress() {
+        clearPrompt()
+        chooserOpen.value = true
+    }
+
+    override fun onChooseKeyboard(keyboard: TypingKeyboard) {
+        chooserOpen.value = false
+        if (keyboard == this.keyboard.state.value.keyboard) return
+        this.keyboard.setKeyboard(keyboard)
+        settings.update { it.copy(currentKeyboard = keyboard) }
+        refreshStrip()
+    }
+
+    override fun onCloseKeyboardChooser() {
+        chooserOpen.value = false
+    }
+
+    override fun onOpenKeyboardSettings() {
+        chooserOpen.value = false
+        openCompanion(Destination.SETTINGS_KEYBOARDS)
     }
 
     override fun onSuggestion(suggestion: Suggestion) {
@@ -929,6 +964,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     override fun onToggleMode() {
         clearPrompt()
         pickerOpen.value = false
+        chooserOpen.value = false
         if (mode.value == InputMode.KEYS) {
             if (bridge.isSensitiveField) {
                 showNote(SENSITIVE_NOTE, warn = true)
@@ -951,6 +987,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
 
     override fun onSetMinimized(minimized: Boolean) {
         keyboardOnce.value = false
+        chooserOpen.value = false
         clearPrompt()
         clearNote()
         lastCorrection = null
@@ -1022,6 +1059,23 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
      * IME away without calling onKeyDown), so register a callback there; older versions use
      * the key events below.
      */
+    private var chooserBackCallback: Any? = null
+
+    /** Back closes the keyboard chooser instead of the keyboard (Android 13+, like the model picker). */
+    private fun updateChooserBack(open: Boolean) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val dispatcher = window.onBackInvokedDispatcher
+        val current = chooserBackCallback as OnBackInvokedCallback?
+        if (open && current == null) {
+            val cb = OnBackInvokedCallback { chooserOpen.value = false }
+            dispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, cb)
+            chooserBackCallback = cb
+        } else if (!open && current != null) {
+            dispatcher.unregisterOnBackInvokedCallback(current)
+            chooserBackCallback = null
+        }
+    }
+
     private fun updatePickerBack(open: Boolean) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
         val dispatcher = window.onBackInvokedDispatcher

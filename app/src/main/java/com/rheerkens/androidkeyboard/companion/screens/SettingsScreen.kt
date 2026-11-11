@@ -3,8 +3,10 @@ package com.rheerkens.androidkeyboard.companion.screens
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -26,6 +28,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rheerkens.androidkeyboard.AppGraph
@@ -43,10 +46,14 @@ import com.rheerkens.androidkeyboard.settings.TypingKeyboard
 import com.rheerkens.androidkeyboard.settings.TypingLayout
 import com.rheerkens.androidkeyboard.ui.SlimIcons
 
+private const val KEYBOARDS_INDEX = 8
 private const val VOICE_SECTION_INDEX = 10
 
+/** Where Settings opens: at the top, or scrolled to a group the keyboard links to. */
+enum class SettingsFocus(val index: Int?) { TOP(null), KEYBOARDS(KEYBOARDS_INDEX), VOICE(VOICE_SECTION_INDEX) }
+
 @Composable
-fun SettingsScreen(modifier: Modifier, focusVoice: Boolean, navigate: (Destination) -> Unit) {
+fun SettingsScreen(modifier: Modifier, focus: SettingsFocus, navigate: (Destination) -> Unit) {
     val s by AppGraph.settings.settings.collectAsStateWithLifecycle()
     val models by AppGraph.models.state.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
@@ -58,12 +65,12 @@ fun SettingsScreen(modifier: Modifier, focusVoice: Boolean, navigate: (Destinati
         update { it.copy(recentScreenshots = granted) }
     }
 
-    LaunchedEffect(focusVoice) {
-        if (focusVoice) listState.scrollToItem(VOICE_SECTION_INDEX)
+    LaunchedEffect(focus) {
+        focus.index?.let { listState.scrollToItem(it) }
     }
 
     LazyColumn(modifier.fillMaxWidth(), state = listState) {
-        // Keyboard (items 0–9)
+        // Keyboard (items 0–9; the layouts are item KEYBOARDS_INDEX)
         item { SectionTitle("Keyboard") }
         item {
             ChoiceRow("Keyboard height", KeyboardHeight.entries, s.keyboardHeight, { it.label }, { v -> update { it.copy(keyboardHeight = v) } })
@@ -209,44 +216,65 @@ fun SettingsScreen(modifier: Modifier, focusVoice: Boolean, navigate: (Destinati
 }
 
 /**
- * Languages, each with a chip per letter arrangement. Every chip that's on is one stop of the
- * globe key's cycle, so two arrangements of one language can be a tap apart.
+ * Languages, each with a chip per letter layout. Every chip that's on is one stop of the globe
+ * key's cycle (in the order shown) and a row of the space bar's long-press chooser. Chips sit in a
+ * fixed grid, so a checkmark appearing never moves the others.
  */
 @Composable
 private fun KeyboardsSetting(s: Settings, update: ((Settings) -> Settings) -> Unit) {
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
-        Text("Keyboards", style = MaterialTheme.typography.bodyLarge)
+        Text("Keyboard layouts", style = MaterialTheme.typography.bodyLarge)
         Text(
-            "Turn on any number of layouts for each language. The globe key goes to the next one you turned on. " +
-                "Long-press it to switch to another input method.",
+            "Turn on the layouts you type with. Turning one on doesn't switch to it: tap the globe key to go " +
+                "through them in the order shown, or long-press the space bar to pick one. " +
+                "Long-press the globe key to switch to another keyboard app.",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = muted,
         )
-        TypingLayout.entries.forEach { language ->
-            Text(language.label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 12.dp, bottom = 2.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                KeyArrangement.entries.forEach { arrangement ->
-                    val keyboard = TypingKeyboard(language, arrangement)
-                    val on = keyboard in s.enabledKeyboards
-                    val onlyOne = on && s.enabledKeyboards.size == 1
-                    FilterChip(
-                        selected = on,
-                        onClick = { update { it.toggleKeyboard(keyboard) } },
-                        enabled = !onlyOne,
-                        // The chip's description names the language too; don't read the label twice.
-                        label = { Text(arrangement.label, Modifier.clearAndSetSemantics {}) },
-                        leadingIcon = if (on) ({ Icon(SlimIcons.Check, null, Modifier.size(FilterChipDefaults.IconSize)) }) else null,
-                        modifier = Modifier.semantics { contentDescription = "${language.label}, ${arrangement.label}" },
-                    )
+        val onlyOne = s.enabledKeyboards.size == 1
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val columns = if (maxWidth >= 560.dp) KeyArrangement.entries.size else 3
+            Column {
+                TypingLayout.entries.forEach { language ->
+                    Text(language.label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 12.dp, bottom = 2.dp))
+                    KeyArrangement.entries.chunked(columns).forEach { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            row.forEach { arrangement ->
+                                val keyboard = TypingKeyboard(language, arrangement)
+                                val on = keyboard in s.enabledKeyboards
+                                val required = on && onlyOne
+                                FilterChip(
+                                    selected = on,
+                                    onClick = { update { it.toggleKeyboard(keyboard) } },
+                                    enabled = !required,
+                                    // The chip's description names the language too; don't read the label twice.
+                                    label = { Text(arrangement.label, Modifier.clearAndSetSemantics {}, maxLines = 1) },
+                                    leadingIcon = if (on) ({ Icon(SlimIcons.Check, null, Modifier.size(FilterChipDefaults.IconSize)) }) else null,
+                                    modifier = Modifier.weight(1f).semantics {
+                                        contentDescription = "${language.label}, ${arrangement.label}"
+                                        if (required) stateDescription = "On, required: the last layout that's on"
+                                    },
+                                )
+                            }
+                            repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                    }
                 }
             }
         }
+        if (onlyOne) {
+            Text("Keep at least one layout on.", style = MaterialTheme.typography.bodySmall, color = muted, modifier = Modifier.padding(top = 4.dp))
+        }
         Text(
-            "Typing now: ${s.currentKeyboard.label}. Layouts change only the letter keys; " +
-                "suggestions follow the language.",
+            "Current keyboard: ${s.currentKeyboard.fullLabel}",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(top = 10.dp),
+        )
+        Text(
+            "Layouts change only the letter keys; suggestions and autocorrect follow the language.",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 8.dp),
+            color = muted,
         )
     }
 }

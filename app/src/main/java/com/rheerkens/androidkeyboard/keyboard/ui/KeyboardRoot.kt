@@ -57,6 +57,8 @@ data class KeyboardUiState(
     val fan: FanSpec = FanSpec(action = null, newLine = false),
     /** What a Backspace slide into the editor points at; null when not aiming. */
     val wordAim: WordAim? = null,
+    /** The keyboard chooser (long-press Space), shown in place of the keys; null when closed. */
+    val keyboardChoices: KeyboardChoices? = null,
 )
 
 /**
@@ -90,7 +92,12 @@ fun KeyboardRoot(state: KeyboardUiState, clock: () -> Long, actions: KeyboardAct
                         SuggestionStrip(state.strip, state.clipHistory, state.inputSession, actions)
                         ModeToggle(state.mode, actions)
                     }
-                    KeysPanel(state.layout, state.keyboard, state.rowHeightDp, state.enterKind, actions)
+                    val choices = state.keyboardChoices
+                    if (choices != null) {
+                        KeyboardChooser(choices, (4 * state.rowHeightDp + 4).dp, actions)
+                    } else {
+                        KeysPanel(state.layout, state.keyboard, state.rowHeightDp, state.enterKind, actions)
+                    }
                 } else {
                     if (state.pickerOpen) {
                         val keysHeight = 44 + 4 * state.rowHeightDp + 4 // strip + rows + bottom padding
