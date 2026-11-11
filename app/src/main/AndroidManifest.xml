@@ -11,6 +11,9 @@
     <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
     <!-- Lets the daily update check wait for a network connection. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Keeps an update download running when the user leaves the app (Settings → Updates). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!-- Optional: the "update available" notification. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Optional: recent screenshots in the keyboard's minimized bar (Settings → Keyboard). -->
@@ -68,6 +71,12 @@
             android:name=".updates.UpdateCheckJob"
             android:exported="false"
             android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <!-- Keeps the process running while an update downloads, with a progress notification. -->
+        <service
+            android:name=".updates.UpdateDownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <!-- Result of installing an update; only the package installer's PendingIntent reaches it. -->
         <receiver

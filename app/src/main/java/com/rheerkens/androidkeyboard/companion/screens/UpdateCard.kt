@@ -106,7 +106,8 @@ fun UpdatesSection() {
             } else {
                 TextButton(
                     onClick = { scope.launch { AppGraph.updates.check(userStarted = true) } },
-                    enabled = !state.busy && state.status !is UpdateStatus.Installing,
+                    enabled = !state.busy && state.status !is UpdateStatus.Installing &&
+                        state.status !is UpdateStatus.AwaitingConfirmation,
                 ) { Text("Check now") }
             }
         }
@@ -159,11 +160,16 @@ private fun UpdateActions(state: UpdateState) {
             )
         }
     }
+    fun confirm() {
+        // Android's confirmation screen for the waiting install; start over if it's gone.
+        if (!Updates.openConfirmation(context)) update()
+    }
 
     val status = state.status
     val title = when (status) {
         is UpdateStatus.Downloading -> "Downloading Lowkey ${update.versionName}"
         is UpdateStatus.Installing -> "Installing Lowkey ${update.versionName}"
+        is UpdateStatus.AwaitingConfirmation -> "Lowkey ${update.versionName} is ready to install"
         else -> "Lowkey ${update.versionName} is available"
     }
     Text(title, style = MaterialTheme.typography.titleMedium)
@@ -185,6 +191,11 @@ private fun UpdateActions(state: UpdateState) {
                 "working, and your settings, dictionary and models stay.",
             style = MaterialTheme.typography.bodySmall,
         )
+        is UpdateStatus.AwaitingConfirmation -> Text(
+            "Tap Install, then confirm in Android's installer. Lowkey closes while it updates; your " +
+                "settings, dictionary and models stay.",
+            style = MaterialTheme.typography.bodySmall,
+        )
         is UpdateStatus.Failed -> Text(status.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         else -> Text(
             "${update.sizeBytes / MB} MB download. Your settings, dictionary and models stay." +
@@ -197,6 +208,7 @@ private fun UpdateActions(state: UpdateState) {
         when (status) {
             is UpdateStatus.Downloading -> OutlinedButton(onClick = { AppGraph.updates.cancelDownload() }) { Text("Cancel") }
             is UpdateStatus.Installing -> OutlinedButton(onClick = ::update) { Text("Install again") }
+            is UpdateStatus.AwaitingConfirmation -> Button(onClick = ::confirm) { Text("Install") }
             is UpdateStatus.Failed -> Button(onClick = ::update) { Text("Try again") }
             else -> Button(onClick = ::update) { Text("Update") }
         }

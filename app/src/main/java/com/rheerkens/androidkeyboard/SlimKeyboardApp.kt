@@ -1,12 +1,14 @@
 package com.rheerkens.androidkeyboard
 
 import android.app.Application
+import com.rheerkens.androidkeyboard.updates.Updates
 
 class SlimKeyboardApp : Application() {
     override fun onCreate() {
         super.onCreate()
         AppGraph.init(this)
         AppGraph.crashLog.install()
+        Updates.trackVisibleActivities(this)
     }
 
     @Suppress("DEPRECATION") // Older Android versions still deliver running-memory callbacks.

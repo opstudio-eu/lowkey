@@ -1,6 +1,9 @@
 package com.rheerkens.androidkeyboard.updates
 
 import android.Manifest
+import android.app.Activity
+import android.app.Application
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -8,6 +11,7 @@ import android.app.job.JobInfo
 import android.app.job.JobParameters
 import android.app.job.JobScheduler
 import android.app.job.JobService
+import android.app.Service
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
@@ -15,13 +19,18 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import android.os.Build
+import android.os.Bundle
+import android.os.IBinder
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.IntentCompat
 import androidx.core.content.edit
+import androidx.core.app.ServiceCompat
 import com.rheerkens.androidkeyboard.AppGraph
 import com.rheerkens.androidkeyboard.BuildConfig
 import com.rheerkens.androidkeyboard.R
@@ -30,6 +39,8 @@ import com.rheerkens.androidkeyboard.companion.Destination
 import com.rheerkens.androidkeyboard.models.HttpsArtifactFetcher
 import com.rheerkens.androidkeyboard.models.ModelArtifact
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -39,6 +50,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.DigestOutputStream
 import java.security.MessageDigest
+import java.util.concurrent.atomic.AtomicInteger
 import javax.net.ssl.HttpsURLConnection
 
 /** Settings and timing of the updater. */
@@ -97,6 +109,7 @@ object Updates {
     private const val TAG = "LowkeyUpdates"
     const val CHANNEL_ID = "updates"
     const val NOTIFICATION_ID = 1
+    const val PROGRESS_NOTIFICATION_ID = 2
 
     fun ensureChannel(manager: NotificationManager) {
         manager.createNotificationChannel(
@@ -108,6 +121,58 @@ object Updates {
 
     /** Whether the user allowed this app to install updates (Settings → Install unknown apps). */
     fun canInstall(context: Context): Boolean = context.packageManager.canRequestPackageInstalls()
+
+    /**
+     * Android's "confirm this update" screen for the session waiting on the user, kept so the card
+     * can open it again. Android blocks opening it from the background, so it opens from a tap.
+     */
+    @Volatile
+    var confirmIntent: Intent? = null
+
+    private val startedActivities = AtomicInteger()
+
+    /** Whether one of this app's activities is on screen, so it may open Android's installer. */
+    val appVisible: Boolean get() = startedActivities.get() > 0
+
+    fun trackVisibleActivities(app: Application) {
+        app.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
+            override fun onActivityStarted(activity: Activity) { startedActivities.incrementAndGet() }
+            override fun onActivityStopped(activity: Activity) { startedActivities.decrementAndGet() }
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
+            override fun onActivityResumed(activity: Activity) = Unit
+            override fun onActivityPaused(activity: Activity) = Unit
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
+            override fun onActivityDestroyed(activity: Activity) = Unit
+        })
+    }
+
+    /** Opens Android's confirmation screen from a tap in the app, or returns false if there is none. */
+    fun openConfirmation(context: Context): Boolean {
+        val confirm = confirmIntent ?: return false
+        context.getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID)
+        return runCatching { context.startActivity(Intent(confirm)) }
+            .onFailure { Log.w(TAG, "Couldn't open the installer", it) }
+            .isSuccess
+    }
+
+    /** "Tap to install": opens Android's confirmation screen when the app isn't on screen. */
+    fun notifyConfirmation(context: Context, update: AvailableUpdate?, confirm: Intent): Boolean {
+        if (!canNotify(context)) return false
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return false
+        ensureChannel(manager)
+        val open = PendingIntent.getActivity(
+            context, 1, Intent(confirm).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_stat_update)
+            .setContentTitle(update?.let { "Lowkey ${it.versionName} is ready to install" } ?: "Lowkey update ready to install")
+            .setContentText("Tap to install the update.")
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .build()
+        return runCatching { manager.notify(NOTIFICATION_ID, notification) }.isSuccess
+    }
 }
 
 private class SharedUpdatePrefs(private val prefs: SharedPreferences) : UpdatePrefs {
@@ -188,7 +253,12 @@ private class AndroidUpdatePlatform(private val context: Context) : UpdatePlatfo
             setSize(apk.length())
             setInstallReason(PackageManager.INSTALL_REASON_USER)
             // An app may update itself without a confirmation on Android 12 and later.
-            if (Build.VERSION.SDK_INT >= 31) setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
+            if (Build.VERSION.SDK_INT >= 31) {
+                setRequireUserAction(
+                    if (BuildConfig.UPDATE_REQUIRE_USER_ACTION) PackageInstaller.SessionParams.USER_ACTION_REQUIRED
+                    else PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED,
+                )
+            }
         }
         val sessionId = installer.createSession(params)
         try {
@@ -207,6 +277,13 @@ private class AndroidUpdatePlatform(private val context: Context) : UpdatePlatfo
             runCatching { installer.abandonSession(sessionId) }
             throw e
         }
+    }
+
+    override fun keepRunning() {
+        // Without a foreground service, Android freezes the app soon after the user leaves it, and
+        // the download fails. Starting one is allowed here: the user just tapped Update.
+        runCatching { ContextCompat.startForegroundService(context, Intent(context, UpdateDownloadService::class.java)) }
+            .onFailure { Log.w("LowkeyUpdates", "Couldn't start the download service", it) }
     }
 
     override fun notifyAvailable(update: AvailableUpdate): Boolean {
@@ -250,19 +327,32 @@ class UpdateInstallReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != ACTION) return
         AppGraph.init(context)
-        when (val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)) {
+        val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
+        val detail = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
+        Log.i(TAG, "Installer status $status ($detail), app visible: ${Updates.appVisible}")
+        when (status) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
                 val confirm = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_INTENT, Intent::class.java)
-                val opened = confirm != null &&
-                    runCatching { context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
-                if (!opened) {
+                if (confirm == null) {
                     AppGraph.updates.onInstallResult(InstallResult.Failed("Android's installer didn't open. Try again."))
+                    return
                 }
+                Updates.confirmIntent = confirm
+                AppGraph.updates.onConfirmationNeeded()
+                // Android silently ignores an activity start from the background (no exception), so
+                // open the installer only while the app is on screen; otherwise the notification and
+                // the card's Install button open it from a tap.
+                val opened = Updates.appVisible &&
+                    runCatching { context.startActivity(Intent(confirm).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
+                if (!opened) Updates.notifyConfirmation(context, AppGraph.updates.state.value.update, confirm)
             }
             PackageInstaller.STATUS_SUCCESS -> Unit // This process is replaced by the new version.
-            PackageInstaller.STATUS_FAILURE_ABORTED -> AppGraph.updates.onInstallResult(InstallResult.Cancelled)
+            PackageInstaller.STATUS_FAILURE_ABORTED -> {
+                Updates.confirmIntent = null
+                AppGraph.updates.onInstallResult(InstallResult.Cancelled)
+            }
             else -> {
-                val detail = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
+                Updates.confirmIntent = null
                 Log.w(TAG, "Update install failed: status $status, $detail")
                 AppGraph.updates.onInstallResult(InstallResult.Failed(installFailure(status)))
             }
@@ -280,6 +370,101 @@ class UpdateInstallReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION = "com.rheerkens.androidkeyboard.UPDATE_INSTALL_STATUS"
         private const val TAG = "LowkeyUpdates"
+    }
+}
+
+/**
+ * A foreground service that keeps the process running, with a progress notification, from Update
+ * until the APK is handed to Android's installer. Without it Android freezes the app soon after the
+ * user leaves it, and the download fails.
+ */
+class UpdateDownloadService : Service() {
+    private var job: Job? = null
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        AppGraph.init(this)
+        val manager = getSystemService(NotificationManager::class.java)
+        manager?.let(Updates::ensureChannel)
+        val type = if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC else 0
+        try {
+            ServiceCompat.startForeground(this, Updates.PROGRESS_NOTIFICATION_ID, progress(AppGraph.updates.state.value), type)
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "Couldn't start in the foreground", e)
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        if (job == null) {
+            job = AppGraph.appScope.launch {
+                val shown = launch {
+                    // At most once a second: Android drops a notification updated much more often.
+                    var downloading = true
+                    var postedAt = 0L
+                    AppGraph.updates.state.collect { state ->
+                        val now = SystemClock.elapsedRealtime()
+                        val isDownloading = state.status is UpdateStatus.Downloading
+                        if (isDownloading != downloading || now - postedAt >= 1_000) {
+                            downloading = isDownloading
+                            postedAt = now
+                            runCatching { manager?.notify(Updates.PROGRESS_NOTIFICATION_ID, progress(state)) }
+                        }
+                    }
+                }
+                AppGraph.updates.working.first { !it }
+                shown.cancel()
+                finish()
+            }
+        }
+        return START_NOT_STICKY
+    }
+
+    private fun progress(state: UpdateState): Notification {
+        val update = state.update
+        val status = state.status
+        val builder = NotificationCompat.Builder(this, Updates.CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_stat_update)
+            .setOngoing(true)
+            .setSilent(true)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(
+                PendingIntent.getActivity(
+                    this, 0, CompanionLinks.intent(this, Destination.HOME),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                ),
+            )
+        if (status is UpdateStatus.Downloading && update != null) {
+            val total = (update.sizeBytes / MB).toInt().coerceAtLeast(1)
+            builder.setContentTitle("Downloading Lowkey ${update.versionName}")
+                .setContentText("${status.bytes / MB} of $total MB")
+                .setProgress(total, (status.bytes / MB).toInt(), false)
+        } else {
+            builder.setContentTitle(update?.let { "Installing Lowkey ${it.versionName}" } ?: "Updating Lowkey")
+                .setProgress(0, 0, true)
+        }
+        return builder.build()
+    }
+
+    private fun finish() {
+        job = null
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    /** Android 15 limits dataSync services to 6 hours a day; an update download never needs that long. */
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        AppGraph.updates.cancelDownload()
+        finish()
+    }
+
+    override fun onDestroy() {
+        job?.cancel()
+        super.onDestroy()
+    }
+
+    private companion object {
+        const val TAG = "LowkeyUpdates"
+        const val MB = 1_000_000L
     }
 }
 
