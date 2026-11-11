@@ -1,7 +1,8 @@
 <resources>
+    <!-- OpStudio brand: dark (#101E2B) on light (#F4F8FB); see companion/theme/Theme.kt. -->
     <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
-        <item name="android:colorAccent">#2F5FA7</item>
-        <item name="android:windowBackground">#F6F7FB</item>
-        <item name="android:colorBackground">#F6F7FB</item>
+        <item name="android:colorAccent">#17659C</item>
+        <item name="android:windowBackground">#F4F8FB</item>
+        <item name="android:colorBackground">#F4F8FB</item>
     </style>
 </resources>

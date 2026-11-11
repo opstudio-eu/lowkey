@@ -1,83 +1,124 @@
 package com.rheerkens.androidkeyboard.companion.theme
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import com.rheerkens.androidkeyboard.R
 import com.rheerkens.androidkeyboard.settings.ThemeMode
 
-private val Dark = darkColorScheme(
-    primary = Color(0xFFA9C7FA),
-    onPrimary = Color(0xFF0C1F3D),
-    primaryContainer = Color(0xFF2C4A6C),
-    onPrimaryContainer = Color(0xFFE6F0FB),
+/**
+ * OpStudio's brand colours. The companion app and keyboard palettes are derived from these:
+ * dark on light ([Dark] on [Light]) for the light theme, light blue on dark for the dark theme.
+ * Dynamic colour stays off so the brand shows.
+ */
+object Brand {
+    val Blue = Color(0xFF17659C)
+    val LightBlue = Color(0xFF83C9F4)
+    val Sky = Color(0xFF2C99D6)
+    val AccentRed = Color(0xFFEB2F33)
+    val Dark = Color(0xFF101E2B)
+    val Light = Color(0xFFF4F8FB)
+    val White = Color(0xFFFFFFFF)
+}
+
+/** Whether [mode] means the dark theme, given whether the system is in dark mode. */
+fun resolveDark(mode: ThemeMode, systemDark: Boolean): Boolean = when (mode) {
+    ThemeMode.SYSTEM -> systemDark
+    ThemeMode.LIGHT -> false
+    ThemeMode.DARK -> true
+}
+
+/** The OpStudio logo variant for the theme: blue on light backgrounds, light blue on dark ones. */
+@DrawableRes
+fun opStudioLogo(dark: Boolean): Int = if (dark) R.drawable.opstudio_logo_light_blue else R.drawable.opstudio_logo_blue
+
+/** True for a dark scheme, read from its background so it follows whichever scheme is applied. */
+val ColorScheme.isDark: Boolean get() = background.luminance() < 0.5f
+
+internal val DarkScheme: ColorScheme = darkColorScheme(
+    primary = Brand.LightBlue,
+    onPrimary = Brand.Dark,
+    primaryContainer = Brand.Blue,
+    onPrimaryContainer = Brand.White,
+    inversePrimary = Brand.Blue,
     secondary = Color(0xFF5CD193),
     onSecondary = Color(0xFF00391F),
-    secondaryContainer = Color(0xFF1E3A2C),
+    secondaryContainer = Color(0xFF1B3B30),
     onSecondaryContainer = Color(0xFFBFF3D6),
     tertiary = Color(0xFFF2C46E),
     onTertiary = Color(0xFF3D2A00),
-    tertiaryContainer = Color(0xFF4A3A16),
+    tertiaryContainer = Color(0xFF473A1B),
     onTertiaryContainer = Color(0xFFFFE3A8),
-    background = Color(0xFF0E141B),
-    onBackground = Color(0xFFE9EEF3),
-    surface = Color(0xFF0E141B),
-    onSurface = Color(0xFFE9EEF3),
-    surfaceVariant = Color(0xFF222C38),
-    onSurfaceVariant = Color(0xFF9EACBA),
-    surfaceContainerLowest = Color(0xFF0A0F14),
-    surfaceContainerLow = Color(0xFF141B23),
-    surfaceContainer = Color(0xFF18212B),
-    surfaceContainerHigh = Color(0xFF1E2833),
-    surfaceContainerHighest = Color(0xFF26313D),
-    outline = Color(0xFF4A5A6B),
-    outlineVariant = Color(0xFF28333F),
-    error = Color(0xFFF2A5A5),
+    background = Brand.Dark,
+    onBackground = Color(0xFFEAF2F8),
+    surface = Brand.Dark,
+    onSurface = Color(0xFFEAF2F8),
+    surfaceVariant = Color(0xFF223547),
+    onSurfaceVariant = Color(0xFFA7BCCD),
+    surfaceTint = Brand.LightBlue,
+    inverseSurface = Color(0xFFEAF2F8),
+    inverseOnSurface = Brand.Dark,
+    surfaceContainerLowest = Color(0xFF0A1621),
+    surfaceContainerLow = Color(0xFF142433),
+    surfaceContainer = Color(0xFF182A3A),
+    surfaceContainerHigh = Color(0xFF1E3243),
+    surfaceContainerHighest = Color(0xFF253A4D),
+    outline = Color(0xFF6B8296),
+    outlineVariant = Color(0xFF2B4053),
+    // The accent red, lightened for text on the dark surfaces.
+    error = Color(0xFFFF8A8C),
+    onError = Color(0xFF5C0A0C),
+    errorContainer = Color(0xFF7A1418),
+    onErrorContainer = Color(0xFFFFDAD9),
 )
 
-private val Light = lightColorScheme(
-    primary = Color(0xFF2F5FA7),
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFFD7E5FB),
-    onPrimaryContainer = Color(0xFF0C1F3D),
-    secondary = Color(0xFF1C8A55),
-    onSecondary = Color.White,
+internal val LightScheme: ColorScheme = lightColorScheme(
+    primary = Brand.Blue,
+    onPrimary = Brand.White,
+    primaryContainer = Color(0xFFD3E8F7),
+    onPrimaryContainer = Brand.Dark,
+    inversePrimary = Brand.LightBlue,
+    secondary = Color(0xFF166B42),
+    onSecondary = Brand.White,
     secondaryContainer = Color(0xFFCDEFDC),
     onSecondaryContainer = Color(0xFF00391F),
-    tertiary = Color(0xFF8A5E00),
-    onTertiary = Color.White,
+    tertiary = Color(0xFF7A5300),
+    onTertiary = Brand.White,
     tertiaryContainer = Color(0xFFFFE3A8),
     onTertiaryContainer = Color(0xFF3D2A00),
-    background = Color(0xFFF6F7FB),
-    onBackground = Color(0xFF192630),
-    surface = Color(0xFFF6F7FB),
-    onSurface = Color(0xFF192630),
-    surfaceVariant = Color(0xFFE1E6EC),
-    onSurfaceVariant = Color(0xFF485862),
-    surfaceContainerLowest = Color.White,
-    surfaceContainerLow = Color(0xFFF0F2F6),
-    surfaceContainer = Color(0xFFEAEDF2),
-    surfaceContainerHigh = Color(0xFFE4E8ED),
-    surfaceContainerHighest = Color(0xFFDDE2E8),
-    outline = Color(0xFF7A8794),
-    outlineVariant = Color(0xFFC9D0D8),
+    background = Brand.Light,
+    onBackground = Brand.Dark,
+    surface = Brand.Light,
+    onSurface = Brand.Dark,
+    surfaceVariant = Color(0xFFDCE6EE),
+    onSurfaceVariant = Color(0xFF44576A),
+    surfaceTint = Brand.Blue,
+    inverseSurface = Brand.Dark,
+    inverseOnSurface = Color(0xFFEAF2F8),
+    surfaceContainerLowest = Brand.White,
+    surfaceContainerLow = Color(0xFFEDF3F8),
+    surfaceContainer = Color(0xFFE6EEF4),
+    surfaceContainerHigh = Color(0xFFE0E9F0),
+    surfaceContainerHighest = Color(0xFFD8E2EA),
+    outline = Color(0xFF6E8091),
+    outlineVariant = Color(0xFFC5D2DD),
+    // The accent red, darkened for text on the light surfaces.
+    error = Color(0xFFC2161D),
+    onError = Brand.White,
+    errorContainer = Color(0xFFFFDAD9),
+    onErrorContainer = Color(0xFF5C0A0C),
 )
 
 @Composable
 fun SlimTheme(mode: ThemeMode, content: @Composable () -> Unit) {
-    val dark = when (mode) {
-        ThemeMode.SYSTEM -> isSystemInDarkTheme()
-        ThemeMode.LIGHT -> false
-        ThemeMode.DARK -> true
-    }
-    MaterialTheme(colorScheme = if (dark) Dark else Light, content = content)
+    MaterialTheme(colorScheme = if (isDarkTheme(mode)) DarkScheme else LightScheme, content = content)
 }
 
 @Composable
-fun isDarkTheme(mode: ThemeMode): Boolean = when (mode) {
-    ThemeMode.SYSTEM -> isSystemInDarkTheme()
-    ThemeMode.LIGHT -> false
-    ThemeMode.DARK -> true
-}
+fun isDarkTheme(mode: ThemeMode): Boolean = resolveDark(mode, isSystemInDarkTheme())

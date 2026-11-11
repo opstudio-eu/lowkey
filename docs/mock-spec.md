@@ -103,8 +103,9 @@ Bottom navigation: **Home**, **Models**, **Dictionary**, **Settings**. Try it, A
 5. **Settings**, grouped:
    - Keyboard: height (Compact, Normal, Tall), key-press vibration, auto-capitalize, autocorrect, suggestion strip, and keyboards (a layout chip per language).
    - Voice: Keyboard-first dictation (on), model retention, live text in editor (on), auto-stop after silence (Off, 2 s, 4 s), apply phrase rules (off), voice language, and a link to Speech models. Auto-start, remember last mode, and continuous dictation apply when Keyboard-first dictation is off.
-   - Appearance: theme (System, Light, Dark).
+   - Appearance: theme (System, Light, Dark), applied to the companion app and the keyboard, in OpStudio's brand colours.
    - Links: Diagnostics and About.
+   - Credit: a "Made by OpStudio" card with the OpStudio logo for the current theme, the app version and a link to opstudio.eu.
 6. **Diagnostics**: a voice session log with session ID, start time, transitions such as `listening → finalizing → committed` or `listening → cancelled (switched to keys)`, word count, and simulated latency. Includes a Clear log button and a simulated latency setting (Fast, Realistic, Slow).
 7. **About and licenses**: version, privacy statement (everything stays on the device; no network except model downloads), references to FUTO Keyboard and the Moonshine voice-input fork with their roles, a note that code is written from scratch with these as design references, and a model-license note.
 

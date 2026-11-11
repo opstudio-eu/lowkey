@@ -31,6 +31,7 @@ import com.rheerkens.androidkeyboard.clipboard.ClipEntry
 import com.rheerkens.androidkeyboard.clipboard.ClipboardContent
 import com.rheerkens.androidkeyboard.clipboard.ClipboardHistory
 import com.rheerkens.androidkeyboard.clipboard.RecentScreenshots
+import com.rheerkens.androidkeyboard.companion.theme.resolveDark
 import com.rheerkens.androidkeyboard.clipboard.loadThumbnail
 import com.rheerkens.androidkeyboard.editor.Attachment
 import com.rheerkens.androidkeyboard.editor.ImageEditorActivity
@@ -62,7 +63,6 @@ import com.rheerkens.androidkeyboard.keyboard.ui.WordAim
 import com.rheerkens.androidkeyboard.keyboard.wordsFrom
 import com.rheerkens.androidkeyboard.settings.InputMode
 import com.rheerkens.androidkeyboard.settings.Settings
-import com.rheerkens.androidkeyboard.settings.ThemeMode
 import com.rheerkens.androidkeyboard.keyboard.TypingKeyboard
 import com.rheerkens.androidkeyboard.voice.CancelReason
 import com.rheerkens.androidkeyboard.voice.VoiceConfig
@@ -276,11 +276,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                 val session by inputSession.collectAsState()
                 val once by keyboardOnce.collectAsState()
                 val fan by fanSpec.collectAsState()
-                val dark = when (s.theme) {
-                    ThemeMode.SYSTEM -> isSystemInDarkTheme()
-                    ThemeMode.DARK -> true
-                    ThemeMode.LIGHT -> false
-                }
+                val dark = resolveDark(s.theme, isSystemInDarkTheme())
                 KeyboardRoot(
                     KeyboardUiState(
                         mode = m,
