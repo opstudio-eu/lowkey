@@ -1,11 +1,17 @@
 package com.rheerkens.androidkeyboard.updates
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -78,6 +84,8 @@ class UpdateManager(
     private val prefs: UpdatePrefs,
     private val downloadDir: File,
     private val scope: CoroutineScope,
+    /** File work and handing the ~90 MB APK to the installer: never on the main thread, where the keyboard runs. */
+    private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private val _state = MutableStateFlow(initialState())
     val state: StateFlow<UpdateState> = _state.asStateFlow()
@@ -116,44 +124,52 @@ class UpdateManager(
     suspend fun check(userStarted: Boolean, notify: Boolean = !userStarted) {
         checkLock.withLock {
             val before = _state.value
-            if (before.status is UpdateStatus.Downloading || before.status is UpdateStatus.Installing ||
-                before.status is UpdateStatus.AwaitingConfirmation
-            ) {
-                return
-            }
-            if (userStarted) _state.value = before.copy(status = UpdateStatus.Checking)
+            if (inProgress(before.status)) return
+            if (userStarted) setUnlessInProgress(before.copy(status = UpdateStatus.Checking))
             val result = runCatching { platform.fetchFeed()?.let(AvailableUpdate::parse) }
             result.exceptionOrNull()?.let { if (it is CancellationException) throw it }
             val now = platform.now()
             val feed = result.getOrElse { error ->
-                _state.value = if (userStarted) {
-                    before.copy(status = UpdateStatus.Failed(checkFailure(error), before.update))
-                } else {
-                    before
-                }
+                setUnlessInProgress(
+                    if (userStarted) before.copy(status = UpdateStatus.Failed(checkFailure(error), before.update)) else before,
+                )
                 return
             }
             prefs.lastCheckedAt = now
+            // The user started the update while the feed loaded: leave it, its saved release and
+            // its notifications alone.
+            if (inProgress(_state.value.status)) return
             val newer = feed?.takeIf { it.versionCode > platform.installedVersionCode() }
             prefs.available = newer
             if (newer == null) {
-                _state.value = UpdateState(UpdateStatus.UpToDate, now)
+                setUnlessInProgress(UpdateState(UpdateStatus.UpToDate, now))
                 return
             }
-            _state.value = UpdateState(UpdateStatus.Available(newer), now)
+            setUnlessInProgress(UpdateState(UpdateStatus.Available(newer), now))
             if (notify && prefs.notifiedVersionCode != newer.versionCode && platform.notifyAvailable(newer)) {
                 prefs.notifiedVersionCode = newer.versionCode
             }
         }
     }
 
+    private fun inProgress(status: UpdateStatus) = status is UpdateStatus.Downloading ||
+        status is UpdateStatus.Installing || status is UpdateStatus.AwaitingConfirmation
+
+    /** A check that was waiting for the feed must not overwrite an update the user started meanwhile. */
+    private fun setUnlessInProgress(next: UpdateState) {
+        _state.update { current -> if (inProgress(current.status)) current else next }
+    }
+
     /** Downloads the known update, verifies it, and hands it to Android's installer. */
     fun startUpdate() {
         val update = _state.value.update ?: return
-        if (downloadJob?.isActive == true) return
-        _state.value = _state.value.copy(status = UpdateStatus.Downloading(update, 0))
+        // Also while a cancelled job is still finishing: it may still be cleaning up its files.
+        if (downloadJob?.isCompleted == false) return
+        _state.update { it.copy(status = UpdateStatus.Downloading(update, 0)) }
         _working.value = true
-        downloadJob = scope.launch {
+        var committed = false
+        // Lazy, so it is the current job before it can run or complete.
+        val job = scope.launch(io, start = CoroutineStart.LAZY) {
             try {
                 downloadDir.mkdirs()
                 val apk = File(downloadDir, update.fileName)
@@ -161,22 +177,45 @@ class UpdateManager(
                     downloadDir.listFiles()?.forEach { it.delete() }
                     val part = File(downloadDir, update.fileName + ".part")
                     platform.download(update, part) { total ->
-                        _state.value = _state.value.copy(status = UpdateStatus.Downloading(update, total))
+                        _state.update { it.copy(status = UpdateStatus.Downloading(update, total)) }
                     }
                     check(part.renameTo(apk)) { "Could not save the download." }
                 }
-                _state.value = _state.value.copy(status = UpdateStatus.Installing(update))
+                // A Cancel tapped as the download finished must not still open the installer.
+                ensureActive()
+                _state.update { it.copy(status = UpdateStatus.Installing(update)) }
                 platform.install(apk, update)
-            } catch (e: CancellationException) {
-                _state.value = _state.value.copy(status = UpdateStatus.Available(update))
-                throw e
+                committed = true
             } catch (e: Exception) {
+                // Cancelling closes the connection, so the read fails ("Socket closed") before the
+                // coroutine notices: that is the cancel too, not a failed download. The partial
+                // download goes, inside the job, so it is gone before a new one can start.
+                if (e is CancellationException || !isActive) {
+                    runCatching { downloadDir.listFiles { f -> f.name.endsWith(".part") }?.forEach { it.delete() } }
+                    throw e as? CancellationException ?: CancellationException("Update cancelled").apply { initCause(e) }
+                }
                 downloadDir.listFiles()?.forEach { it.delete() }
-                _state.value = _state.value.copy(status = UpdateStatus.Failed(downloadFailure(e), update))
-            } finally {
+                _state.update { it.copy(status = UpdateStatus.Failed(downloadFailure(e), update)) }
+            }
+        }
+        downloadJob = job
+        // Runs however the job ends, also when it was cancelled before it started. The bookkeeping
+        // runs in [scope] (the main thread in the app), like startUpdate, so a new Update tap can't
+        // slip in between its check and its writes; a newer job owns the state from then on.
+        job.invokeOnCompletion { cause ->
+            scope.launch {
+                if (downloadJob !== job) return@launch
+                if (cause is CancellationException && !committed) {
+                    _state.update { state ->
+                        val s = state.status
+                        if (s is UpdateStatus.Downloading || s is UpdateStatus.Installing) state.copy(status = UpdateStatus.Available(update))
+                        else state
+                    }
+                }
                 _working.value = false
             }
         }
+        job.start()
         platform.keepRunning()
     }
 
@@ -186,19 +225,23 @@ class UpdateManager(
 
     /** Android's installer waits for the user to confirm the update. */
     fun onConfirmationNeeded() {
-        val update = _state.value.update ?: return
-        _state.value = _state.value.copy(status = UpdateStatus.AwaitingConfirmation(update))
+        _state.update { state ->
+            val update = state.update ?: return@update state
+            state.copy(status = UpdateStatus.AwaitingConfirmation(update))
+        }
     }
 
     /** Android's installer finished without replacing the app (success ends this process instead). */
     fun onInstallResult(result: InstallResult) {
-        val update = _state.value.update ?: return
-        _state.value = _state.value.copy(
-            status = when (result) {
-                InstallResult.Cancelled -> UpdateStatus.Available(update)
-                is InstallResult.Failed -> UpdateStatus.Failed(result.message, update)
-            },
-        )
+        _state.update { state ->
+            val update = state.update ?: return@update state
+            state.copy(
+                status = when (result) {
+                    InstallResult.Cancelled -> UpdateStatus.Available(update)
+                    is InstallResult.Failed -> UpdateStatus.Failed(result.message, update)
+                },
+            )
+        }
     }
 
     private fun checkFailure(error: Throwable): String = when (error) {

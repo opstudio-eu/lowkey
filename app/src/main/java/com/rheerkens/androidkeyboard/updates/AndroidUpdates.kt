@@ -129,21 +129,40 @@ object Updates {
     @Volatile
     var confirmIntent: Intent? = null
 
-    private val startedActivities = AtomicInteger()
+    /**
+     * The session whose result counts; results of an earlier, abandoned session are ignored.
+     * [NO_SESSION] (after a restart) accepts any result; [STARTING_SESSION] accepts none.
+     */
+    @Volatile
+    var currentSessionId: Int = NO_SESSION
+    const val NO_SESSION = -1
+    const val STARTING_SESSION = -2
 
-    /** Whether one of this app's activities is on screen, so it may open Android's installer. */
-    val appVisible: Boolean get() = startedActivities.get() > 0
+    private val resumedActivities = AtomicInteger()
+
+    /**
+     * Whether one of this app's activities is in front, so it may open Android's installer. Resumed,
+     * not just started: a started activity can sit under the lock screen or a dialog, where Android
+     * would silently block the start and no notification would be posted.
+     */
+    val appVisible: Boolean get() = resumedActivities.get() > 0
 
     fun trackVisibleActivities(app: Application) {
         app.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
-            override fun onActivityStarted(activity: Activity) { startedActivities.incrementAndGet() }
-            override fun onActivityStopped(activity: Activity) { startedActivities.decrementAndGet() }
+            override fun onActivityResumed(activity: Activity) { resumedActivities.incrementAndGet() }
+            override fun onActivityPaused(activity: Activity) { resumedActivities.decrementAndGet() }
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
-            override fun onActivityResumed(activity: Activity) = Unit
-            override fun onActivityPaused(activity: Activity) = Unit
+            override fun onActivityStarted(activity: Activity) = Unit
+            override fun onActivityStopped(activity: Activity) = Unit
             override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
             override fun onActivityDestroyed(activity: Activity) = Unit
         })
+    }
+
+    /** Forgets the confirmation screen of a session that ended, and its "ready to install" notification. */
+    fun clearConfirmation(context: Context) {
+        confirmIntent = null
+        context.getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID)
     }
 
     /** Opens Android's confirmation screen from a tap in the app, or returns false if there is none. */
@@ -248,6 +267,12 @@ private class AndroidUpdatePlatform(private val context: Context) : UpdatePlatfo
 
     override fun install(apk: File, update: AvailableUpdate) {
         val installer = context.packageManager.packageInstaller
+        // An earlier session (Install again, or one left by a process that was killed while Android
+        // waited for confirmation) still holds a staged copy of the APK: drop it.
+        // Until the new session exists, ignore the results of the ones abandoned here.
+        Updates.currentSessionId = Updates.STARTING_SESSION
+        installer.mySessions.forEach { runCatching { installer.abandonSession(it.sessionId) } }
+        Updates.clearConfirmation(context)
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
             setAppPackageName(context.packageName)
             setSize(apk.length())
@@ -261,6 +286,7 @@ private class AndroidUpdatePlatform(private val context: Context) : UpdatePlatfo
             }
         }
         val sessionId = installer.createSession(params)
+        Updates.currentSessionId = sessionId
         try {
             installer.openSession(sessionId).use { session ->
                 session.openWrite("base.apk", 0, apk.length()).use { out ->
@@ -275,14 +301,19 @@ private class AndroidUpdatePlatform(private val context: Context) : UpdatePlatfo
             }
         } catch (e: Exception) {
             runCatching { installer.abandonSession(sessionId) }
+            // A late result of the session abandoned here must not overwrite the failure.
+            Updates.currentSessionId = Updates.STARTING_SESSION
             throw e
         }
     }
 
     override fun keepRunning() {
         // Without a foreground service, Android freezes the app soon after the user leaves it, and
-        // the download fails. Starting one is allowed here: the user just tapped Update.
-        runCatching { ContextCompat.startForegroundService(context, Intent(context, UpdateDownloadService::class.java)) }
+        // the download fails. startService, not startForegroundService: the user just tapped Update,
+        // so the app is in front and may start it, and the service then goes foreground itself. If
+        // that fails, nothing has promised Android a foreground service, which would otherwise end
+        // this process (the keyboard's) when the promise isn't kept.
+        runCatching { context.startService(Intent(context, UpdateDownloadService::class.java)) }
             .onFailure { Log.w("LowkeyUpdates", "Couldn't start the download service", it) }
     }
 
@@ -329,11 +360,15 @@ class UpdateInstallReceiver : BroadcastReceiver() {
         AppGraph.init(context)
         val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
         val detail = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
-        Log.i(TAG, "Installer status $status ($detail), app visible: ${Updates.appVisible}")
+        val sessionId = intent.getIntExtra(PackageInstaller.EXTRA_SESSION_ID, -1)
+        Log.i(TAG, "Installer status $status ($detail) for session $sessionId, app visible: ${Updates.appVisible}")
+        val current = Updates.currentSessionId
+        if (current != Updates.NO_SESSION && sessionId != current) return // An abandoned, earlier session.
         when (status) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
                 val confirm = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_INTENT, Intent::class.java)
                 if (confirm == null) {
+                    Updates.clearConfirmation(context)
                     AppGraph.updates.onInstallResult(InstallResult.Failed("Android's installer didn't open. Try again."))
                     return
                 }
@@ -348,11 +383,11 @@ class UpdateInstallReceiver : BroadcastReceiver() {
             }
             PackageInstaller.STATUS_SUCCESS -> Unit // This process is replaced by the new version.
             PackageInstaller.STATUS_FAILURE_ABORTED -> {
-                Updates.confirmIntent = null
+                Updates.clearConfirmation(context)
                 AppGraph.updates.onInstallResult(InstallResult.Cancelled)
             }
             else -> {
-                Updates.confirmIntent = null
+                Updates.clearConfirmation(context)
                 Log.w(TAG, "Update install failed: status $status, $detail")
                 AppGraph.updates.onInstallResult(InstallResult.Failed(installFailure(status)))
             }
@@ -380,10 +415,12 @@ class UpdateInstallReceiver : BroadcastReceiver() {
  */
 class UpdateDownloadService : Service() {
     private var job: Job? = null
+    private var lastStartId = 0
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        lastStartId = startId
         AppGraph.init(this)
         val manager = getSystemService(NotificationManager::class.java)
         manager?.let(Updates::ensureChannel)
@@ -392,32 +429,42 @@ class UpdateDownloadService : Service() {
             ServiceCompat.startForeground(this, Updates.PROGRESS_NOTIFICATION_ID, progress(AppGraph.updates.state.value), type)
         } catch (e: RuntimeException) {
             Log.w(TAG, "Couldn't start in the foreground", e)
-            stopSelf()
+            stopSelf(startId)
             return START_NOT_STICKY
         }
         if (job == null) {
             job = AppGraph.appScope.launch {
                 val shown = launch {
                     // At most once a second: Android drops a notification updated much more often.
+                    // Android 14+ lets the user swipe it away; don't bring it back during the download.
                     var downloading = true
                     var postedAt = 0L
                     AppGraph.updates.state.collect { state ->
                         val now = SystemClock.elapsedRealtime()
                         val isDownloading = state.status is UpdateStatus.Downloading
-                        if (isDownloading != downloading || now - postedAt >= 1_000) {
+                        // The Installing notice is posted even then: it is short and says what happens next.
+                        val due = isDownloading != downloading || (now - postedAt >= 1_000 && !dismissed(manager))
+                        if (due) {
                             downloading = isDownloading
                             postedAt = now
                             runCatching { manager?.notify(Updates.PROGRESS_NOTIFICATION_ID, progress(state)) }
                         }
                     }
                 }
-                AppGraph.updates.working.first { !it }
+                // Stop once no update is being worked on; a new Update tap may have started one since.
+                do {
+                    AppGraph.updates.working.first { !it }
+                } while (AppGraph.updates.working.value)
                 shown.cancel()
                 finish()
             }
         }
         return START_NOT_STICKY
     }
+
+    /** Whether the user swiped the progress notification away (possible on Android 14 and later). */
+    private fun dismissed(manager: NotificationManager?): Boolean = manager != null &&
+        runCatching { manager.activeNotifications.none { it.id == Updates.PROGRESS_NOTIFICATION_ID } }.getOrDefault(false)
 
     private fun progress(state: UpdateState): Notification {
         val update = state.update
@@ -446,9 +493,12 @@ class UpdateDownloadService : Service() {
     }
 
     private fun finish() {
+        val running = job
         job = null
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        // Only if no newer start arrived; a newer one runs its own check.
+        stopSelf(lastStartId)
+        running?.cancel()
     }
 
     /** Android 15 limits dataSync services to 6 hours a day; an update download never needs that long. */
