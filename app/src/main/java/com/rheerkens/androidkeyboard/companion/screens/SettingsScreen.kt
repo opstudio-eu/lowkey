@@ -39,6 +39,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 
@@ -232,7 +233,8 @@ private fun KeyboardsSetting(s: Settings, update: ((Settings) -> Settings) -> Un
                         selected = on,
                         onClick = { update { it.toggleKeyboard(keyboard) } },
                         enabled = !onlyOne,
-                        label = { Text(arrangement.label) },
+                        // The chip's description names the language too; don't read the label twice.
+                        label = { Text(arrangement.label, Modifier.clearAndSetSemantics {}) },
                         leadingIcon = if (on) ({ Icon(SlimIcons.Check, null, Modifier.size(FilterChipDefaults.IconSize)) }) else null,
                         modifier = Modifier.semantics { contentDescription = "${language.label}, ${arrangement.label}" },
                     )
@@ -240,7 +242,7 @@ private fun KeyboardsSetting(s: Settings, update: ((Settings) -> Settings) -> Un
             }
         }
         Text(
-            "Typing now: ${s.currentKeyboard.label}. Arrangements change only the letter keys; " +
+            "Typing now: ${s.currentKeyboard.label}. Layouts change only the letter keys; " +
                 "suggestions follow the language.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
