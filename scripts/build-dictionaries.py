@@ -16,6 +16,9 @@ Offensive and "not a word" entries are dropped from the word list. From the AOSP
 contractions (`ill` -> `I'll`) and corrections of non-words (`im` -> `I'm`) are kept; real-word
 swaps such as `hid` -> `his` are left out. At most MAX_WORDS words are kept, the most frequent.
 
+The lists in TEST_LISTS (Dutch and Polish) are also written to `app/src/test/resources/dict/`, so the
+autocorrect quality tests run on the real lists without shipping them in the APK.
+
 The app converts downloaded (not bundled) languages on the phone with the same rules
 (`AospWordList.kt`); `scripts/test_build_dictionaries.py` and `AospWordListTest` check that both
 give the same output for one fixture.
@@ -32,6 +35,8 @@ import urllib.request
 
 MAX_WORDS = 250_000
 OUT_DIR = os.path.join("app", "src", "main", "assets", "dict")
+TEST_DIR = os.path.join("app", "src", "test", "resources", "dict")
+TEST_LISTS = ("nl", "pl")
 CATALOG = os.path.join(OUT_DIR, "languages.txt")
 NOTICE = """Word lists derived from the Android Open Source Project LatinIME dictionaries
 (platform/packages/inputmethods/LatinIME, commit {commit}).
@@ -124,16 +129,18 @@ def main():
     source, langs = read_catalog()
     commit = source.split("/+/", 1)[1].split("/", 1)[0]
     os.makedirs(OUT_DIR, exist_ok=True)
+    os.makedirs(TEST_DIR, exist_ok=True)
     for lang in langs:
         bundled = lang.get("bundled") == "true"
-        if not bundled and not check_all:
+        out_dir = OUT_DIR if bundled else TEST_DIR if lang["id"] in TEST_LISTS else None
+        if out_dir is None and not check_all:
             continue
         data = fetch(source, lang)
-        if not bundled:
+        if out_dir is None:
             print(f"{lang['id']}: pin OK ({len(data)} bytes)")
             continue
         words, whitelist = parse(data)
-        path = os.path.join(OUT_DIR, f"{lang['id']}.dict")
+        path = os.path.join(out_dir, f"{lang['id']}.dict")
         with gzip.GzipFile(path, "wb", mtime=0) as f:
             f.write(render(words, whitelist).encode("utf-8"))
         print(f"{path}: {len(words)} words, {len(whitelist)} whitelist entries, {os.path.getsize(path)} bytes")

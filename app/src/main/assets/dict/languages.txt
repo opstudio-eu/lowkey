@@ -11,7 +11,7 @@
 #   speech   Whisper language code used by "Voice language: Same as keyboard" (empty: auto-detect)
 #   rows     the three letter rows, separated by spaces; letters only, any script
 #   accents  long-press choices offered first, as letter:choices (the general accent list follows)
-#   bundled  true: shipped in the APK as dict/<id>.dict; false: downloaded on request
+#   bundled  true: shipped in the APK as dict/<id>.dict (only English, US); false: downloaded on request
 #   accent_margin  optional: autocorrect a known word typed without accents to its accented form
 #            when that is this much more frequent (0-255 scale). Only for languages whose word list
 #            also holds accent-less spellings of common words (Polish `juz` next to `już`).
@@ -45,7 +45,7 @@ english = Dutch
 short = NL
 speech = nl
 rows = qwertyuiop asdfghjkl zxcvbnm
-bundled = true
+bundled = false
 size = 1054497
 sha256 = a647ed5fdd846d3240572c9cb10fb8c30880df2ebefea6184a378adb713cd0cd
 
@@ -57,7 +57,7 @@ speech = pl
 rows = qwertyuiop asdfghjkl zxcvbnm
 accents = a:ą c:ć e:ę l:ł n:ń o:ó s:ś z:żź
 accent_margin = 40
-bundled = true
+bundled = false
 size = 1090690
 sha256 = 75a7a488e014ec3b9dbdb2527f09bca6bb28c250232d9ba50cb0ee1f8738ea45
 

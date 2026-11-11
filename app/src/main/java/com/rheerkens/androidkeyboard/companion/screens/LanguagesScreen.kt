@@ -95,10 +95,9 @@ fun LanguagesScreen(modifier: Modifier) {
         }
         item {
             Note(
-                "Word lists come from the Android Open Source Project keyboard (Apache 2.0). English (US), " +
-                    "Dutch and Polish are built in. Others download from android.googlesource.com at a pinned " +
-                    "version, are checked against their SHA-256, and are converted on the phone. Nothing you type " +
-                    "is sent anywhere.",
+                "Word lists come from the Android Open Source Project keyboard (Apache 2.0). English (US) is " +
+                    "built in. The others download from android.googlesource.com at a pinned version, are checked " +
+                    "against their SHA-256, and are converted on the phone. Nothing you type is sent anywhere.",
                 Modifier.padding(vertical = 12.dp),
             )
         }

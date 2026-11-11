@@ -15,8 +15,8 @@ class LanguageCatalogTest {
     private val catalog = TestLanguages.catalog
 
     @Test
-    fun shippedCatalogBundlesEnglishDutchAndPolishOnly() {
-        assertEquals(listOf("en_US", "nl", "pl"), catalog.languages.filter { it.bundled }.map { it.id })
+    fun shippedCatalogBundlesOnlyEnglish() {
+        assertEquals(listOf("en_US"), catalog.languages.filter { it.bundled }.map { it.id })
         assertEquals("en_US", catalog.default.id)
         // Only bundled word lists may sit in the APK's assets; the rest are downloaded.
         val assets = File("src/main/assets/dict").list()!!.filter { it.endsWith(".dict") }.toSet()
@@ -67,12 +67,12 @@ class LanguageCatalogTest {
     }
 
     @Test
-    fun everyBundledLanguagesCommonLettersAreTypable() {
-        catalog.languages.filter { it.bundled }.forEach { l ->
+    fun commonLettersOfEveryListInTheRepositoryAreTypable() {
+        catalog.languages.filter { TestLanguages.dictFile(it.id).exists() }.also { assertEquals(3, it.size) }.forEach { l ->
             val keys = Layouts.letters(l).rows.flatten().filterIsInstance<Key.Char>()
             val typable = keys.flatMap { listOf(it.label) + it.accents }.toSet()
             // The 20,000 most frequent words (the file is sorted by frequency).
-            val missing = File("src/main/assets/dict/${l.dictionaryFile}").inputStream().use { input ->
+            val missing = TestLanguages.dictFile(l.id).inputStream().use { input ->
                 java.util.zip.GZIPInputStream(input).bufferedReader().lineSequence().take(20_000)
                     .map { it.substringBefore('\t').lowercase() }
                     .flatMap { w -> w.asSequence().filter(Char::isLetter).map { it.toString() } }

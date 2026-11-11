@@ -36,12 +36,15 @@ class BuildDictionariesTest(unittest.TestCase):
         source, langs = bd.read_catalog(os.path.join(ROOT, "app", "src", "main", "assets", "dict", "languages.txt"))
         self.assertIn("/+/", source)
         bundled = [l["id"] for l in langs if l.get("bundled") == "true"]
-        self.assertEqual(["en_US", "nl", "pl"], bundled)
+        self.assertEqual(["en_US"], bundled)
         for lang in langs:
             self.assertEqual(64, len(lang["sha256"]), lang["id"])
             self.assertGreater(int(lang["size"]), 0, lang["id"])
             path = os.path.join(ROOT, "app", "src", "main", "assets", "dict", f"{lang['id']}.dict")
             self.assertEqual(lang.get("bundled") == "true", os.path.exists(path), lang["id"])
+        bd = load_script()
+        for test_list in bd.TEST_LISTS:
+            self.assertTrue(os.path.exists(os.path.join(ROOT, bd.TEST_DIR, f"{test_list}.dict")), test_list)
 
 
 if __name__ == "__main__":

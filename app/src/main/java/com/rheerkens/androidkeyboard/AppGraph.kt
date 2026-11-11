@@ -149,6 +149,11 @@ object AppGraph {
         appScope.launch {
             settings.settings.map { it.checkForUpdates }.distinctUntilChanged().collect { Updates.schedule(app, it) }
         }
+        // An enabled language whose word list is missing downloads again: Dutch for installs from
+        // before 0.5.4, when it was built in, or a list whose pinned checksum changed.
+        settings.current.enabledLanguages.mapNotNull(languages::get)
+            .filter { !languagePacks.isInstalled(it) }
+            .forEach { languagePacks.download(it.id) }
         preloadLexicon(currentLanguage(settings.current))
         initialized = true
     }

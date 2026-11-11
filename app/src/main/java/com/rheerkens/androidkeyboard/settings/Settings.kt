@@ -52,8 +52,11 @@ data class Settings(
     val autoCapitalize: Boolean = true,
     val autocorrect: Boolean = true,
     val suggestionStrip: Boolean = true,
-    /** Keyboard language ids (`assets/dict/languages.txt`) the globe key cycles through. */
-    val enabledLanguages: Set<String> = setOf("en_US", "nl"),
+    /**
+     * Keyboard language ids (`assets/dict/languages.txt`) the globe key cycles through. Only
+     * English (US) is built in; the others count once their word list is downloaded.
+     */
+    val enabledLanguages: Set<String> = setOf("en_US"),
     val currentLanguage: String = "en_US",
     /** Keep the keyboard on screen with a physical keyboard connected (Android hides it otherwise). */
     val showWithPhysicalKeyboard: Boolean = true,

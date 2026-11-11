@@ -13,7 +13,7 @@ Java and Kotlin libraries (Apache-2.0, Apache-2.0.txt)
 
 AOSP LatinIME word lists (Apache-2.0)                           Apache-2.0.txt, ../dict/NOTICE
   platform/packages/inputmethods/LatinIME, commit 127336e9f29d69607eab55982324b210279ae8c5
-  English (US), Dutch and Polish are in the APK. The other keyboard languages in
+  English (US) is in the APK. The other keyboard languages in
   ../dict/languages.txt are downloaded on request from the same commit (same license), checked
   against their pinned SHA-256 and converted on the phone; they are not part of the APK.
 

@@ -5,9 +5,9 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Autocorrect and suggestions against the shipped Polish word list (`assets/dict/pl.dict`). */
+/** Autocorrect and suggestions against the Polish word list the phone downloads (test copy in `src/test/resources/dict/`). */
 class PolishAutocorrectQualityTest {
-    private val lexicon = TestLanguages.bundledLexicon("pl")
+    private val lexicon = TestLanguages.lexicon("pl")
     private val suggester = Suggester { lexicon }
 
     private fun check(expected: Map<String, String>) {
@@ -59,7 +59,7 @@ class PolishAutocorrectQualityTest {
         // Words typed with accents are never changed, and the rule is off without a margin.
         assertNull(lexicon.accentRestoration("już"))
         val plain = TestLanguages.language("pl").let { l ->
-            java.io.File("src/main/assets/dict/pl.dict").inputStream().use { Lexicon.parseGzip(it, l.keys, SpellingRules()) }
+            TestLanguages.dictFile("pl").inputStream().use { Lexicon.parseGzip(it, l.keys, SpellingRules()) }
         }
         assertNull(Corrector.autocorrect("juz", plain))
     }
