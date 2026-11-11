@@ -22,7 +22,7 @@ Commit with the GitHub no-reply address. Enable the leak check once per clone wi
 
 Use the Gradle wrapper with JDK 21 and the Android SDK on `PATH`. Do not commit `local.properties`, model weights, APKs, build outputs, signing keys or credentials.
 
-Releases are signed with `scripts/sign-release-apk.sh` (see README, Signing). To update an installed app, use the signed APK from the latest GitHub release: Android only installs an update signed with the installed app's key or its rotation lineage. Debug builds and the unsigned APKs from fork pull requests can't update a release install.
+Releases are signed with `scripts/sign-release-apk.sh` (see [Signing](CONTRIBUTING.md#signing)). To update an installed app, use the signed APK from the latest GitHub release: Android only installs an update signed with the installed app's key or its rotation lineage. Debug builds and the unsigned APKs from fork pull requests can't update a release install.
 
 ## Licenses
 
