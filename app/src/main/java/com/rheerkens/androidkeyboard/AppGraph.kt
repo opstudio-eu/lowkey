@@ -201,6 +201,7 @@ object AppGraph {
         val generation = synchronized(lexicons) { generations[language.id] ?: 0 }
         appScope.launch(Dispatchers.IO) {
             val name = language.dictionaryFile
+            val started = android.os.SystemClock.elapsedRealtime()
             runCatching {
                 val input = if (language.bundled) assets.open("dict/$name") else languagePacks.file(language).inputStream()
                 val base = input.use { Lexicon.parseGzip(it, language.keys, language.rules) }
@@ -215,7 +216,8 @@ object AppGraph {
                 val current = synchronized(lexicons) {
                     ((generations[language.id] ?: 0) == generation).also { fresh -> if (fresh) lexicons[language.id] = it }
                 }
-                Log.i(TAG, if (current) "Loaded $name: ${it.size} words" else "Discarded $name: deleted or replaced while loading")
+                val ms = android.os.SystemClock.elapsedRealtime() - started
+                Log.i(TAG, if (current) "Loaded $name: ${it.size} words in $ms ms" else "Discarded $name: deleted or replaced while loading")
             }.onFailure { Log.e(TAG, "Failed to load $name", it) }
             loading.remove(language.id)
         }

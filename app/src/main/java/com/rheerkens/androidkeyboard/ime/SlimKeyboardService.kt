@@ -397,7 +397,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         enterKind.value = bridge.enterKind()
         if (keepSession) return
         keyboard.reset()
-        keyboard.setLanguage(AppGraph.currentLanguage().also(AppGraph::preloadLexicon))
+        keyboard.setLanguage(AppGraph.currentLanguage())
+        preloadLanguages()
         autoSpaced = false
         // The slim bar opens in keys mode without forgetting the remembered mode.
         mode.value = if (isMinimized()) InputMode.KEYS else initialMode()
@@ -485,7 +486,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             is Key.Globe -> {
                 val next = keyboard.cycleLanguage(AppGraph.usableLanguages())
                 settings.update { it.copy(currentLanguage = next.id) }
-                AppGraph.preloadLexicon(next)
+                preloadLanguages()
                 refreshStrip()
             }
             is Key.Space -> typeSpace()
@@ -1229,6 +1230,17 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     private fun suggester() = AppGraph.suggester(keyboard.state.value.language)
+
+    /**
+     * Loads the current language's word list and the one the globe key switches to next, so the
+     * first word typed after a switch is already corrected (a list takes about a second to load).
+     */
+    private fun preloadLanguages() {
+        val current = keyboard.state.value.language
+        AppGraph.preloadLexicon(current)
+        val order = AppGraph.usableLanguages()
+        if (order.size > 1) AppGraph.preloadLexicon(order[(order.indexOfFirst { it.id == current.id } + 1) % order.size])
+    }
 
     private fun showVoiceOutcomeNote(outcome: VoiceOutcome.Cancelled) =
         showNote(VoiceNotes.outcome(outcome), warn = true)
