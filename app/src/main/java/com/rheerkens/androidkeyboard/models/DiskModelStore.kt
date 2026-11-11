@@ -6,11 +6,13 @@ import androidx.core.content.edit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,6 +30,7 @@ import java.net.URL
 import java.security.DigestOutputStream
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.net.ssl.HttpsURLConnection
 import kotlin.coroutines.coroutineContext
 
@@ -59,12 +62,22 @@ class HttpsArtifactFetcher : ArtifactFetcher {
         connection.connectTimeout = 15_000
         connection.readTimeout = 30_000
         // A blocked read ignores coroutine cancellation; closing the connection from another
-        // thread as soon as this scope is cancelled makes the read fail at once.
-        val watchdog = launch(Dispatchers.Default) {
+        // thread as soon as this scope is cancelled makes the read fail at once. The cancel can
+        // come before the connection is open (setting up TLS the first time takes a while), when
+        // closing does nothing and the connection would then open and wait for its timeouts: so
+        // keep closing it until the blocked call has returned. ATOMIC, so the watchdog runs even
+        // when the cancel comes before it started.
+        val returned = AtomicBoolean(false)
+        val watchdog = launch(Dispatchers.Default, start = CoroutineStart.ATOMIC) {
             try {
                 awaitCancellation()
             } finally {
-                connection.disconnect()
+                withContext(NonCancellable) {
+                    while (!returned.get()) {
+                        connection.disconnect()
+                        delay(50)
+                    }
+                }
             }
         }
         try {
@@ -83,6 +96,7 @@ class HttpsArtifactFetcher : ArtifactFetcher {
                 }
             }
         } finally {
+            returned.set(true)
             watchdog.cancel()
             connection.disconnect()
         }
