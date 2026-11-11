@@ -329,6 +329,31 @@ class UpdateManagerTest {
     }
 
     @Test
+    fun aBackgroundCheckKeepsARetrysIdenticalErrorAndShowsItsTime() = runTest {
+        val feedGate = CompletableDeferred<Unit>()
+        val platform = FakePlatform().apply { feed = { update(42).toProperties() }; downloadFails = true }
+        val m = manager(platform)
+        m.check(userStarted = true)
+        m.startUpdate()
+        advanceUntilIdle()
+        val failed = m.state.value.status
+        assertTrue(failed is UpdateStatus.Failed)
+        // A background check waits for the feed while the user retries and gets the same error.
+        platform.feedDelay = feedGate
+        platform.now = 2_000
+        val check = launch { m.check(userStarted = false) }
+        advanceUntilIdle()
+        m.startUpdate()
+        advanceUntilIdle()
+        assertEquals(failed, m.state.value.status)
+        feedGate.complete(Unit)
+        check.join()
+        // The retry's error stays, and the card shows when the check ran.
+        assertEquals(failed, m.state.value.status)
+        assertEquals(2_000L, m.state.value.lastCheckedAt)
+    }
+
+    @Test
     fun aCancelAsTheDownloadFinishesDoesNotOpenTheInstaller() = runTest {
         val platform = FakePlatform().apply { feed = { update(42).toProperties() } }
         val dir = tempDir()
