@@ -1092,8 +1092,11 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         }
     }
 
+    /** Back closes the model picker or the keyboard chooser before it closes the keyboard. */
+    private fun backClosesPanel() = (pickerOpen.value || chooserOpen.value) && isInputViewShown
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_BACK && pickerOpen.value && isInputViewShown) {
+        if (keyCode == KeyEvent.KEYCODE_BACK && backClosesPanel()) {
             event.startTracking()
             return true
         }
@@ -1101,9 +1104,10 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_BACK && pickerOpen.value && isInputViewShown) {
+        if (keyCode == KeyEvent.KEYCODE_BACK && backClosesPanel()) {
             if (!event.isCanceled) {
                 pickerOpen.value = false
+                chooserOpen.value = false
             }
             return true
         }

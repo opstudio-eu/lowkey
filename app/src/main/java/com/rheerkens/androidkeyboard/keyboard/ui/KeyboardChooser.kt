@@ -3,6 +3,8 @@ package com.rheerkens.androidkeyboard.keyboard.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,17 +19,22 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -41,9 +48,9 @@ import com.rheerkens.androidkeyboard.ui.SlimIcons
 /** The enabled keyboards, in globe order, and the one in use. */
 data class KeyboardChoices(val keyboards: List<TypingKeyboard>, val current: TypingKeyboard)
 
-private const val HEADER_DP = 36
+private const val HEADER_DP = 48
 private const val ROW_DP = 48
-private const val FOOTER_DP = 44
+private const val FOOTER_DP = 48
 /** Margin around the card (top and bottom) plus its border. */
 private const val CHROME_DP = 18
 
@@ -85,11 +92,11 @@ fun KeyboardChooser(choices: KeyboardChoices, height: Dp, actions: KeyboardActio
                     "Keyboard", color = c.muted, fontSize = 12.sp, fontWeight = FontWeight.Medium,
                     modifier = Modifier.weight(1f).semantics { heading() },
                 )
-                PressTarget("Close keyboard chooser", Modifier.size(36.dp), onTap = actions::onCloseKeyboardChooser) { pressed ->
+                PressTarget("Close keyboard chooser", Modifier.size(48.dp), onTap = actions::onCloseKeyboardChooser) { pressed ->
                     Box(
-                        Modifier.size(30.dp).background(if (pressed) c.keyPressed else Color.Transparent, RoundedCornerShape(15.dp)),
+                        Modifier.size(32.dp).background(if (pressed) c.keyPressed else Color.Transparent, RoundedCornerShape(16.dp)),
                         contentAlignment = Alignment.Center,
-                    ) { Icon(SlimIcons.Close, null, tint = c.keyText, modifier = Modifier.size(16.dp)) }
+                    ) { Icon(SlimIcons.Close, null, tint = c.keyText, modifier = Modifier.size(18.dp)) }
                 }
             }
             // When the list must scroll, open it at the current keyboard.
@@ -113,33 +120,38 @@ fun KeyboardChooser(choices: KeyboardChoices, height: Dp, actions: KeyboardActio
     }
 }
 
+/**
+ * One keyboard. A plain clickable rather than a key's press handler, so a drag over the rows
+ * scrolls the list instead of being held by the row under the finger.
+ */
 @Composable
 private fun ChoiceRow(keyboard: TypingKeyboard, current: Boolean, onTap: () -> Unit) {
     val c = LocalKeyboardColors.current
-    PressTarget(
-        if (current) "${keyboard.fullLabel}, current keyboard" else "Switch to ${keyboard.fullLabel}",
-        Modifier.fillMaxWidth().height(ROW_DP.dp),
-        onTap = onTap,
-    ) { pressed ->
-        Row(
-            Modifier
-                .fillMaxSize()
-                .padding(horizontal = 4.dp)
-                .background(if (pressed) c.keyPressed else Color.Transparent, RoundedCornerShape(9.dp))
-                .padding(start = 10.dp, end = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                keyboard.language.label,
-                color = c.keyText, fontSize = 15.sp, fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.width(10.dp))
-            Text(keyboard.arrangement.label, color = c.muted, fontSize = 13.sp, maxLines = 1)
-            Spacer(Modifier.weight(1f))
-            Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
-                if (current) Icon(SlimIcons.Check, null, tint = c.enter, modifier = Modifier.size(18.dp))
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(ROW_DP.dp)
+            .selectable(selected = current, interactionSource = interaction, indication = null, role = Role.RadioButton, onClick = onTap)
+            .semantics(mergeDescendants = true) {
+                contentDescription = if (current) "${keyboard.fullLabel}, current keyboard" else "Switch to ${keyboard.fullLabel}"
             }
+            .padding(horizontal = 4.dp)
+            .background(if (pressed) c.keyPressed else Color.Transparent, RoundedCornerShape(9.dp))
+            .padding(start = 10.dp, end = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            keyboard.language.label,
+            color = c.keyText, fontSize = 15.sp, fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal,
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(keyboard.arrangement.label, color = c.muted, fontSize = 13.sp, maxLines = 1)
+        Spacer(Modifier.weight(1f))
+        Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+            if (current) Icon(SlimIcons.Check, null, tint = c.enter, modifier = Modifier.size(18.dp))
         }
     }
 }
