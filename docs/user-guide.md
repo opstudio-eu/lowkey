@@ -75,6 +75,10 @@ The frosted color swatch makes tools blur. Blur does not guarantee that informat
 
 Add an optional caption and tap **Attach** to return the edited image to the original field. The image is also copied to the clipboard if the field cannot accept it. Android's Back closes the editor without attaching.
 
+## Choose light or dark
+
+**Settings → Appearance → Theme** sets the look of the app and the keyboard together. **System**, the default, follows Android's dark mode and switches as soon as Android does. **Light** and **Dark** keep one look regardless of Android. Both use OpStudio's colours.
+
 ## Try settings and manage updates
 
 Tap **Test keyboard** in the app's top bar to open a test field over the current page. Its draft stays available when you close and reopen it. The **Try it** page has additional editor types.

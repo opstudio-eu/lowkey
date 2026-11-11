@@ -137,7 +137,7 @@ private fun KeyView(
         is Key.Enter -> PressTarget(
             enterKind.label ?: "Enter, new line", modifier, gestureKey = key, onDown = actions::onKeyDown, onTap = { actions.onKey(key) },
         ) { pressed ->
-            KeyCap(if (pressed) c.keyPressed else c.enter) {
+            KeyCap(if (pressed) c.enterPressed else c.enter) {
                 val label = enterKind.label
                 if (label == null) {
                     KeyIcon(SlimIcons.Enter, tint = c.enterInk)

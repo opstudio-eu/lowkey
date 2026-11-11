@@ -117,13 +117,13 @@ fun RowScope.VoiceRow(
     }
     when (state) {
         is VoiceState.Listening ->
-            TalkButton("Stop", "Stop and insert text", SlimIcons.Stop, c.stop, c.stopInk, onTap = actions::onStop)
+            TalkButton("Stop", "Stop and insert text", SlimIcons.Stop, c.stop, c.stopInk, c.stopPressed, onTap = actions::onStop)
         is VoiceState.Finalizing ->
-            TalkButton("Stop", "Finalizing, Stop already pressed", SlimIcons.Stop, c.busy, c.muted, onTap = null)
+            TalkButton("Stop", "Finalizing, Stop already pressed", SlimIcons.Stop, c.busy, c.muted, c.busy, onTap = null)
         is VoiceState.Idle, VoiceState.NoModel ->
-            TalkButton("Talk", "Talk", SlimIcons.Mic, c.key, c.keyText, onTap = actions::onTapToTalk)
+            TalkButton("Talk", "Talk", SlimIcons.Mic, c.key, c.keyText, c.keyPressed, onTap = actions::onTapToTalk)
         VoiceState.NoPermission ->
-            TalkButton("Allow mic", "Allow microphone in Lowkey Keyboard setup", SlimIcons.Mic, c.enter, c.enterInk, onTap = actions::onOpenSetup)
+            TalkButton("Allow mic", "Allow microphone in Lowkey Keyboard setup", SlimIcons.Mic, c.enter, c.enterInk, c.enterPressed, onTap = actions::onOpenSetup)
     }
     Spacer(Modifier.width(4.dp))
 }
@@ -226,15 +226,16 @@ private fun TalkButton(
     icon: ImageVector,
     background: Color,
     ink: Color,
+    /** Background while pressed, chosen so [ink] stays readable on it. */
+    pressedBackground: Color,
     onTap: (() -> Unit)?,
 ) {
-    val c = LocalKeyboardColors.current
     PressTarget(description, Modifier.fillMaxHeight().defaultMinSize(minWidth = 84.dp), onTap = onTap) { pressed ->
         Row(
             Modifier
                 .height(40.dp)
                 .defaultMinSize(minWidth = 84.dp)
-                .background(if (pressed && onTap != null) c.keyPressed else background, RoundedCornerShape(20.dp))
+                .background(if (pressed && onTap != null) pressedBackground else background, RoundedCornerShape(20.dp))
                 .padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,

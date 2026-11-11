@@ -14,6 +14,7 @@ import android.inputmethodservice.InputMethodService
 import android.net.Uri
 import android.os.Build
 import android.view.WindowInsets
+import android.view.WindowInsetsController
 import android.os.SystemClock
 import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
@@ -23,14 +24,17 @@ import android.view.inputmethod.InputMethodManager
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.ComposeView
 import com.rheerkens.androidkeyboard.AppGraph
 import com.rheerkens.androidkeyboard.clipboard.ClipEntry
 import com.rheerkens.androidkeyboard.clipboard.ClipboardContent
 import com.rheerkens.androidkeyboard.clipboard.ClipboardHistory
 import com.rheerkens.androidkeyboard.clipboard.RecentScreenshots
+import com.rheerkens.androidkeyboard.companion.theme.resolveDark
 import com.rheerkens.androidkeyboard.clipboard.loadThumbnail
 import com.rheerkens.androidkeyboard.editor.Attachment
 import com.rheerkens.androidkeyboard.editor.ImageEditorActivity
@@ -50,19 +54,20 @@ import com.rheerkens.androidkeyboard.keyboard.KeyboardController
 import com.rheerkens.androidkeyboard.keyboard.Layer
 import com.rheerkens.androidkeyboard.keyboard.Layouts
 import com.rheerkens.androidkeyboard.keyboard.ui.ClipChip
+import com.rheerkens.androidkeyboard.keyboard.ui.DarkKeyboardColors
 import com.rheerkens.androidkeyboard.keyboard.ui.EnterKind
 import com.rheerkens.androidkeyboard.keyboard.ui.FanSpec
 import com.rheerkens.androidkeyboard.keyboard.ui.KeyboardActions
 import com.rheerkens.androidkeyboard.keyboard.ui.KeyboardChoices
 import com.rheerkens.androidkeyboard.keyboard.ui.KeyboardRoot
 import com.rheerkens.androidkeyboard.keyboard.ui.KeyboardUiState
+import com.rheerkens.androidkeyboard.keyboard.ui.LightKeyboardColors
 import com.rheerkens.androidkeyboard.keyboard.ui.StripNote
 import com.rheerkens.androidkeyboard.keyboard.ui.StripState
 import com.rheerkens.androidkeyboard.keyboard.ui.WordAim
 import com.rheerkens.androidkeyboard.keyboard.wordsFrom
 import com.rheerkens.androidkeyboard.settings.InputMode
 import com.rheerkens.androidkeyboard.settings.Settings
-import com.rheerkens.androidkeyboard.settings.ThemeMode
 import com.rheerkens.androidkeyboard.keyboard.TypingKeyboard
 import com.rheerkens.androidkeyboard.voice.CancelReason
 import com.rheerkens.androidkeyboard.voice.VoiceConfig
@@ -276,11 +281,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                 val session by inputSession.collectAsState()
                 val once by keyboardOnce.collectAsState()
                 val fan by fanSpec.collectAsState()
-                val dark = when (s.theme) {
-                    ThemeMode.SYSTEM -> isSystemInDarkTheme()
-                    ThemeMode.DARK -> true
-                    ThemeMode.LIGHT -> false
-                }
+                val dark = resolveDark(s.theme, isSystemInDarkTheme())
+                LaunchedEffect(dark) { styleNavigationBar(dark) }
                 KeyboardRoot(
                     KeyboardUiState(
                         mode = m,
@@ -354,6 +356,27 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     override fun onWindowShown() {
         super.onWindowShown()
         hideSystemImeButtons()
+    }
+
+    /**
+     * The navigation bar under the keyboard (gesture handle, or back and switcher buttons) takes its
+     * icon colour from the input method's window, and before Android 15 also its background. Match
+     * both to the keyboard's theme, which can differ from the system one.
+     */
+    @Suppress("DEPRECATION")
+    private fun styleNavigationBar(dark: Boolean) {
+        val win = window.window ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val light = WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+            win.insetsController?.setSystemBarsAppearance(if (dark) 0 else light, light)
+        } else {
+            val flag = View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+            val flags = win.decorView.systemUiVisibility
+            win.decorView.systemUiVisibility = if (dark) flags and flag.inv() else flags or flag
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+            win.navigationBarColor = (if (dark) DarkKeyboardColors else LightKeyboardColors).background.toArgb()
+        }
     }
 
     /**

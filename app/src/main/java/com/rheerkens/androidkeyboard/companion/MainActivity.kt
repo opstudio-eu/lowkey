@@ -1,10 +1,8 @@
 package com.rheerkens.androidkeyboard.companion
 
 import android.content.Intent
-import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.LaunchedEffect
@@ -12,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rheerkens.androidkeyboard.AppGraph
 import com.rheerkens.androidkeyboard.companion.theme.SlimTheme
+import com.rheerkens.androidkeyboard.companion.theme.applyThemeToWindow
 import com.rheerkens.androidkeyboard.companion.theme.isDarkTheme
 import com.rheerkens.androidkeyboard.updates.Updates
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,15 +30,7 @@ class MainActivity : ComponentActivity() {
             val settings by AppGraph.settings.settings.collectAsStateWithLifecycle()
             val pending by pendingDestination.collectAsStateWithLifecycle()
             val dark = isDarkTheme(settings.theme)
-            LaunchedEffect(dark) {
-                // Match status/navigation bar icons to the in-app theme, not only the system one.
-                val style = if (dark) {
-                    SystemBarStyle.dark(Color.TRANSPARENT)
-                } else {
-                    SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
-                }
-                enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
-            }
+            LaunchedEffect(dark) { applyThemeToWindow(dark) }
             SlimTheme(settings.theme) {
                 SlimApp(
                     pendingDestination = pending,

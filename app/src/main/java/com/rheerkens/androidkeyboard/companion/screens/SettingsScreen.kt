@@ -224,6 +224,7 @@ fun SettingsScreen(modifier: Modifier, focus: SettingsFocus, navigate: (Destinat
         item { LinkRow("Try it", "Playground for typing and dictation") { navigate(Destination.TRY_IT) } }
         item { LinkRow("Diagnostics", "Voice session log and audio input") { navigate(Destination.DIAGNOSTICS) } }
         item { LinkRow("About and licenses") { navigate(Destination.ABOUT) } }
+        item { OpStudioCredit(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) }
         item { Spacer8() }
     }
 }

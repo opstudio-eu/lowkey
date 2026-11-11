@@ -22,6 +22,7 @@ The app checks for updates automatically. Use **Settings → Updates → Check n
 - A minimized keyboard for voice input or use with a physical keyboard, and gestures for deleting words.
 - Clipboard history for text and images, with previews and an image editor for cropping, annotation, and blur.
 - A built-in test field to try the keyboard without leaving settings.
+- Light and dark themes in OpStudio's colours for the app and the keyboard, following the system by default.
 
 ## Documentation
 
@@ -31,5 +32,7 @@ The app checks for updates automatically. Use **Settings → Updates → Check n
 ## License
 
 [Apache License 2.0](LICENSE). Copyright 2026 OpStudio. Contributions use the same license.
+
+The OpStudio name and logo are trademarks of OpStudio and are not covered by the Apache License. Forks and modified versions should remove the logo.
 
 Bundled components retain their own licenses. See the [third-party notices](app/src/main/assets/licenses/README.txt), also available in the app under **About and licenses**.

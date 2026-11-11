@@ -4,6 +4,11 @@ Copyright 2026 OpStudio
 Licensed under the Apache License, Version 2.0 (Apache-2.0.txt). Distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND. Source code: https://github.com/opstudio-eu/lowkey
 
+The OpStudio name and logo (res/drawable/opstudio_logo_blue.xml and opstudio_logo_light_blue.xml)
+are trademarks of OpStudio, all rights reserved. They are not licensed under Apache-2.0, which grants
+no trademark rights (section 6); the app shows them only to say who made it. Forks and modified
+versions should remove the logo.
+
 The APK contains these third-party components. Their notices are in this folder.
 
 Java and Kotlin libraries (Apache-2.0, Apache-2.0.txt)

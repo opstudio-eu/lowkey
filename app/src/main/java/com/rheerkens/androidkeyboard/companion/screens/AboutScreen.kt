@@ -1,6 +1,5 @@
 package com.rheerkens.androidkeyboard.companion.screens
 
-import android.content.pm.PackageManager
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -75,13 +74,7 @@ private val references = listOf(
 fun AboutScreen(modifier: Modifier) {
     val context = LocalContext.current
     val uri = LocalUriHandler.current
-    val version = remember {
-        try {
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName
-        } catch (_: PackageManager.NameNotFoundException) {
-            null
-        } ?: "unknown"
-    }
+    val version = remember { appVersion(context) }
 
     var openLicense by rememberSaveable { mutableStateOf<String?>(null) }
     openLicense?.let { file ->
@@ -96,6 +89,7 @@ fun AboutScreen(modifier: Modifier) {
         SlimCard(Modifier.padding(16.dp)) {
             Text("Lowkey Keyboard", style = MaterialTheme.typography.titleLarge)
             Text("Version $version · com.rheerkens.androidkeyboard", style = MaterialTheme.typography.bodySmall)
+            Text("Made by OpStudio", style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(6.dp))
             Text(
                 "A slim keyboard with local dictation. Speech runs on the device with Whisper. " +
@@ -113,6 +107,13 @@ fun AboutScreen(modifier: Modifier) {
             TextButton(onClick = { openLicense = APACHE_ASSET }) { Text("Apache License 2.0") }
             TextButton(onClick = { uri.openUri(SOURCE_URL) }) { Text("Source code") }
         }
+
+        SectionTitle("Trademarks")
+        Body(
+            "The OpStudio name and logo are trademarks of OpStudio. The Apache License does not grant " +
+                "permission to use them, except to describe where Lowkey comes from. Forks and modified " +
+                "versions should remove the logo."
+        )
 
         SectionTitle("Privacy")
         Body(
