@@ -2,7 +2,6 @@ package com.rheerkens.androidkeyboard.companion
 
 import android.content.Intent
 import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -11,6 +10,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.toArgb
+import androidx.core.graphics.drawable.toDrawable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rheerkens.androidkeyboard.AppGraph
 import com.rheerkens.androidkeyboard.companion.theme.DarkScheme
@@ -45,7 +45,7 @@ class MainActivity : ComponentActivity() {
                 enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
                 // The window background follows the system night mode (values-night); match the
                 // in-app choice so Light or Dark never shows the other theme behind the content.
-                window.setBackgroundDrawable(ColorDrawable(if (dark) DarkScheme.background.toArgb() else LightScheme.background.toArgb()))
+                window.setBackgroundDrawable((if (dark) DarkScheme else LightScheme).background.toArgb().toDrawable())
             }
             SlimTheme(settings.theme) {
                 SlimApp(
