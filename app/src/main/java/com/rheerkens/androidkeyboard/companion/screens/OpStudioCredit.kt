@@ -21,8 +21,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.rheerkens.androidkeyboard.companion.theme.isDark
 import com.rheerkens.androidkeyboard.companion.theme.opStudioLogo
@@ -68,9 +66,8 @@ fun OpStudioCredit(modifier: Modifier = Modifier) {
         TextButton(
             onClick = { uri.openUri(OPSTUDIO_URL) },
             contentPadding = PaddingValues(horizontal = 0.dp, vertical = 8.dp),
-            modifier = Modifier.semantics { contentDescription = "Visit opstudio.eu" },
         ) {
-            Text("opstudio.eu")
+            Text("Visit opstudio.eu")
         }
         Text(
             "The OpStudio name and logo are trademarks of OpStudio. They are not covered by the Apache License.",

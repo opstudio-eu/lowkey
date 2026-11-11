@@ -47,10 +47,12 @@ internal val DarkScheme: ColorScheme = darkColorScheme(
     primaryContainer = Brand.Blue,
     onPrimaryContainer = Brand.White,
     inversePrimary = Brand.Blue,
-    secondary = Color(0xFF5CD193),
-    onSecondary = Color(0xFF00391F),
-    secondaryContainer = Color(0xFF1B3B30),
-    onSecondaryContainer = Color(0xFFBFF3D6),
+    // Sky #2C99D6, lightened: navigation indicator, tonal buttons, done and active marks.
+    secondary = Color(0xFF9AD3F5),
+    onSecondary = Brand.Dark,
+    secondaryContainer = Color(0xFF1F4A6B),
+    onSecondaryContainer = Color(0xFFE3F2FC),
+    // Warning amber (not a brand colour; kept so warnings stay distinct from errors).
     tertiary = Color(0xFFF2C46E),
     onTertiary = Color(0xFF3D2A00),
     tertiaryContainer = Color(0xFF473A1B),
@@ -84,10 +86,12 @@ internal val LightScheme: ColorScheme = lightColorScheme(
     primaryContainer = Color(0xFFD3E8F7),
     onPrimaryContainer = Brand.Dark,
     inversePrimary = Brand.LightBlue,
-    secondary = Color(0xFF166B42),
+    // Sky #2C99D6, darkened for text on light surfaces.
+    secondary = Color(0xFF185F8B),
     onSecondary = Brand.White,
-    secondaryContainer = Color(0xFFCDEFDC),
-    onSecondaryContainer = Color(0xFF00391F),
+    secondaryContainer = Color(0xFFD6ECF8),
+    onSecondaryContainer = Color(0xFF0B3A5C),
+    // Warning amber (not a brand colour; kept so warnings stay distinct from errors).
     tertiary = Color(0xFF7A5300),
     onTertiary = Brand.White,
     tertiaryContainer = Color(0xFFFFE3A8),
