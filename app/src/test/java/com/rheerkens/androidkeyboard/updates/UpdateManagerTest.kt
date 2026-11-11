@@ -308,6 +308,59 @@ class UpdateManagerTest {
     }
 
     @Test
+    fun aFailingBackgroundCheckKeepsAnErrorThatAppearedMeanwhile() = runTest {
+        val feedGate = CompletableDeferred<Unit>()
+        val platform = FakePlatform().apply { feed = { update(42).toProperties() } }
+        val m = manager(platform)
+        m.check(userStarted = true)
+        // A background check waits for the feed; meanwhile the user's update fails.
+        platform.feedDelay = feedGate
+        platform.feed = { throw IOException("offline") }
+        val check = launch { m.check(userStarted = false) }
+        advanceUntilIdle()
+        platform.downloadFails = true
+        m.startUpdate()
+        advanceUntilIdle()
+        val failed = m.state.value.status
+        assertTrue(failed is UpdateStatus.Failed)
+        feedGate.complete(Unit)
+        check.join()
+        assertEquals(failed, m.state.value.status)
+    }
+
+    @Test
+    fun aBackgroundCheckKeepsARetrysIdenticalErrorAndShowsItsTime() = runTest {
+        val feedGate = CompletableDeferred<Unit>()
+        val platform = FakePlatform().apply { feed = { update(42).toProperties() }; downloadFails = true }
+        val prefs = MemoryPrefs()
+        val m = manager(platform, prefs)
+        m.check(userStarted = true)
+        m.startUpdate()
+        advanceUntilIdle()
+        val failed = m.state.value.status
+        assertTrue(failed is UpdateStatus.Failed)
+        // A background check waits for the feed, which now has 0.5.43, while the user retries
+        // 0.5.42 and gets the same error.
+        platform.feedDelay = feedGate
+        platform.feed = { update(43).toProperties() }
+        platform.now = 2_000
+        val check = launch { m.check(userStarted = false) }
+        advanceUntilIdle()
+        m.startUpdate()
+        advanceUntilIdle()
+        assertEquals(failed, m.state.value.status)
+        feedGate.complete(Unit)
+        check.join()
+        // The retry's error stays, with its release and without a notification for 0.5.43; the
+        // card does show when the check ran.
+        assertEquals(failed, m.state.value.status)
+        assertEquals(update(42), prefs.available)
+        assertFalse(43L in platform.notified)
+        assertEquals(2_000L, m.state.value.lastCheckedAt)
+        assertEquals(2_000L, prefs.lastCheckedAt)
+    }
+
+    @Test
     fun aCancelAsTheDownloadFinishesDoesNotOpenTheInstaller() = runTest {
         val platform = FakePlatform().apply { feed = { update(42).toProperties() } }
         val dir = tempDir()
