@@ -1,6 +1,6 @@
 package com.rheerkens.androidkeyboard.keyboard
 
-import com.rheerkens.androidkeyboard.settings.TypingLayout
+import com.rheerkens.androidkeyboard.settings.TypingKeyboard
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -11,15 +11,16 @@ enum class ShiftState { OFF, ONCE, LOCKED }
 data class KeyboardState(
     val layer: Layer = Layer.LETTERS,
     val shift: ShiftState = ShiftState.OFF,
-    val layout: TypingLayout = TypingLayout.EN_US,
+    /** Language and letter arrangement. */
+    val keyboard: TypingKeyboard = TypingKeyboard.DEFAULT,
 )
 
-/** Shift, caps lock, layer, and typing-layout state for keys mode. No Android dependencies. */
+/** Shift, caps lock, layer, and typing-keyboard state for keys mode. No Android dependencies. */
 class KeyboardController(
-    initialLayout: TypingLayout,
+    initialKeyboard: TypingKeyboard,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
-    private val _state = MutableStateFlow(KeyboardState(layout = initialLayout))
+    private val _state = MutableStateFlow(KeyboardState(keyboard = initialKeyboard))
     val state: StateFlow<KeyboardState> = _state.asStateFlow()
 
     private var lastShiftTapMs = 0L
@@ -59,17 +60,18 @@ class KeyboardController(
 
     fun reset() = _state.update { it.copy(layer = Layer.LETTERS, shift = ShiftState.OFF) }
 
-    /** Cycles to the next enabled layout and returns it. */
-    fun cycleLayout(enabled: Collection<TypingLayout>): TypingLayout {
-        val order = TypingLayout.entries.filter { it in enabled }.ifEmpty { listOf(TypingLayout.EN_US) }
+    /** Cycles to the next enabled keyboard (language, then arrangement order) and returns it. */
+    fun cycleKeyboard(enabled: Collection<TypingKeyboard>): TypingKeyboard {
+        val order = TypingKeyboard.ordered(enabled).ifEmpty { listOf(TypingKeyboard.DEFAULT) }
         _state.update {
-            val i = order.indexOf(it.layout)
-            it.copy(layout = order[(i + 1) % order.size])
+            // A keyboard that is no longer enabled continues from the start of the cycle.
+            val i = order.indexOf(it.keyboard)
+            it.copy(keyboard = order[(i + 1) % order.size])
         }
-        return _state.value.layout
+        return _state.value.keyboard
     }
 
-    fun setLayout(layout: TypingLayout) = _state.update { it.copy(layout = layout) }
+    fun setKeyboard(keyboard: TypingKeyboard) = _state.update { it.copy(keyboard = keyboard) }
 
     fun applyCase(text: String): String =
         if (_state.value.shift != ShiftState.OFF && _state.value.layer == Layer.LETTERS) shiftCase(text) else text

@@ -9,6 +9,7 @@ import androidx.core.content.ContextCompat
 import com.rheerkens.androidkeyboard.diagnostics.CrashLog
 import com.rheerkens.androidkeyboard.diagnostics.SessionLog
 import com.rheerkens.androidkeyboard.dictionary.Corrector
+import com.rheerkens.androidkeyboard.dictionary.KeyGrid
 import com.rheerkens.androidkeyboard.dictionary.BuiltInWords
 import com.rheerkens.androidkeyboard.dictionary.DictionaryStore
 import com.rheerkens.androidkeyboard.dictionary.Lexicon
@@ -19,6 +20,7 @@ import com.rheerkens.androidkeyboard.models.ModelStore
 import com.rheerkens.androidkeyboard.models.resolveLanguage
 import com.rheerkens.androidkeyboard.settings.AudioInput
 import com.rheerkens.androidkeyboard.settings.SettingsStore
+import com.rheerkens.androidkeyboard.settings.KeyArrangement
 import com.rheerkens.androidkeyboard.settings.TypingLayout
 import com.rheerkens.androidkeyboard.speech.ClipAudioSource
 import com.rheerkens.androidkeyboard.speech.LoadableModel
@@ -71,7 +73,10 @@ object AppGraph {
         TypingLayout.NL_NL to Lexicon.fromWords(BuiltInWords.DUTCH),
     )
     private lateinit var assets: AssetManager
-    private val suggesters = TypingLayout.entries.associateWith { layout -> Suggester { lexicon(layout) } }
+    private val keyGrids = KeyArrangement.entries.associateWith { KeyGrid(it.rows) }
+    private val suggesters = TypingLayout.entries.associateWith { layout ->
+        Suggester({ lexicon(layout) }, { keyGrids.getValue(settings.current.currentKeyboard.arrangement) })
+    }
     private val nextClip = AtomicInteger(0)
     private var initialized = false
 
@@ -120,7 +125,7 @@ object AppGraph {
         appScope.launch {
             settings.settings.map { it.checkForUpdates }.distinctUntilChanged().collect { Updates.schedule(app, it) }
         }
-        preloadLexicon(settings.current.currentLayout)
+        preloadLexicon(settings.current.currentKeyboard.language)
         initialized = true
     }
 

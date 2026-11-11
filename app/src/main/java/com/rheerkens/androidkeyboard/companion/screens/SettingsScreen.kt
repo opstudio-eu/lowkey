@@ -1,21 +1,16 @@
 package com.rheerkens.androidkeyboard.companion.screens
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -34,7 +29,18 @@ import com.rheerkens.androidkeyboard.settings.LoupeCorners
 import com.rheerkens.androidkeyboard.settings.ModelRetention
 import com.rheerkens.androidkeyboard.settings.Settings
 import com.rheerkens.androidkeyboard.settings.ThemeMode
+import com.rheerkens.androidkeyboard.settings.KeyArrangement
+import com.rheerkens.androidkeyboard.settings.TypingKeyboard
 import com.rheerkens.androidkeyboard.settings.TypingLayout
+import com.rheerkens.androidkeyboard.ui.SlimIcons
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 
 private const val VOICE_SECTION_INDEX = 10
 
@@ -91,29 +97,7 @@ fun SettingsScreen(modifier: Modifier, focusVoice: Boolean, navigate: (Destinati
                 subtitle = "Show screenshots from the last day next to copied clips in the minimized bar. Needs access to photos.",
             )
         }
-        item {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
-                Text("Typing layouts", style = MaterialTheme.typography.bodyLarge)
-                Text(
-                    "The globe key cycles enabled layouts. Long-press it to switch keyboards.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                TypingLayout.entries.forEach { layout ->
-                    val checked = layout in s.enabledLayouts
-                    val onlyOne = checked && s.enabledLayouts.size == 1
-                    Row(
-                        Modifier.fillMaxWidth().clickable(enabled = !onlyOne, role = Role.Checkbox) {
-                            update { toggleLayout(it, layout) }
-                        },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Checkbox(checked = checked, onCheckedChange = null, enabled = !onlyOne)
-                        Text(layout.label, modifier = Modifier.padding(start = 8.dp, top = 12.dp, bottom = 12.dp))
-                    }
-                }
-            }
-        }
+        item { KeyboardsSetting(s, ::update) }
         item { Spacer8() }
         // Voice (index VOICE_SECTION_INDEX)
         item { SectionTitle("Voice") }
@@ -223,11 +207,46 @@ fun SettingsScreen(modifier: Modifier, focusVoice: Boolean, navigate: (Destinati
     }
 }
 
-private fun toggleLayout(s: Settings, layout: TypingLayout): Settings {
-    val next = if (layout in s.enabledLayouts) s.enabledLayouts - layout else s.enabledLayouts + layout
-    if (next.isEmpty()) return s
-    val current = if (s.currentLayout in next) s.currentLayout else next.first()
-    return s.copy(enabledLayouts = next, currentLayout = current)
+/**
+ * Languages, each with a chip per letter arrangement. Every chip that's on is one stop of the
+ * globe key's cycle, so two arrangements of one language can be a tap apart.
+ */
+@Composable
+private fun KeyboardsSetting(s: Settings, update: ((Settings) -> Settings) -> Unit) {
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+        Text("Keyboards", style = MaterialTheme.typography.bodyLarge)
+        Text(
+            "Turn on a layout per language. Tap the globe key to go to the next one you turned on. " +
+                "Long-press it to switch to another input method.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        TypingLayout.entries.forEach { language ->
+            Text(language.label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 12.dp, bottom = 2.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                KeyArrangement.entries.forEach { arrangement ->
+                    val keyboard = TypingKeyboard(language, arrangement)
+                    val on = keyboard in s.enabledKeyboards
+                    val onlyOne = on && s.enabledKeyboards.size == 1
+                    FilterChip(
+                        selected = on,
+                        onClick = { update { it.toggleKeyboard(keyboard) } },
+                        enabled = !onlyOne,
+                        label = { Text(arrangement.label) },
+                        leadingIcon = if (on) ({ Icon(SlimIcons.Check, null, Modifier.size(FilterChipDefaults.IconSize)) }) else null,
+                        modifier = Modifier.semantics { contentDescription = "${language.label}, ${arrangement.label}" },
+                    )
+                }
+            }
+        }
+        Text(
+            "Typing now: ${s.currentKeyboard.label}. Arrangements change only the letter keys; " +
+                "suggestions follow the language.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+    }
 }
 
 @Composable

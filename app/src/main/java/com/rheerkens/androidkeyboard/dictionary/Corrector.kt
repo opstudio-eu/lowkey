@@ -6,8 +6,8 @@ import kotlin.math.abs
 data class Correction(val word: String, val distance: Double, val score: Double)
 
 /**
- * Spelling correction against a [Lexicon], tuned for touch typing on a QWERTY layout:
- * a weighted Damerau-Levenshtein distance where hitting a neighbouring key, swapping two letters,
+ * Spelling correction against a [Lexicon], tuned for touch typing on the keyboard's [KeyGrid]
+ * (QWERTY unless given): a weighted Damerau-Levenshtein distance where hitting a neighbouring key, swapping two letters,
  * doubling a letter, or leaving out an apostrophe cost less than other edits. Candidates are
  * ranked by frequency and distance. Pure Kotlin.
  */
@@ -22,33 +22,11 @@ object Corrector {
     private const val FREQUENCY_SCALE = 24.0
     private const val DISTANCE_WEIGHT = 3.6
 
-    private val rows = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
-    private val keyPos: Map<Char, Pair<Double, Double>> = buildMap {
-        rows.forEachIndexed { r, row -> row.forEachIndexed { c, ch -> put(ch, (c + r * 0.5) to r.toDouble()) } }
-    }
-
-    // Edit distance visits this relation for every candidate character pair. Precompute it
-    // once to avoid boxed Char/hash-map/Pair lookups in the hot loop.
-    private val adjacentKeys = BooleanArray(26 * 26).also { table ->
-        for (a in 'a'..'z') for (b in 'a'..'z') {
-            val pa = keyPos.getValue(a)
-            val pb = keyPos.getValue(b)
-            table[(a - 'a') * 26 + (b - 'a')] =
-                abs(pa.first - pb.first) <= 1.0 && abs(pa.second - pb.second) <= 1.0
-        }
-    }
-
-    fun adjacent(a: Char, b: Char): Boolean {
-        val x = a - 'a'
-        val y = b - 'a'
-        return x in 0..25 && y in 0..25 && adjacentKeys[x * 26 + y]
-    }
-
     /** Weighted edit distance between lowercase [a] and [b], or a value above [limit] once it's exceeded. */
-    fun distance(a: String, b: String, limit: Double = Double.MAX_VALUE): Double =
-        distance(a, b, limit, Array(3) { DoubleArray(b.length + 1) })
+    fun distance(a: String, b: String, limit: Double = Double.MAX_VALUE, keys: KeyGrid = KeyGrid.QWERTY): Double =
+        distance(a, b, limit, Array(3) { DoubleArray(b.length + 1) }, keys)
 
-    private fun distance(a: String, b: String, limit: Double, rows: Array<DoubleArray>): Double {
+    private fun distance(a: String, b: String, limit: Double, rows: Array<DoubleArray>, keys: KeyGrid): Double {
         val n = a.length
         val m = b.length
         if (abs(n - m) * INSERT_DELETE > limit + 2) return limit + 1
@@ -65,7 +43,7 @@ object Corrector {
                 val cb = b[j - 1]
                 val sub = when {
                     ca == cb -> 0.0
-                    adjacent(ca, cb) -> ADJACENT
+                    keys.adjacent(ca, cb) -> ADJACENT
                     else -> SUBSTITUTE
                 }
                 var v = minOf(prev[j - 1] + sub, prev[j] + deleteCost(a, i - 1), cur[j - 1] + insertCost(b, j - 1))
@@ -97,7 +75,7 @@ object Corrector {
     }
 
     /** Ranked corrections for [typed] (lowercase compared), best first. */
-    fun corrections(typed: String, lexicon: Lexicon, limit: Int = 3): List<Correction> {
+    fun corrections(typed: String, lexicon: Lexicon, limit: Int = 3, keys: KeyGrid = KeyGrid.QWERTY): List<Correction> {
         val t = typed.lowercase()
         val max = maxDistance(t.length)
         if (max <= 0.0) return emptyList()
@@ -107,9 +85,9 @@ object Corrector {
         val rows = Array(3) { DoubleArray(t.length + span + 1) }
         lexicon.forEachCandidate(
             (t.length - span).coerceAtLeast(1)..t.length + span,
-            accept = { it != t && plausibleStart(t, it) },
+            accept = { it != t && plausibleStart(t, it, keys) },
         ) { word, lower, freq ->
-            val d = distance(t, lower, max, rows)
+            val d = distance(t, lower, max, rows, keys)
             if (d <= max) out += Correction(word, d, freq / FREQUENCY_SCALE - DISTANCE_WEIGHT * d)
         }
         return out.sortedByDescending { it.score }.take(limit)
@@ -120,11 +98,11 @@ object Corrector {
      * neighbouring key, the first two letters swapped, or one missing/extra leading letter
      * keeps the search fast without discarding first-letter insertions and deletions.
      */
-    private fun plausibleStart(t: String, w: String): Boolean {
+    private fun plausibleStart(t: String, w: String, keys: KeyGrid): Boolean {
         if (t.isEmpty() || w.isEmpty()) return false
         val a = t[0]
         val b = w[0]
-        return a == b || adjacent(a, b) ||
+        return a == b || keys.adjacent(a, b) ||
             (t.length > 1 && w.length > 1 && t[1] == b && w[1] == a) ||
             (t.length > 2 && w.length > 1 && t[1] == b && t[2] == w[1]) ||
             (w.length > 2 && t.length > 1 && w[1] == a && w[2] == t[1])
@@ -135,7 +113,7 @@ object Corrector {
      * Conservative: known words, short words, and code-like tokens (digits, underscores, inner
      * capitals such as `ViewModel`) are never corrected.
      */
-    fun autocorrect(typed: String, lexicon: Lexicon, atSentenceStart: Boolean = true): String? {
+    fun autocorrect(typed: String, lexicon: Lexicon, atSentenceStart: Boolean = true, keys: KeyGrid = KeyGrid.QWERTY): String? {
         if (!looksLikeAWord(typed)) return null
         // A capitalized word mid-sentence is most likely a name ("Meet Mira"): leave it.
         if (typed[0].isUpperCase() && !atSentenceStart) return null
@@ -144,7 +122,7 @@ object Corrector {
         lexicon.whitelist[typed.lowercase()]?.let { return Suggester.matchCase(typed, it) }
         if (lexicon.contains(typed) || typed.length <= 2) return null
         // Never turn a lowercase word into a capitalized name ("lol" → "Lil").
-        val ranked = corrections(typed, lexicon, 3).filter { typed[0].isUpperCase() || !it.word[0].isUpperCase() }
+        val ranked = corrections(typed, lexicon, 3, keys).filter { typed[0].isUpperCase() || !it.word[0].isUpperCase() }
         val best = ranked.firstOrNull() ?: return null
         val second = ranked.getOrNull(1)
         if (lexicon.frequency(best.word)?.let { it < MIN_TARGET_FREQUENCY } == true) return null

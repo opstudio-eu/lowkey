@@ -112,16 +112,16 @@ private fun KeyView(
             }
         }
         is Key.Globe -> PressTarget(
-            "Switch typing language. Long-press to choose keyboard", modifier, gestureKey = key,
+            "Switch typing language or layout. Long-press to choose input method", modifier, gestureKey = key,
             onDown = actions::onKeyDown, onTap = { actions.onKey(key) }, onLongPress = actions::onGlobeLongPress,
         ) { pressed ->
             KeyCap(if (pressed) c.keyPressed else c.keyMod) { KeyIcon(SlimIcons.Globe) }
         }
         is Key.Space -> PressTarget(
-            "Space, ${state.layout.label}", modifier, gestureKey = key, onDown = actions::onKeyDown, onTap = { actions.onKey(key) },
+            "Space, ${state.keyboard.label}", modifier, gestureKey = key, onDown = actions::onKeyDown, onTap = { actions.onKey(key) },
         ) { pressed ->
             KeyCap(if (pressed) c.keyPressed else c.key) {
-                Text(state.layout.label, color = c.spaceText, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(state.keyboard.label, color = c.spaceText, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
         is Key.Enter -> PressTarget(

@@ -1,6 +1,7 @@
 package com.rheerkens.androidkeyboard.keyboard
 
-import com.rheerkens.androidkeyboard.settings.TypingLayout
+import com.rheerkens.androidkeyboard.settings.KeyArrangement
+import com.rheerkens.androidkeyboard.settings.TypingKeyboard
 
 /** One key. [weight] is its share of the row width (a letter key is 1). */
 sealed interface Key {
@@ -50,29 +51,42 @@ object Layouts {
         "z" to "ž ź ż",
     ).mapValues { it.value.split(' ') }
 
-    private fun letters(s: String): List<Key> = chars(s).map { key ->
-        (key as Key.Char).copy(accents = ACCENTS[key.label].orEmpty())
-    }
-
     private fun bottomRow(switchKey: Key.LayerSwitch) = listOf(
         switchKey, Key.Globe(), Key.Char(","), Key.Space(), Key.Char("."), Key.Enter(),
     )
 
-    /** QWERTY letters. Dutch also uses QWERTY; only suggestions and the space label differ. */
-    fun letters(@Suppress("UNUSED_PARAMETER") layout: TypingLayout) = KeyboardLayout(
-        listOf(
-            "qwertyuiop".mapIndexed { index, letter ->
-                Key.Char(
-                    letter.toString(),
-                    longPressOutput = ((index + 1) % 10).toString(),
-                    accents = ACCENTS[letter.toString()].orEmpty(),
-                )
-            },
-            listOf(Key.Gap()) + letters("a s d f g h j k l") + Key.Gap(),
-            listOf(Key.Shift()) + letters("z x c v b n m") + Key.Backspace(),
-            bottomRow(Key.LayerSwitch(Layer.SYMBOLS, "?123")),
+    /**
+     * The letter layer for [keyboard]'s arrangement. The language changes only suggestions and
+     * the space-bar label. The top row offers the digits 1–0 on long-press; shorter middle rows
+     * are centred with gaps; Shift and Backspace share what the third row leaves of ten keys,
+     * but stay at least a key wide.
+     */
+    fun letters(keyboard: TypingKeyboard): KeyboardLayout = lettersCache.getValue(keyboard.arrangement)
+
+    private val lettersCache: Map<KeyArrangement, KeyboardLayout> =
+        KeyArrangement.entries.associateWith(::buildLetters)
+
+    private fun buildLetters(arrangement: KeyArrangement): KeyboardLayout {
+        val (top, middle, bottom) = arrangement.rows.map { row -> row.map { letter -> letterKey(letter.toString()) } }
+        val digits = top.mapIndexed { index, key ->
+            if (top.size == ROW_KEYS) key.copy(longPressOutput = ((index + 1) % 10).toString()) else key
+        }
+        val gap = (ROW_KEYS - middle.size) / 2f
+        val side = maxOf(1f, (ROW_KEYS - bottom.size) / 2f)
+        return KeyboardLayout(
+            listOf(
+                digits,
+                if (gap > 0f) listOf(Key.Gap(gap)) + middle + Key.Gap(gap) else middle,
+                listOf(Key.Shift(side)) + bottom + Key.Backspace(side),
+                bottomRow(Key.LayerSwitch(Layer.SYMBOLS, "?123")),
+            )
         )
-    )
+    }
+
+    private fun letterKey(letter: String) = Key.Char(letter, accents = ACCENTS[letter].orEmpty())
+
+    /** Letter keys in a full row. */
+    private const val ROW_KEYS = 10
 
     val SYMBOLS = KeyboardLayout(
         listOf(
@@ -92,8 +106,8 @@ object Layouts {
         )
     )
 
-    fun forLayer(layer: Layer, layout: TypingLayout): KeyboardLayout = when (layer) {
-        Layer.LETTERS -> letters(layout)
+    fun forLayer(layer: Layer, keyboard: TypingKeyboard): KeyboardLayout = when (layer) {
+        Layer.LETTERS -> letters(keyboard)
         Layer.SYMBOLS -> SYMBOLS
         Layer.SYMBOLS_2 -> SYMBOLS_2
     }

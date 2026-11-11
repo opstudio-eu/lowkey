@@ -28,16 +28,20 @@ class SettingsStore(context: Context) {
 
     private fun load(): Settings {
         val d = Settings()
+        // Before keyboards had arrangements, only languages were stored (always QWERTY).
+        val (enabled, current) = loadKeyboards(
+            enabledIds = prefs.getStringSet(K_KEYBOARDS, null) ?: prefs.getStringSet(K_LAYOUTS, null),
+            currentId = prefs.getString(K_KEYBOARD, null) ?: prefs.getString(K_LAYOUT, null),
+            default = d,
+        )
         return Settings(
             keyboardHeight = enumOr(prefs.getString(K_HEIGHT, null), d.keyboardHeight),
             vibrateOnKeyPress = prefs.getBoolean(K_VIBRATE, d.vibrateOnKeyPress),
             autoCapitalize = prefs.getBoolean(K_AUTOCAP, d.autoCapitalize),
             autocorrect = prefs.getBoolean(K_AUTOCORRECT, d.autocorrect),
             suggestionStrip = prefs.getBoolean(K_STRIP, d.suggestionStrip),
-            enabledLayouts = prefs.getStringSet(K_LAYOUTS, null)
-                ?.mapNotNull { name -> TypingLayout.entries.firstOrNull { it.name == name } }
-                ?.toSet()?.ifEmpty { null } ?: d.enabledLayouts,
-            currentLayout = enumOr(prefs.getString(K_LAYOUT, null), d.currentLayout),
+            enabledKeyboards = enabled,
+            currentKeyboard = current,
             showWithPhysicalKeyboard = prefs.getBoolean(K_SHOW_WITH_PHYSICAL, d.showWithPhysicalKeyboard),
             recentScreenshots = prefs.getBoolean(K_SCREENSHOTS, d.recentScreenshots),
             autoStartVoice = prefs.getBoolean(K_AUTOSTART, d.autoStartVoice),
@@ -66,8 +70,8 @@ class SettingsStore(context: Context) {
         putBoolean(K_AUTOCAP, s.autoCapitalize)
         putBoolean(K_AUTOCORRECT, s.autocorrect)
         putBoolean(K_STRIP, s.suggestionStrip)
-        putStringSet(K_LAYOUTS, s.enabledLayouts.map { it.name }.toSet())
-        putString(K_LAYOUT, s.currentLayout.name)
+        putStringSet(K_KEYBOARDS, s.enabledKeyboards.map { it.id }.toSet())
+        putString(K_KEYBOARD, s.currentKeyboard.id)
         putBoolean(K_SHOW_WITH_PHYSICAL, s.showWithPhysicalKeyboard)
         putBoolean(K_SCREENSHOTS, s.recentScreenshots)
         putBoolean(K_AUTOSTART, s.autoStartVoice)
@@ -92,7 +96,20 @@ class SettingsStore(context: Context) {
     private inline fun <reified E : Enum<E>> enumOr(name: String?, default: E): E =
         enumValues<E>().firstOrNull { it.name == name } ?: default
 
-    private companion object {
+    internal companion object {
+        /**
+         * Enabled and current keyboards from stored ids (see [TypingKeyboard.parse]). Unknown ids
+         * are dropped; nothing usable falls back to [default]'s, and the current keyboard is
+         * always one of the enabled ones.
+         */
+        fun loadKeyboards(enabledIds: Set<String>?, currentId: String?, default: Settings): Pair<Set<TypingKeyboard>, TypingKeyboard> {
+            val enabled = enabledIds?.mapNotNull(TypingKeyboard::parse)?.toSet()?.ifEmpty { null } ?: default.enabledKeyboards
+            val current = currentId?.let(TypingKeyboard::parse)?.takeIf { it in enabled }
+                ?: default.currentKeyboard.takeIf { it in enabled }
+                ?: TypingKeyboard.ordered(enabled).first()
+            return enabled to current
+        }
+
         const val K_HEIGHT = "keyboard_height"
         const val K_LOUPE_CORNERS = "loupe_corner_choice"
         const val K_CHECK_UPDATES = "check_for_updates"
@@ -100,8 +117,11 @@ class SettingsStore(context: Context) {
         const val K_AUTOCAP = "auto_capitalize"
         const val K_AUTOCORRECT = "autocorrect"
         const val K_STRIP = "suggestion_strip"
+        /** Language-only keys from before arrangements; read once to migrate. */
         const val K_LAYOUTS = "enabled_layouts"
         const val K_LAYOUT = "current_layout"
+        const val K_KEYBOARDS = "enabled_keyboards"
+        const val K_KEYBOARD = "current_keyboard"
         const val K_AUTOSTART = "auto_start_voice"
         const val K_KEYBOARD_FIRST = "keyboard_first_dictation"
         const val K_REMEMBER = "remember_last_mode"
