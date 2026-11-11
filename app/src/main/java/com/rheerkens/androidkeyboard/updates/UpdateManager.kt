@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
+import java.util.concurrent.atomic.AtomicLong
 
 /** What the Updates card shows. */
 sealed interface UpdateStatus {
@@ -90,6 +91,9 @@ class UpdateManager(
     private val _state = MutableStateFlow(initialState())
     val state: StateFlow<UpdateState> = _state.asStateFlow()
 
+    /** Updates started so far; a check compares it to see whether one started while it ran. */
+    private val attempts = AtomicLong()
+
     private val _working = MutableStateFlow(false)
 
     /** True from Update until the APK is handed to Android's installer, or the download fails. */
@@ -126,26 +130,29 @@ class UpdateManager(
             val before = _state.value
             if (inProgress(before.status)) return
             if (userStarted) setUnlessInProgress(before.copy(status = UpdateStatus.Checking))
+            // What the card showed when the fetch started, and how many updates had been started.
+            // If either changed meanwhile (an update the user started, or its failure, even one
+            // equal to an earlier failure), that is newer than this check's result.
+            val shown = if (userStarted) UpdateStatus.Checking else before.status
+            val attempt = attempts.get()
             val result = runCatching { platform.fetchFeed()?.let(AvailableUpdate::parse) }
             result.exceptionOrNull()?.let { if (it is CancellationException) throw it }
             val now = platform.now()
             val feed = result.getOrElse { error ->
-                setUnlessInProgress(
-                    if (userStarted) before.copy(status = UpdateStatus.Failed(checkFailure(error), before.update)) else before,
-                )
+                // Background checks never show errors, so they have nothing to write.
+                if (userStarted) {
+                    setIfStill(shown, attempt, before.copy(status = UpdateStatus.Failed(checkFailure(error), before.update)), checkedAt = null)
+                }
                 return
             }
             prefs.lastCheckedAt = now
-            // The user started the update while the feed loaded: leave it, its saved release and
-            // its notifications alone.
-            if (inProgress(_state.value.status)) return
             val newer = feed?.takeIf { it.versionCode > platform.installedVersionCode() }
+            val checked = UpdateState(if (newer == null) UpdateStatus.UpToDate else UpdateStatus.Available(newer), now)
+            // If the user started an update while the feed loaded, or it failed, the card keeps
+            // that, and so do its saved release and notifications; only the check time moves.
+            if (!setIfStill(shown, attempt, checked, checkedAt = now)) return
             prefs.available = newer
-            if (newer == null) {
-                setUnlessInProgress(UpdateState(UpdateStatus.UpToDate, now))
-                return
-            }
-            setUnlessInProgress(UpdateState(UpdateStatus.Available(newer), now))
+            if (newer == null) return
             if (notify && prefs.notifiedVersionCode != newer.versionCode && platform.notifyAvailable(newer)) {
                 prefs.notifiedVersionCode = newer.versionCode
             }
@@ -160,11 +167,30 @@ class UpdateManager(
         _state.update { current -> if (inProgress(current.status)) current else next }
     }
 
+    /**
+     * Writes [next] only if the card still shows [shown] and no update was started since [attempt],
+     * and returns whether it did. Otherwise it keeps the newer status, but still shows the time of
+     * a successful check ([checkedAt]).
+     */
+    private fun setIfStill(shown: UpdateStatus, attempt: Long, next: UpdateState, checkedAt: Long?): Boolean {
+        var wrote = false
+        _state.update { current ->
+            wrote = current.status == shown && attempts.get() == attempt
+            when {
+                wrote -> next
+                checkedAt != null -> current.copy(lastCheckedAt = checkedAt)
+                else -> current
+            }
+        }
+        return wrote
+    }
+
     /** Downloads the known update, verifies it, and hands it to Android's installer. */
     fun startUpdate() {
         val update = _state.value.update ?: return
         // Also while a cancelled job is still finishing: it may still be cleaning up its files.
         if (downloadJob?.isCompleted == false) return
+        attempts.incrementAndGet()
         _state.update { it.copy(status = UpdateStatus.Downloading(update, 0)) }
         _working.value = true
         var committed = false
