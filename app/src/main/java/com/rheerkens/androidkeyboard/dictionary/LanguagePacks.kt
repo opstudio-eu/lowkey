@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -91,6 +93,11 @@ class LanguagePackStore(
     private val onInstalled: (KeyboardLanguage) -> Unit = {},
 ) {
     private val jobs = ConcurrentHashMap<String, Job>()
+    /**
+     * One install at a time: each holds a download buffer and the conversion's word map, and
+     * several together (the start-up restore, or many Download taps) could exhaust the heap.
+     */
+    private val installs = Semaphore(1)
     private val _state = MutableStateFlow(LanguagePackState(installed = scan()))
     val state: StateFlow<LanguagePackState> = _state.asStateFlow()
 
@@ -105,7 +112,7 @@ class LanguagePackStore(
         _state.update { it.copy(downloads = it.downloads + (id to 0f), errors = it.errors - id) }
         val job = scope.launch(io, start = kotlinx.coroutines.CoroutineStart.LAZY) {
             try {
-                install(language)
+                installs.withPermit { install(language) }
                 _state.update { it.copy(installed = it.installed + id, downloads = it.downloads - id) }
                 onInstalled(language)
             } catch (e: CancellationException) {
@@ -113,6 +120,9 @@ class LanguagePackStore(
             } catch (e: Exception) {
                 // Cancelling closes the connection, which can surface as an I/O error first.
                 if (isActive) _state.update { it.copy(errors = it.errors + (id to message(e))) }
+            } catch (e: OutOfMemoryError) {
+                // Report it like any failed download instead of taking the keyboard down with it.
+                _state.update { it.copy(errors = it.errors + (id to "Not enough memory to convert the word list")) }
             }
         }
         // Runs however the job ends, also when it is cancelled before it ever starts.
@@ -139,7 +149,8 @@ class LanguagePackStore(
 
     /** Downloads, verifies, converts and saves [language]. Throws on any failure. */
     internal suspend fun install(language: KeyboardLanguage) {
-        if (!dir.isDirectory && !dir.mkdirs()) throw IOException("Can't create the dictionary folder")
+        // Another install may create the folder at the same moment: only its absence is an error.
+        if (!dir.mkdirs() && !dir.isDirectory) throw IOException("Can't create the dictionary folder")
         val expectedText = language.sourceBytes * 4 / 3 + 4
         // Base64 line breaks add under 3%; anything beyond this is not the pinned file.
         val limit = expectedText + expectedText / 16 + 4096
@@ -167,8 +178,12 @@ class LanguagePackStore(
             throw IOException("Checksum mismatch: the download is not the pinned word list")
         }
         val tmp = File(dir, language.dictionaryFile + ".tmp")
-        GZIPOutputStream(FileOutputStream(tmp)).bufferedWriter(Charsets.UTF_8).use { AospWordList.convertGzip(gz, it) }
-        coroutineContext.ensureActive()
+        val context = coroutineContext
+        GZIPOutputStream(FileOutputStream(tmp)).bufferedWriter(Charsets.UTF_8).use {
+            AospWordList.convertGzip(gz, it) { context.ensureActive() }
+        }
+        // The rename below is the commit point: a cancel up to here leaves nothing installed.
+        context.ensureActive()
         // A crash between these steps leaves no marker, so the language counts as not installed.
         marker(language).delete()
         if (!tmp.renameTo(file(language))) throw IOException("Can't save the word list")

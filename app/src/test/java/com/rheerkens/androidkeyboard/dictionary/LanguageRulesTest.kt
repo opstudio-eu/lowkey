@@ -11,7 +11,7 @@ import org.junit.Test
 class LanguageRulesTest {
     private val german = TestLanguages.language("de")
     private val de = Lexicon.fromWords(
-        listOf("der", "die", "und", "Zeit", "haben", "heute", "essen", "Essen", "schön", "Straße", "über"),
+        listOf("der", "die", "und", "Zeit", "haben", "heute", "essen", "Essen", "schön", "Straße", "über", "Häuser", "Strasse", "Hauser"),
         folding = german.folding, rules = german.rules,
     )
 
@@ -20,7 +20,9 @@ class LanguageRulesTest {
         assertTrue(german.rules.capitalizedNouns)
         assertEquals("Zeit", Corrector.autocorrect("zeit", de))
         assertEquals("Zeit", Corrector.autocorrect("ziet", de))
-        assertEquals("Straße", Corrector.autocorrect("strasse", de) ?: "Straße")
+        assertEquals("Straße", Corrector.autocorrect("strasse", de))
+        // A more frequent spelling with umlauts or ß beats a rarer plain one (the surname Hauser).
+        assertEquals("Häuser", Corrector.autocorrect("hauser", de))
         // A word that is also spelled in lowercase (the verb `essen`) is left alone.
         assertNull(Corrector.autocorrect("essen", de))
         assertNull(Corrector.autocorrect("heute", de))

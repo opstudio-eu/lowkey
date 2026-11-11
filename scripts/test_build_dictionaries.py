@@ -43,6 +43,8 @@ class BuildDictionariesTest(unittest.TestCase):
             path = os.path.join(ROOT, "app", "src", "main", "assets", "dict", f"{lang['id']}.dict")
             self.assertEqual(lang.get("bundled") == "true", os.path.exists(path), lang["id"])
         bd = load_script()
+        with open(os.path.join(ROOT, "app", "src", "main", "assets", "dict", "NOTICE"), encoding="utf-8") as f:
+            self.assertEqual(bd.notice(source, langs), f.read(), "run scripts/build-dictionaries.py to update NOTICE")
         for test_list in bd.TEST_LISTS:
             self.assertTrue(os.path.exists(os.path.join(ROOT, bd.TEST_DIR, f"{test_list}.dict")), test_list)
 

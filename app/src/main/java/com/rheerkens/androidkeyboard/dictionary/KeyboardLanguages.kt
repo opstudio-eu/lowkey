@@ -95,7 +95,14 @@ class LanguageCatalog(val languages: List<KeyboardLanguage>) {
             return LanguageCatalog(sections.mapIndexed { i, (id, s) -> language(id, s, source).copy(index = i) })
         }
 
+        /** Keys a language section may have; any other is a typo that would silently do nothing. */
+        private val KEYS = setOf(
+            "name", "english", "short", "speech", "rows", "layout", "accents", "bundled", "size", "sha256",
+            "accent_margin", "capitalized_nouns",
+        )
+
         private fun language(id: String, s: Map<String, String>, source: String): KeyboardLanguage {
+            (s.keys - KEYS).firstOrNull()?.let { throw IllegalArgumentException("[$id]: unknown key $it") }
             fun req(key: String) = s[key]?.takeIf { it.isNotEmpty() } ?: throw IllegalArgumentException("[$id]: missing $key")
             require(ID.matches(id)) { "[$id]: id must look like pl or pt_BR" }
             val rows = req("rows").split(' ').filter { it.isNotEmpty() }.map { it.lowercase() }

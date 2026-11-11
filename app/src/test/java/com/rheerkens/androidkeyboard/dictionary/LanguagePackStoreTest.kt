@@ -124,6 +124,41 @@ class LanguagePackStoreTest {
     }
 
     @Test
+    fun installsRunOneAtATime() = runTest {
+        // Each install holds a download buffer and a conversion map; several at once could exhaust the heap.
+        val dutch = TestLanguages.language("nl").copy(sourceBytes = gz.size.toLong(), sourceSha256 = sha)
+        val both = LanguageCatalog(listOf(TestLanguages.language("en_US"), swedish, dutch))
+        var running = 0
+        var most = 0
+        val store = LanguagePackStore(
+            tmp.newFolder("d"), both, this,
+            { url, out ->
+                most = maxOf(most, ++running)
+                kotlinx.coroutines.yield()
+                serving(gz).fetch(url, out)
+                running--
+            },
+            StandardTestDispatcher(testScheduler),
+        )
+        store.download("sv")
+        store.download("nl")
+        advanceUntilIdle()
+        assertEquals(1, most)
+        assertEquals(setOf("sv", "nl"), store.state.value.installed)
+    }
+
+    @Test
+    fun runningOutOfMemoryIsReportedNotThrown() = runTest {
+        val store = LanguagePackStore(
+            tmp.newFolder("d"), catalog, this, { _, _ -> throw OutOfMemoryError("test") }, StandardTestDispatcher(testScheduler),
+        )
+        store.download("sv")
+        advanceUntilIdle()
+        assertEquals("Not enough memory to convert the word list", store.state.value.errors["sv"])
+        assertFalse(store.isInstalled(swedish))
+    }
+
+    @Test
     fun oversizedResponsesStopEarly() = runTest {
         val store = LanguagePackStore(tmp.newFolder("d"), catalog, this, serving(ByteArray(gz.size + 200_000)), StandardTestDispatcher(testScheduler))
         store.download("sv")

@@ -158,6 +158,12 @@ object Corrector {
         lexicon.whitelist[typed.lowercase()]?.let { return Suggester.matchCase(typed, it) }
         val nouns = lexicon.rules.capitalizedNouns
         if (nouns && typed[0].isLowerCase()) {
+            // A more frequent spelling with umlauts or ß comes first: `hauser` is `Häuser` rather
+            // than the surname Hauser, and `strasse` is `Straße`.
+            val own = lexicon.frequency(typed)
+            umlautSpelling(typed.lowercase(), lexicon)?.let { (word, freq) ->
+                if (own == null || freq > own) return Suggester.matchCase(typed, word)
+            }
             // German nouns: `zeit` is only known as `Zeit`.
             val spelling = lexicon.spelling(typed)
             if (spelling != null && spelling[0].isUpperCase() && spelling.substring(1) == typed.substring(1)) return spelling
@@ -171,6 +177,40 @@ object Corrector {
         if (second != null && best.score - second.score < MIN_MARGIN && second.distance <= best.distance) return null
         return Suggester.matchCase(typed, best.word)
     }
+
+    /**
+     * The most frequent dictionary spelling of [lower] with some of its a, o, u turned into ä, ö,
+     * ü and some ss into ß (German writers on a phone often leave them out), with its frequency.
+     * Only the first [MAX_UMLAUT_SPOTS] such spots vary, so at most 16 lookups.
+     */
+    private fun umlautSpelling(lower: String, lexicon: Lexicon): Pair<String, Int>? {
+        val spots = ArrayList<Int>()
+        var i = 0
+        while (i < lower.length && spots.size < MAX_UMLAUT_SPOTS) {
+            if (lower[i] in "aou" || lower.startsWith("ss", i)) spots += i
+            i += if (lower.startsWith("ss", i)) 2 else 1
+        }
+        var best: Pair<String, Int>? = null
+        for (mask in 1 until (1 shl spots.size)) {
+            val variant = buildString {
+                var j = 0
+                while (j < lower.length) {
+                    val spot = spots.indexOf(j)
+                    when {
+                        spot >= 0 && mask and (1 shl spot) != 0 && lower.startsWith("ss", j) -> { append('ß'); j += 2 }
+                        spot >= 0 && mask and (1 shl spot) != 0 -> { append(UMLAUTS.getValue(lower[j])); j++ }
+                        else -> { append(lower[j]); j++ }
+                    }
+                }
+            }
+            val freq = lexicon.frequency(variant) ?: continue
+            if (best == null || freq > best.second) best = lexicon.spelling(variant)!! to freq
+        }
+        return best
+    }
+
+    private val UMLAUTS = mapOf('a' to 'ä', 'o' to 'ö', 'u' to 'ü')
+    private const val MAX_UMLAUT_SPOTS = 4
 
     /**
      * True if the whitespace-delimited [token] is just [word], optionally after opening quotes

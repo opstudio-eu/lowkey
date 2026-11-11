@@ -156,6 +156,7 @@ class LanguageCatalogTest {
             good.replace("size = 10", "size = -1"),
             good.replace("name = X\n", ""),
             good + "\n" + good.substringAfter("\n"),
+            good.replace("bundled = false", "bundled = false\naccent_margn = 40"),
         ).forEach { bad -> assertThrows(IllegalArgumentException::class.java) { LanguageCatalog.parse(bad) } }
     }
 }

@@ -188,11 +188,38 @@ object AppGraph {
     /** The speech language code to resolve against a model: [Settings.speechLanguage], or the keyboard's. */
     fun speechLanguage(s: Settings = settings.current): String = speechLanguageCode(s.speechLanguage, currentLanguage(s))
 
-    /** Removes a downloaded language: its file, its loaded word list, and its keyboards in the settings. */
+    /**
+     * Removes a downloaded language: its file, its loaded word list, and its keyboards in the
+     * settings. If no usable keyboard is left on, English (US) is; the current keyboard moves to
+     * the first usable one.
+     */
     fun deleteLanguage(id: String) {
         languagePacks.delete(id)
         invalidateLexicon(id)
-        settings.update { s -> s.copy(enabledKeyboards = s.enabledKeyboards.filterTo(HashSet()) { it.substringBefore(':') != id }) }
+        settings.update(::withoutUnusableKeyboards)
+    }
+
+    /**
+     * Stops a download, and turns its language off, so a language enabled before (Dutch from an
+     * older version) isn't downloaded again at the next start once the user said no.
+     */
+    fun cancelDownload(id: String) {
+        languagePacks.cancel(id)
+        settings.update { withoutUnusableKeyboards(it, dropped = id) }
+    }
+
+    /** [s] without the keyboards whose word list isn't on the phone or downloading, nor [dropped]'s. */
+    private fun withoutUnusableKeyboards(s: Settings, dropped: String? = null): Settings {
+        val downloading = languagePacks.state.value.downloads.keys
+        val kept = s.enabledKeyboards.filterTo(HashSet()) { id ->
+            val language = languages[id.substringBefore(':')]
+            language != null && language.id != dropped &&
+                (languagePacks.isInstalled(language) || language.id in downloading)
+        }
+        val next = s.copy(enabledKeyboards = kept)
+        val usable = usableKeyboards(next).map { it.id }
+        val enabled = if (usable.any { it in kept }) kept else kept + Settings.DEFAULT_KEYBOARD
+        return next.copy(enabledKeyboards = enabled, currentKeyboard = currentKeyboard(next.copy(enabledKeyboards = enabled)).id)
     }
 
     /** The language's full word list, or a small built-in list while it loads. */
@@ -215,7 +242,12 @@ object AppGraph {
         generations[id] = (generations[id] ?: 0) + 1
     }
 
+    /** Counts published word lists, so cached results computed on a fallback list can be redone. */
+    val lexiconLoads = kotlinx.coroutines.flow.MutableStateFlow(0)
+
     fun preloadLexicon(language: KeyboardLanguage) {
+        // A downloaded list that isn't (or no longer) on the phone has nothing to load.
+        if (!languagePacks.isInstalled(language)) return
         if (synchronized(lexicons) { lexicons.containsKey(language.id) } || !loading.add(language.id)) return
         val generation = synchronized(lexicons) { generations[language.id] ?: 0 }
         appScope.launch(Dispatchers.IO) {
@@ -235,6 +267,7 @@ object AppGraph {
                 val current = synchronized(lexicons) {
                     ((generations[language.id] ?: 0) == generation).also { fresh -> if (fresh) lexicons[language.id] = it }
                 }
+                if (current) lexiconLoads.value++
                 val ms = android.os.SystemClock.elapsedRealtime() - started
                 Log.i(TAG, if (current) "Loaded $name: ${it.size} words in $ms ms" else "Discarded $name: deleted or replaced while loading")
             }.onFailure { Log.e(TAG, "Failed to load $name", it) }

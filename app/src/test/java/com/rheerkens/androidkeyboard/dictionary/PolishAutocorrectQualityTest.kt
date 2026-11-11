@@ -56,6 +56,9 @@ class PolishAutocorrectQualityTest {
         assertEquals("Więc", Corrector.autocorrect("Wiec", lexicon, atSentenceStart = true))
         // Real words whose accented form is not much more common stay: piec (oven), rak, sad.
         listOf("piec", "rak", "sad", "pies").forEach { assertNull(it, Corrector.autocorrect(it, lexicon)) }
+        // Restoring accents never turns a lowercase word into a name (`odra`, measles, is not the river Odrą).
+        assertTrue(lexicon.contains("odra"))
+        assertEquals(null, lexicon.accentRestoration("odra")?.takeIf { it[0].isUpperCase() })
         // Words typed with accents are never changed, and the rule is off without a margin.
         assertNull(lexicon.accentRestoration("już"))
         val plain = TestLanguages.language("pl").let { l ->
@@ -93,8 +96,10 @@ class PolishAutocorrectQualityTest {
         assertTrue(dzie.toString(), "dzień" in dzie || "dzięki" in dzie)
         val zol = lexicon.completions("zol", 20).map { it.first }
         assertTrue(zol.toString(), zol.any { it.startsWith("żół") })
-        // A prefix typed with Polish letters only matches words spelled that way.
+        // Letters typed with their accent must match it; letters typed without may match any.
         assertTrue(lexicon.completions("żó", 20).all { it.first.lowercase().startsWith("żó") })
+        val mixed = lexicon.completions("żól", 20).map { it.first.lowercase() }
+        assertTrue(mixed.toString(), mixed.isNotEmpty() && mixed.all { it.startsWith("żó") } && mixed.any { it.startsWith("żół") })
     }
 
     @Test

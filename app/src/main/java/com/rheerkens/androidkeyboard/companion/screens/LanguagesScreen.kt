@@ -106,7 +106,7 @@ private fun DownloadRow(language: KeyboardLanguage, packs: LanguagePackState) {
             }
             if (progress != null) {
                 TextButton(
-                    onClick = { AppGraph.languagePacks.cancel(language.id) },
+                    onClick = { AppGraph.cancelDownload(language.id) },
                     modifier = Modifier.semantics { contentDescription = "Cancel download of ${language.englishName}" },
                 ) { Text("Cancel", color = MaterialTheme.colorScheme.tertiary) }
             } else {

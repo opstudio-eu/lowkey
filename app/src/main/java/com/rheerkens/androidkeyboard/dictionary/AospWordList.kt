@@ -27,9 +27,12 @@ object AospWordList {
 
     fun convertGzip(gz: ByteArray): String = StringWriter().also { convertGzip(gz, it) }.toString()
 
-    /** Converts the gzipped source [gz] into [out], streaming it once per pass. */
-    fun convertGzip(gz: ByteArray, out: Writer) =
-        convert({ GZIPInputStream(ByteArrayInputStream(gz)).bufferedReader(Charsets.UTF_8) }, out)
+    /**
+     * Converts the gzipped source [gz] into [out], streaming it once per pass. [checkCancelled]
+     * runs every few thousand lines and may throw to stop.
+     */
+    fun convertGzip(gz: ByteArray, out: Writer, checkCancelled: () -> Unit = {}) =
+        convert({ GZIPInputStream(ByteArrayInputStream(gz)).bufferedReader(Charsets.UTF_8) }, out, checkCancelled)
 
     fun convert(combined: String): String =
         StringWriter().also { out -> convert({ combined.reader().buffered() }, out) }.toString()
@@ -37,11 +40,11 @@ object AospWordList {
     private class Shortcut(val source: String, val target: String, val sourceNotAWord: Boolean)
 
     /** Converts the source that [open] reads (from the start, each call) into [out]. */
-    fun convert(open: () -> BufferedReader, out: Writer) {
+    fun convert(open: () -> BufferedReader, out: Writer, checkCancelled: () -> Unit = {}) {
         // Pass 1: entries per frequency, and whitelist shortcuts in file order.
         val perFrequency = LongArray(256)
         val shortcuts = ArrayList<Shortcut>()
-        forEachEntry(open, onWord = { _, fields, _ ->
+        forEachEntry(open, checkCancelled, onWord = { _, fields, _ ->
             if (keeps(fields)) perFrequency[frequency(fields).coerceIn(0, 255)]++
         }) { current, fields ->
             val source = current["word"]
@@ -59,7 +62,7 @@ object AospWordList {
         while (true) {
             val kept = HashMap<String, Int>()
             val minimum = cutoff
-            forEachEntry(open, onWord = { raw, fields, word ->
+            forEachEntry(open, checkCancelled, onWord = { raw, fields, word ->
                 if ("not_a_word=true" !in raw && "offensive" !in raw) {
                     val lower = word.lowercase()
                     if (lower in shortcutSources) validSources += lower
@@ -109,13 +112,16 @@ object AospWordList {
     /** Reads each ` word=` line (and the `  shortcut=` lines under it) of the source once. */
     private inline fun forEachEntry(
         open: () -> BufferedReader,
+        checkCancelled: () -> Unit,
         onWord: (raw: String, fields: Map<String, String>, word: String) -> Unit,
         onShortcut: (current: Map<String, String>, fields: Map<String, String>) -> Unit = { _, _ -> },
     ) {
         open().use { reader ->
             var current: Map<String, String>? = null
+            var lines = 0
             while (true) {
                 val raw = reader.readLine() ?: break
+                if (++lines % CANCEL_CHECK_LINES == 0) checkCancelled()
                 if (raw.startsWith(WORD)) {
                     val fields = fields(raw)
                     current = fields
@@ -152,6 +158,7 @@ object AospWordList {
         (a.length - i).compareTo(b.length - j)
     }
 
+    private const val CANCEL_CHECK_LINES = 10_000
     private const val WORD = " word="
     private const val SHORTCUT = "  shortcut="
 }

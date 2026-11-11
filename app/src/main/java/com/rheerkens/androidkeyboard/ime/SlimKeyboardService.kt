@@ -171,7 +171,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     private class ClearedClips(val entries: List<ClipEntry>, val primary: ClipData?, val clearedAtBefore: Long)
 
     /** What an autocorrection depends on: the word, the keyboard (language and layout), and sentence position. */
-    private data class CorrectionKey(val word: String, val keyboard: String, val atSentenceStart: Boolean)
+    /** [lexiconLoad] tells a result computed on a fallback list from one on the full list. */
+    private data class CorrectionKey(val word: String, val keyboard: String, val atSentenceStart: Boolean, val lexiconLoad: Int)
     private data class CachedCorrection(val key: CorrectionKey, val fix: String?)
 
     /** Autocorrection computed with the latest suggestions; a cached null is a valid answer. */
@@ -228,6 +229,10 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         // Follow keyboards changed in Settings while the keyboard is open (e.g. the current one
         // turned off, or its language deleted), so the keys, the space bar and autocorrect stay
         // on the same keyboard.
+        // A word list that finishes loading replaces the small fallback: redo the suggestions.
+        AppGraph.lexiconLoads.drop(1).onEach {
+            if (inputViewActive && mode.value == InputMode.KEYS) refreshStrip()
+        }.launchIn(scope)
         combine(settings.settings, AppGraph.languagePacks.state) { s, _ -> AppGraph.currentKeyboard(s).id }
             .distinctUntilChanged().onEach {
             val current = AppGraph.currentKeyboard()
@@ -1193,7 +1198,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     private fun correctionKey(word: String): CorrectionKey? {
         if (word.isEmpty() || word.lowercase() in rejectedCorrections) return null
         if (!Corrector.isStandaloneWord(bridge.currentTokenBeforeCursor(), word)) return null
-        return CorrectionKey(word, keyboard.state.value.keyboard.id, bridge.wordStartsSentence(word.length))
+        return CorrectionKey(word, keyboard.state.value.keyboard.id, bridge.wordStartsSentence(word.length), AppGraph.lexiconLoads.value)
     }
 
     /** The saved multi-word term to recase before the cursor, unless the user undid it here. */

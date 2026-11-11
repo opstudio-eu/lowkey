@@ -59,6 +59,18 @@ class AospWordListTest {
     }
 
     @Test
+    fun conversionStopsWhenCancelled() {
+        val combined = buildString { for (i in 0 until 30_000) append(" word=w$i,f=1,flags=\n") }
+        var checks = 0
+        val stopped = runCatching {
+            AospWordList.convert({ combined.reader().buffered() }, java.io.StringWriter()) {
+                if (++checks == 2) throw java.util.concurrent.CancellationException("cancelled")
+            }
+        }.exceptionOrNull()
+        assertTrue(stopped is java.util.concurrent.CancellationException)
+    }
+
+    @Test
     fun convertedOutputLoadsAsALexicon() {
         val lexicon = Lexicon.parse(AospWordList.convert(File(fixture, "sample.combined").readText()).byteInputStream())
         assertEquals(150, lexicon.frequency("żółw"))

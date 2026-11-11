@@ -1,5 +1,8 @@
-# Keyboard languages. Adding one is a data change: add a section here, then (for a bundled language)
-# run scripts/build-dictionaries.py. The app and that script both read this file.
+# Keyboard languages. Adding one is a data change: add a section here and run
+# `scripts/build-dictionaries.py --check` (it verifies the pin and updates assets/dict/NOTICE). For a
+# bundled language it also writes assets/dict/<id>.dict; review that file and add it to
+# .leak-allowlist with the command the script prints. The app and the script both read this file.
+# `speech` must be a Whisper language code (see ModelCatalog.WHISPER_CODES); a test checks it.
 #
 # Every word list comes from the AOSP LatinIME dictionaries (Apache-2.0) at one pinned commit:
 # <source>/<id>_wordlist.combined.gz, checked against `sha256` (of the .gz file) and `size` (its bytes).

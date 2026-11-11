@@ -45,7 +45,8 @@ Copyright (c) 2008, The Android Open Source Project
 Licensed under the Apache License, Version 2.0: https://www.apache.org/licenses/LICENSE-2.0
 
 Bundled in the APK: {bundled}.
-Downloaded on request from the same commit and converted on the phone: {downloaded}.
+The other languages in languages.txt are downloaded on request from the same commit and converted
+on the phone with the same changes.
 
 Changes: converted to word/frequency lists of at most {max_words} words; offensive and non-word
 entries removed; whitelist reduced to contractions and corrections of non-words.
@@ -127,7 +128,6 @@ def render(words: dict, whitelist: dict) -> str:
 def main():
     check_all = "--check" in sys.argv[1:]
     source, langs = read_catalog()
-    commit = source.split("/+/", 1)[1].split("/", 1)[0]
     os.makedirs(OUT_DIR, exist_ok=True)
     os.makedirs(TEST_DIR, exist_ok=True)
     for lang in langs:
@@ -144,13 +144,19 @@ def main():
         with gzip.GzipFile(path, "wb", mtime=0) as f:
             f.write(render(words, whitelist).encode("utf-8"))
         print(f"{path}: {len(words)} words, {len(whitelist)} whitelist entries, {os.path.getsize(path)} bytes")
+        # Binary files that ship are reviewed for the leak check (see AGENTS.md).
+        print(f"  review it, then: python3 -I scripts/check-leaks.py allow {path}")
     with open(os.path.join(OUT_DIR, "NOTICE"), "w") as f:
-        f.write(NOTICE.format(
-            commit=commit,
-            bundled=", ".join(l["id"] for l in langs if l.get("bundled") == "true"),
-            downloaded=", ".join(l["id"] for l in langs if l.get("bundled") != "true"),
-            max_words=f"{MAX_WORDS:,}",
-        ))
+        f.write(notice(source, langs))
+
+
+def notice(source: str, langs: list) -> str:
+    """The NOTICE for the catalog: the pinned commit and the bundled lists."""
+    return NOTICE.format(
+        commit=source.split("/+/", 1)[1].split("/", 1)[0],
+        bundled=", ".join(l["id"] for l in langs if l.get("bundled") == "true"),
+        max_words=f"{MAX_WORDS:,}",
+    )
 
 
 if __name__ == "__main__":

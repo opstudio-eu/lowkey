@@ -85,9 +85,9 @@ class Lexicon private constructor(
         word in exact || (word.firstOrNull()?.isUpperCase() == true && word.lowercase() in exact)
 
     /**
-     * Up to [limit] words starting with [prefix] (case-insensitive), most frequent first. A prefix
-     * without accents also matches accented words (`dzie` → `dziękuję`); one with accents only
-     * matches words spelled that way.
+     * Up to [limit] words starting with [prefix] (case-insensitive), most frequent first. Letters
+     * typed without their accent also match accented ones (`dzie` → `dziękuję`, `żól` → `żółw`);
+     * a letter typed with an accent only matches that accent.
      */
     fun completions(prefix: String, limit: Int): List<Pair<String, Int>> {
         val p = prefix.lowercase()
@@ -95,11 +95,13 @@ class Lexicon private constructor(
         val best = ArrayList<Int>()
         val order = foldedOrder
         val sorted = foldedSorted
-        if (order != null && sorted != null && folding.fold(p) == p) {
-            var lo = lowerBound(sorted, p)
-            while (lo < sorted.size && sorted[lo].startsWith(p)) {
+        if (order != null && sorted != null) {
+            // Search without accents, then keep the accents the user did type (`żól` → `żółw`).
+            val fp = folding.fold(p)
+            var lo = lowerBound(sorted, fp)
+            while (lo < sorted.size && sorted[lo].startsWith(fp)) {
                 val i = order[lo]
-                if (lower[i].length > p.length) best += i
+                if (lower[i].length > p.length && p.indices.all { k -> p[k] == fp[k] || lower[i][k] == p[k] }) best += i
                 lo++
             }
         } else {
@@ -139,7 +141,9 @@ class Lexicon private constructor(
         var best: String? = null
         var bestFreq = own + accentMargin - 1
         forEachAccentedForm(t) { word, lower, freq ->
-            if (lower != t && freq > bestFreq) {
+            // Never turn a lowercase word into a capitalized name (`odra`, measles, is not the river `Odrą`).
+            val capitalizes = word[0].isUpperCase() && typed[0].isLowerCase()
+            if (lower != t && freq > bestFreq && !capitalizes) {
                 best = word
                 bestFreq = freq
             }
