@@ -113,8 +113,12 @@ object AppGraph {
             scope = appScope,
             onInstalled = { language ->
                 invalidateLexicon(language.id)
-                // A downloaded language is ready to use at once, on its own layout.
-                settings.update { it.copy(enabledKeyboards = it.enabledKeyboards + TypingKeyboard(language).id) }
+                // A downloaded language is ready to use at once, on its own layout, unless some of
+                // its keyboards are already on (a restore after an update keeps Dutch AZERTY alone).
+                settings.update { s ->
+                    if (s.enabledKeyboards.any { it.substringBefore(':') == language.id }) s
+                    else s.copy(enabledKeyboards = s.enabledKeyboards + TypingKeyboard(language).id)
+                }
             },
         )
         testClips = app.assets.list(CLIP_DIR).orEmpty().filter { it.endsWith(".wav") }.sorted()
@@ -245,34 +249,57 @@ object AppGraph {
     /** Counts published word lists, so cached results computed on a fallback list can be redone. */
     val lexiconLoads = kotlinx.coroutines.flow.MutableStateFlow(0)
 
+    /**
+     * Builds word lists one at a time: a list being built holds its 200,000-odd words twice, so
+     * several at once (cycling quickly through many languages) could exhaust the heap.
+     */
+    private val lexiconLoader = Dispatchers.IO.limitedParallelism(1)
+
+    /** The languages asked for most recently, newest last; a queued load of another is skipped. Guarded by [lexicons]. */
+    private val wantedLexicons = ArrayDeque<String>()
+
     fun preloadLexicon(language: KeyboardLanguage) {
         // A downloaded list that isn't (or no longer) on the phone has nothing to load.
         if (!languagePacks.isInstalled(language)) return
+        synchronized(lexicons) {
+            wantedLexicons.remove(language.id)
+            wantedLexicons.addLast(language.id)
+            while (wantedLexicons.size > MAX_LOADED_LEXICONS) wantedLexicons.removeFirst()
+        }
         if (synchronized(lexicons) { lexicons.containsKey(language.id) } || !loading.add(language.id)) return
         val generation = synchronized(lexicons) { generations[language.id] ?: 0 }
-        appScope.launch(Dispatchers.IO) {
-            val name = language.dictionaryFile
-            val started = android.os.SystemClock.elapsedRealtime()
-            runCatching {
-                val input = if (language.bundled) assets.open("dict/$name") else languagePacks.file(language).inputStream()
-                val base = input.use { Lexicon.parseGzip(it, language.folding, language.rules) }
-                // Tech/chat words (and, outside English, the English basics people mix in) count as known.
-                val extra = if (language.id.startsWith("en_")) BuiltInWords.TECH else BuiltInWords.TECH + BuiltInWords.ENGLISH
-                base.withExtraWords(BuiltInWords.ENGLISH + extra, EXTRA_WORD_FREQUENCY).also {
-                    // Initialize the spelling engine's cold path on this loader thread before
-                    // making the full dictionary available to a Space press on the main thread.
-                    Corrector.corrections("keyboard", it)
-                }
-            }.onSuccess {
-                val current = synchronized(lexicons) {
-                    ((generations[language.id] ?: 0) == generation).also { fresh -> if (fresh) lexicons[language.id] = it }
-                }
-                if (current) lexiconLoads.value++
-                val ms = android.os.SystemClock.elapsedRealtime() - started
-                Log.i(TAG, if (current) "Loaded $name: ${it.size} words in $ms ms" else "Discarded $name: deleted or replaced while loading")
-            }.onFailure { Log.e(TAG, "Failed to load $name", it) }
-            loading.remove(language.id)
+        appScope.launch(lexiconLoader) {
+            try {
+                // Passed over while queued behind other loads: it would only push a wanted list out.
+                if (synchronized(lexicons) { language.id !in wantedLexicons }) return@launch
+                load(language, generation)
+            } finally {
+                loading.remove(language.id)
+            }
         }
+    }
+
+    private fun load(language: KeyboardLanguage, generation: Int) {
+        val name = language.dictionaryFile
+        val started = android.os.SystemClock.elapsedRealtime()
+        runCatching {
+            val input = if (language.bundled) assets.open("dict/$name") else languagePacks.file(language).inputStream()
+            val base = input.use { Lexicon.parseGzip(it, language.folding, language.rules) }
+            // Tech/chat words (and, outside English, the English basics people mix in) count as known.
+            val extra = if (language.id.startsWith("en_")) BuiltInWords.TECH else BuiltInWords.TECH + BuiltInWords.ENGLISH
+            base.withExtraWords(BuiltInWords.ENGLISH + extra, EXTRA_WORD_FREQUENCY).also {
+                // Initialize the spelling engine's cold path on this loader thread before
+                // making the full dictionary available to a Space press on the main thread.
+                Corrector.corrections("keyboard", it)
+            }
+        }.onSuccess {
+            val current = synchronized(lexicons) {
+                ((generations[language.id] ?: 0) == generation).also { fresh -> if (fresh) lexicons[language.id] = it }
+            }
+            if (current) lexiconLoads.value++
+            val ms = android.os.SystemClock.elapsedRealtime() - started
+            Log.i(TAG, if (current) "Loaded $name: ${it.size} words in $ms ms" else "Discarded $name: deleted or replaced while loading")
+        }.onFailure { Log.e(TAG, "Failed to load $name", it) }
     }
 
     /** Key of the model the next capture would load (see `LoadableModel.key`), or null. */
