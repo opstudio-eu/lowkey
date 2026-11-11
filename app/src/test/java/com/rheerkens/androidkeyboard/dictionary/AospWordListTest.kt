@@ -39,6 +39,26 @@ class AospWordListTest {
     }
 
     @Test
+    fun duplicateEntriesNeverPushWordsOutOfTheCut() {
+        // Entries at the top frequency appear twice, so counting entries alone would set the
+        // cutoff too high; the converter must lower it and match a plain in-memory conversion.
+        val dupes = 130_000
+        val combined = buildString {
+            append("dictionary=main:xx\n")
+            for (i in 0 until dupes) append(" word=w$i,f=200,flags=\n word=w$i,f=150,flags=\n")
+            for (i in 0 until 200_000) append(" word=x$i,f=${100 - i % 3},flags=\n")
+        }
+        val words = AospWordList.convert(combined).lines().takeWhile { it != "#whitelist" }
+        assertEquals(AospWordList.MAX_WORDS, words.size)
+        assertEquals(dupes, words.count { it.startsWith("w") })
+        assertTrue(words.filter { it.startsWith("w") }.all { it.endsWith("\t200") })
+        // The rest are the most frequent x words: all of frequency 100 and 99, then 98 by code point.
+        val x = words.filter { it.startsWith("x") }.map { it.substringAfter('\t').toInt() }
+        assertEquals(x.sortedDescending(), x)
+        assertEquals(AospWordList.MAX_WORDS - dupes, x.size)
+    }
+
+    @Test
     fun convertedOutputLoadsAsALexicon() {
         val lexicon = Lexicon.parse(AospWordList.convert(File(fixture, "sample.combined").readText()).byteInputStream())
         assertEquals(150, lexicon.frequency("żółw"))

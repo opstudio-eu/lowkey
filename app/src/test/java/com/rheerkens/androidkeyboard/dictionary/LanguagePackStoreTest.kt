@@ -92,6 +92,38 @@ class LanguagePackStoreTest {
     }
 
     @Test
+    fun cancellingBeforeTheDownloadStartsAllowsARetry() = runTest {
+        val dir = tmp.newFolder("dictionaries")
+        val requests = mutableListOf<String>()
+        val store = LanguagePackStore(dir, catalog, this, serving(gz, requests), StandardTestDispatcher(testScheduler))
+        store.download("sv")
+        store.cancel("sv") // before the dispatcher ran it
+        advanceUntilIdle()
+        assertTrue(requests.isEmpty())
+        assertEquals(LanguagePackState(), store.state.value)
+        store.download("sv")
+        advanceUntilIdle()
+        assertEquals(1, requests.size)
+        assertTrue(store.isInstalled(swedish))
+    }
+
+    @Test
+    fun cancellingDuringTheDownloadLeavesNothingBehind() = runTest {
+        val dir = tmp.newFolder("dictionaries")
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val store = LanguagePackStore(
+            dir, catalog, this, { _, _ -> gate.await() }, StandardTestDispatcher(testScheduler),
+        )
+        store.download("sv")
+        advanceUntilIdle()
+        assertEquals(0f, store.state.value.downloads["sv"])
+        store.cancel("sv")
+        advanceUntilIdle()
+        assertEquals(LanguagePackState(), store.state.value)
+        assertTrue(dir.listFiles()!!.isEmpty())
+    }
+
+    @Test
     fun oversizedResponsesStopEarly() = runTest {
         val store = LanguagePackStore(tmp.newFolder("d"), catalog, this, serving(ByteArray(gz.size + 200_000)), StandardTestDispatcher(testScheduler))
         store.download("sv")

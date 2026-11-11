@@ -36,6 +36,15 @@ class ResolveLanguageTest {
     fun unsupportedPreferenceFallsBackToEnglishThenFirst() {
         assertEquals("en", model("whisper-base").resolveLanguage("xx")?.code)
         val noEnglish = model("whisper-base").copy(languages = listOf(SpeechLanguage("de", "German"), SpeechLanguage("fr", "French")))
-        assertEquals("de", noEnglish.resolveLanguage("nl")?.code)
+        assertEquals("de", noEnglish.resolveLanguage("xx")?.code)
+    }
+
+    @Test
+    fun anyWhisperLanguageWorksForKeyboardLanguagesOutsideTheModelList() {
+        // Greek is not in the models' short list, but a keyboard language may dictate in it.
+        val greek = model("whisper-base").resolveLanguage("el")
+        assertEquals("el", greek?.code)
+        assertEquals("Greek", greek?.label)
+        assertNull(model("whisper-base.en").resolveLanguage("el"))
     }
 }

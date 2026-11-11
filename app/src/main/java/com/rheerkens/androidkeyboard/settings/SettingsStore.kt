@@ -21,10 +21,16 @@ class SettingsStore(context: Context) {
 
     val current: Settings get() = _settings.value
 
-    fun update(transform: (Settings) -> Settings) {
+    /**
+     * Applies [transform] and saves the result as one step, so updates from other threads (a
+     * finished download enabling its language) can't save an older snapshot over a newer one.
+     */
+    fun update(transform: (Settings) -> Settings) = synchronized(lock) {
         _settings.update(transform)
         save(_settings.value)
     }
+
+    private val lock = Any()
 
     private fun load(): Settings {
         val d = Settings()

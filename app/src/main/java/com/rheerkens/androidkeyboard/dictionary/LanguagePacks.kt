@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -108,19 +109,17 @@ class LanguagePackStore(
                 _state.update { it.copy(installed = it.installed + id, downloads = it.downloads - id) }
                 onInstalled(language)
             } catch (e: CancellationException) {
-                cleanUp(language)
-                _state.update { it.copy(downloads = it.downloads - id) }
                 throw e
             } catch (e: Exception) {
-                cleanUp(language)
-                val cancelled = jobs[id]?.isCancelled == true
-                _state.update {
-                    if (cancelled) it.copy(downloads = it.downloads - id)
-                    else it.copy(downloads = it.downloads - id, errors = it.errors + (id to message(e)))
-                }
-            } finally {
-                jobs.remove(id)
+                // Cancelling closes the connection, which can surface as an I/O error first.
+                if (isActive) _state.update { it.copy(errors = it.errors + (id to message(e))) }
             }
+        }
+        // Runs however the job ends, also when it is cancelled before it ever starts.
+        job.invokeOnCompletion {
+            cleanUp(language)
+            jobs.remove(id, job)
+            _state.update { it.copy(downloads = it.downloads - id) }
         }
         jobs[id] = job
         job.start()
@@ -167,10 +166,9 @@ class LanguagePackStore(
         if (gz.size.toLong() != language.sourceBytes || sha != language.sourceSha256) {
             throw IOException("Checksum mismatch: the download is not the pinned word list")
         }
-        val converted = AospWordList.convertGzip(gz)
-        coroutineContext.ensureActive()
         val tmp = File(dir, language.dictionaryFile + ".tmp")
-        GZIPOutputStream(FileOutputStream(tmp)).use { it.write(converted.toByteArray(Charsets.UTF_8)) }
+        GZIPOutputStream(FileOutputStream(tmp)).bufferedWriter(Charsets.UTF_8).use { AospWordList.convertGzip(gz, it) }
+        coroutineContext.ensureActive()
         // A crash between these steps leaves no marker, so the language counts as not installed.
         marker(language).delete()
         if (!tmp.renameTo(file(language))) throw IOException("Can't save the word list")

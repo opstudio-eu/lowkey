@@ -34,9 +34,11 @@ class LanguageCatalogTest {
     }
 
     @Test
-    fun everySpeechCodeIsOfferedByTheMultilingualWhisperModels() {
-        val offered = ModelCatalog.byId("whisper-base")!!.languages.map { it.code }.toSet()
-        catalog.languages.forEach { l -> assertTrue("${l.id} -> ${l.speech}", l.speech in offered) }
+    fun everySpeechCodeIsAWhisperLanguage() {
+        catalog.languages.forEach { l -> assertTrue("${l.id} -> ${l.speech}", l.speech in ModelCatalog.WHISPER_CODES) }
+        assertEquals(99, ModelCatalog.WHISPER_CODES.size)
+        // The models' short list is a subset.
+        assertTrue(ModelCatalog.byId("whisper-base")!!.languages.drop(1).all { it.code in ModelCatalog.WHISPER_CODES })
     }
 
     @Test

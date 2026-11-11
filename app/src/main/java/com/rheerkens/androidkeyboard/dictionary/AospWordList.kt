@@ -1,6 +1,9 @@
 package com.rheerkens.androidkeyboard.dictionary
 
+import java.io.BufferedReader
 import java.io.ByteArrayInputStream
+import java.io.StringWriter
+import java.io.Writer
 import java.util.zip.GZIPInputStream
 
 /**
@@ -12,51 +15,116 @@ import java.util.zip.GZIPInputStream
  * Offensive and "not a word" entries are dropped. From the whitelist only contractions of
  * non-words (`im` → `I'm`) and corrections of non-words are kept, never a swap of a valid word.
  * At most [MAX_WORDS] words are kept, the most frequent ones.
+ *
+ * The source is read in passes rather than held in memory: Romanian's list unpacks to 50 MB and
+ * 1.1 million words, which would not fit next to the keyboard in the app's heap. The first pass
+ * counts entries per frequency and collects the whitelist; the next keeps only words frequent
+ * enough to make the cut, so memory stays near [MAX_WORDS] entries.
  */
 object AospWordList {
     /** Romanian's list has 1.1 million inflected forms; keep the lexicon's memory bounded. */
     const val MAX_WORDS = 250_000
 
-    fun convertGzip(gz: ByteArray): String =
-        convert(GZIPInputStream(ByteArrayInputStream(gz)).use { String(it.readBytes(), Charsets.UTF_8) })
+    fun convertGzip(gz: ByteArray): String = StringWriter().also { convertGzip(gz, it) }.toString()
 
-    fun convert(combined: String): String {
-        val lines = combined.lines()
-        val validLower = HashSet<String>()
-        for (raw in lines) {
-            if (raw.startsWith(WORD) && "not_a_word=true" !in raw && "offensive" !in raw) {
-                validLower += raw.substringBefore(',').substring(WORD.length).lowercase()
+    /** Converts the gzipped source [gz] into [out], streaming it once per pass. */
+    fun convertGzip(gz: ByteArray, out: Writer) =
+        convert({ GZIPInputStream(ByteArrayInputStream(gz)).bufferedReader(Charsets.UTF_8) }, out)
+
+    fun convert(combined: String): String =
+        StringWriter().also { out -> convert({ combined.reader().buffered() }, out) }.toString()
+
+    private class Shortcut(val source: String, val target: String, val sourceNotAWord: Boolean)
+
+    /** Converts the source that [open] reads (from the start, each call) into [out]. */
+    fun convert(open: () -> BufferedReader, out: Writer) {
+        // Pass 1: entries per frequency, and whitelist shortcuts in file order.
+        val perFrequency = LongArray(256)
+        val shortcuts = ArrayList<Shortcut>()
+        forEachEntry(open, onWord = { _, fields, _ ->
+            if (keeps(fields)) perFrequency[frequency(fields).coerceIn(0, 255)]++
+        }) { current, fields ->
+            val source = current["word"]
+            val target = fields["shortcut"]
+            if (fields["f"] == "whitelist" && source != null && target != null) {
+                shortcuts += Shortcut(source, target, current["not_a_word"] == "true")
             }
         }
-        val words = HashMap<String, Int>()
-        val whitelist = HashMap<String, String>()
-        var current: Map<String, String>? = null
-        for (raw in lines) {
-            if (raw.startsWith(WORD)) {
-                val fields = fields(raw)
-                current = fields
-                val word = fields["word"] ?: continue
-                if (fields["not_a_word"] == "true" || "offensive" in fields["flags"].orEmpty()) continue
-                val freq = fields["f"]?.takeIf { it.isNotEmpty() }?.toInt() ?: 0
-                val prev = words[word]
-                if (prev == null || prev < freq) words[word] = freq
-            } else if (raw.startsWith(SHORTCUT) && current != null) {
-                val fields = fields(raw)
-                if (fields["f"] != "whitelist") continue
-                val source = current["word"] ?: continue
-                val target = fields["shortcut"] ?: continue
-                if (current["not_a_word"] == "true" || ('\'' in target && source.lowercase() !in validLower)) {
-                    whitelist[source] = target
+        // A whitelist entry is dropped if its source is also a valid word (`ill` → `I'll`).
+        val shortcutSources = shortcuts.mapTo(HashSet()) { it.source.lowercase() }
+        val validSources = HashSet<String>()
+        // Pass 2 (repeated only if duplicates leave too few words): words at or above a cutoff.
+        var cutoff = cutoff(perFrequency, MAX_WORDS.toLong())
+        var words: HashMap<String, Int>
+        while (true) {
+            val kept = HashMap<String, Int>()
+            val minimum = cutoff
+            forEachEntry(open, onWord = { raw, fields, word ->
+                if ("not_a_word=true" !in raw && "offensive" !in raw) {
+                    val lower = word.lowercase()
+                    if (lower in shortcutSources) validSources += lower
+                }
+                if (keeps(fields)) {
+                    val f = frequency(fields)
+                    if (minimum <= 0 || f >= minimum) {
+                        val prev = kept[word]
+                        if (prev == null || prev < f) kept[word] = f
+                    }
+                }
+            })
+            words = kept
+            // Every word with a frequency at or above the cutoff is kept, so once there are at
+            // least MAX_WORDS of them no word below it can make the cut.
+            if (words.size >= MAX_WORDS || minimum <= 0) break
+            cutoff = minimum - 1
+        }
+        val whitelist = LinkedHashMap<String, String>()
+        for (s in shortcuts) {
+            if (s.sourceNotAWord || ('\'' in s.target && s.source.lowercase() !in validSources)) whitelist[s.source] = s.target
+        }
+        words.entries.sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenComparing({ it.key }, CODE_POINTS))
+            .take(MAX_WORDS)
+            .forEach { out.append(it.key).append('\t').append(it.value.toString()).append('\n') }
+        out.append("#whitelist\n")
+        whitelist.entries.sortedWith(compareBy(CODE_POINTS) { it.key })
+            .forEach { out.append(it.key).append('\t').append(it.value).append('\n') }
+        out.flush()
+    }
+
+    /** The highest frequency at which at least [limit] entries are at or above it, else 0. */
+    private fun cutoff(perFrequency: LongArray, limit: Long): Int {
+        var total = 0L
+        for (f in 255 downTo 0) {
+            total += perFrequency[f]
+            if (total >= limit) return f
+        }
+        return 0
+    }
+
+    private fun keeps(fields: Map<String, String>) =
+        fields["not_a_word"] != "true" && "offensive" !in fields["flags"].orEmpty()
+
+    private fun frequency(fields: Map<String, String>) = fields["f"]?.takeIf { it.isNotEmpty() }?.toInt() ?: 0
+
+    /** Reads each ` word=` line (and the `  shortcut=` lines under it) of the source once. */
+    private inline fun forEachEntry(
+        open: () -> BufferedReader,
+        onWord: (raw: String, fields: Map<String, String>, word: String) -> Unit,
+        onShortcut: (current: Map<String, String>, fields: Map<String, String>) -> Unit = { _, _ -> },
+    ) {
+        open().use { reader ->
+            var current: Map<String, String>? = null
+            while (true) {
+                val raw = reader.readLine() ?: break
+                if (raw.startsWith(WORD)) {
+                    val fields = fields(raw)
+                    current = fields
+                    val word = fields["word"] ?: continue
+                    onWord(raw, fields, word)
+                } else if (raw.startsWith(SHORTCUT) && current != null) {
+                    onShortcut(current, fields(raw))
                 }
             }
-        }
-        return buildString {
-            words.entries.sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenComparing({ it.key }, CODE_POINTS))
-                .take(MAX_WORDS)
-                .forEach { append(it.key).append('\t').append(it.value).append('\n') }
-            append("#whitelist\n")
-            whitelist.entries.sortedWith(compareBy(CODE_POINTS) { it.key })
-                .forEach { append(it.key).append('\t').append(it.value).append('\n') }
         }
     }
 

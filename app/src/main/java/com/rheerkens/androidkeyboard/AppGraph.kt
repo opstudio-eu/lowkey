@@ -81,6 +81,11 @@ object AppGraph {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Lexicon>?) = size > MAX_LOADED_LEXICONS
     }
     private val loading = ConcurrentHashMap.newKeySet<String>()
+    /**
+     * Bumped when a language's word list is deleted or replaced, so a load that started before
+     * never publishes the old list. Guarded by [lexicons].
+     */
+    private val generations = HashMap<String, Int>()
     /** Small built-in lists used while a language's full list loads. */
     private val fallbackLexicons = ConcurrentHashMap<String, Lexicon>()
     private lateinit var assets: AssetManager
@@ -104,7 +109,7 @@ object AppGraph {
             catalog = languages,
             scope = appScope,
             onInstalled = { language ->
-                synchronized(lexicons) { lexicons.remove(language.id) }
+                invalidateLexicon(language.id)
                 // A downloaded language is ready to use at once.
                 settings.update { it.copy(enabledLanguages = it.enabledLanguages + language.id) }
             },
@@ -164,7 +169,7 @@ object AppGraph {
     /** Removes a downloaded language: its file, its loaded word list, and its place in the settings. */
     fun deleteLanguage(id: String) {
         languagePacks.delete(id)
-        synchronized(lexicons) { lexicons.remove(id) }
+        invalidateLexicon(id)
         settings.update { it.copy(enabledLanguages = it.enabledLanguages - id) }
     }
 
@@ -185,8 +190,15 @@ object AppGraph {
         }
     }
 
+    /** Drops a loaded word list and makes any load in progress discard its result. */
+    private fun invalidateLexicon(id: String) = synchronized(lexicons) {
+        lexicons.remove(id)
+        generations[id] = (generations[id] ?: 0) + 1
+    }
+
     fun preloadLexicon(language: KeyboardLanguage) {
         if (synchronized(lexicons) { lexicons.containsKey(language.id) } || !loading.add(language.id)) return
+        val generation = synchronized(lexicons) { generations[language.id] ?: 0 }
         appScope.launch(Dispatchers.IO) {
             val name = language.dictionaryFile
             runCatching {
@@ -200,8 +212,10 @@ object AppGraph {
                     Corrector.corrections("keyboard", it)
                 }
             }.onSuccess {
-                synchronized(lexicons) { lexicons[language.id] = it }
-                Log.i(TAG, "Loaded $name: ${it.size} words")
+                val current = synchronized(lexicons) {
+                    ((generations[language.id] ?: 0) == generation).also { fresh -> if (fresh) lexicons[language.id] = it }
+                }
+                Log.i(TAG, if (current) "Loaded $name: ${it.size} words" else "Discarded $name: deleted or replaced while loading")
             }.onFailure { Log.e(TAG, "Failed to load $name", it) }
             loading.remove(language.id)
         }
