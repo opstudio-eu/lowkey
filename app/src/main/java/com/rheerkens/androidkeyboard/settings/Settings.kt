@@ -7,10 +7,68 @@ enum class KeyboardHeight(val label: String, val rowHeightDp: Int) {
     TALL("Tall", 56),
 }
 
-/** Typing layouts offered by the globe key. Voice dictation stays English-only. */
+/**
+ * Typing languages: each picks the word list for suggestions and autocorrect. Which letters sit
+ * where is the separate [KeyArrangement]. Voice dictation stays English-only.
+ */
 enum class TypingLayout(val label: String, val shortLabel: String, val localeTag: String) {
     EN_US("English (US)", "EN", "en-US"),
     NL_NL("Nederlands", "NL", "nl-NL"),
+}
+
+/**
+ * Letter arrangements of the main key layer, as three rows of key labels (top to bottom), in
+ * their usual phone form: the letter rows of the traditional layout, with the keys around them
+ * (Shift, Backspace, the bottom row, numbers and symbols) the same for all of them. Rows with
+ * fewer than ten keys are centred; the third row sits between Shift and Backspace. The top row's
+ * keys also offer the digits 1–0 on long-press. Accented letters stay on long-press of their
+ * base letter, also for AZERTY and QWERTZ, whose desktop forms have keys of their own for them.
+ */
+enum class KeyArrangement(val label: String, val rows: List<String>) {
+    QWERTY("QWERTY", listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")),
+    /** French and Belgian. Phones put the apostrophe after N, where desktop AZERTY has the comma. */
+    AZERTY("AZERTY", listOf("azertyuiop", "qsdfghjklm", "wxcvbn'")),
+    /** German, Austrian, Swiss and most of Central Europe. */
+    QWERTZ("QWERTZ", listOf("qwertzuiop", "asdfghjkl", "yxcvbnm")),
+    /** Simplified Dvorak; the semicolon before Q is left out (it's on the symbols layer). */
+    DVORAK("Dvorak", listOf("',.pyfgcrl", "aoeuidhtns", "qjkxbmwvz")),
+    COLEMAK("Colemak", listOf("qwfpgjluy;", "arstdhneio", "zxcvbkm")),
+}
+
+/** One entry of the globe key's cycle: a typing language shown with a letter arrangement. */
+data class TypingKeyboard(val language: TypingLayout, val arrangement: KeyArrangement = KeyArrangement.QWERTY) {
+    /** Short name; QWERTY, the usual arrangement, isn't spelled out. */
+    val label: String
+        get() = if (arrangement == KeyArrangement.QWERTY) language.label else "${language.label} · ${arrangement.label}"
+
+    /** Name with the layout always spelled out, e.g. `English (US) · QWERTY`: for Settings and announcements. */
+    val fullLabel: String get() = "${language.label} · ${arrangement.label}"
+
+    /** Space-bar name: like [label], but with the short language code next to a layout so it fits on a phone. */
+    val spaceLabel: String
+        get() = if (arrangement == KeyArrangement.QWERTY) language.label else "${language.shortLabel} · ${arrangement.label}"
+
+    /** Stable preference value, e.g. `EN_US:AZERTY`. */
+    val id: String get() = "${language.name}:${arrangement.name}"
+
+    companion object {
+        val DEFAULT = TypingKeyboard(TypingLayout.EN_US)
+
+        /** Every combination, in globe order: by language, then by arrangement. */
+        val ALL: List<TypingKeyboard> =
+            TypingLayout.entries.flatMap { language -> KeyArrangement.entries.map { TypingKeyboard(language, it) } }
+
+        /** Parses an [id]; a bare language name (older preferences) means QWERTY. */
+        fun parse(id: String): TypingKeyboard? {
+            val language = TypingLayout.entries.firstOrNull { it.name == id.substringBefore(':') } ?: return null
+            if (':' !in id) return TypingKeyboard(language)
+            val arrangement = KeyArrangement.entries.firstOrNull { it.name == id.substringAfter(':') } ?: return null
+            return TypingKeyboard(language, arrangement)
+        }
+
+        /** [keyboards] in globe order. */
+        fun ordered(keyboards: Collection<TypingKeyboard>): List<TypingKeyboard> = ALL.filter { it in keyboards }
+    }
 }
 
 enum class AutoStop(val label: String, val millis: Long) {
@@ -58,8 +116,9 @@ data class Settings(
     val autoCapitalize: Boolean = true,
     val autocorrect: Boolean = true,
     val suggestionStrip: Boolean = true,
-    val enabledLayouts: Set<TypingLayout> = TypingLayout.entries.toSet(),
-    val currentLayout: TypingLayout = TypingLayout.EN_US,
+    /** Keyboards the globe key cycles through; never empty. */
+    val enabledKeyboards: Set<TypingKeyboard> = TypingLayout.entries.map { TypingKeyboard(it) }.toSet(),
+    val currentKeyboard: TypingKeyboard = TypingKeyboard.DEFAULT,
     /** Keep the keyboard on screen with a physical keyboard connected (Android hides it otherwise). */
     val showWithPhysicalKeyboard: Boolean = true,
     /** Show recent screenshots next to clipboard history in the minimized bar (photos permission). */
@@ -90,4 +149,12 @@ data class Settings(
     /** Show only the slim bar until the user expands it, remembered with and without a physical keyboard. */
     val minimizedWithPhysicalKeyboard: Boolean = true,
     val minimizedWithoutPhysicalKeyboard: Boolean = false,
-)
+) {
+    /** Turns [keyboard] on or off. The last enabled keyboard stays on; the current one moves on if needed. */
+    fun toggleKeyboard(keyboard: TypingKeyboard): Settings {
+        val next = if (keyboard in enabledKeyboards) enabledKeyboards - keyboard else enabledKeyboards + keyboard
+        if (next.isEmpty()) return this
+        val current = if (currentKeyboard in next) currentKeyboard else TypingKeyboard.ordered(next).first()
+        return copy(enabledKeyboards = next, currentKeyboard = current)
+    }
+}

@@ -1,11 +1,11 @@
 package com.rheerkens.androidkeyboard.keyboard
 
-import com.rheerkens.androidkeyboard.settings.TypingLayout
+import com.rheerkens.androidkeyboard.settings.TypingKeyboard
 import org.junit.Assert.*
 import org.junit.Test
 
 class AlternatesPopupTest {
-    private val letters = Layouts.letters(TypingLayout.EN_US).rows.flatten().filterIsInstance<Key.Char>().associateBy { it.label }
+    private val letters = Layouts.letters(TypingKeyboard.DEFAULT).rows.flatten().filterIsInstance<Key.Char>().associateBy { it.label }
 
     @Test
     fun topRowOffersNumberThenAccents() {
@@ -28,7 +28,7 @@ class AlternatesPopupTest {
         assertEquals("É", shiftCase("é"))
         assertEquals("Œ", shiftCase("œ"))
         assertEquals("ß", shiftCase("ß"))
-        val controller = KeyboardController(TypingLayout.EN_US)
+        val controller = KeyboardController(TypingKeyboard.DEFAULT)
         controller.onShiftTap()
         assertEquals("Ë", controller.applyCase("ë"))
     }

@@ -2,6 +2,7 @@ package com.rheerkens.androidkeyboard.dictionary
 
 import com.rheerkens.androidkeyboard.keyboard.KeyboardController
 import com.rheerkens.androidkeyboard.keyboard.ShiftState
+import com.rheerkens.androidkeyboard.settings.TypingKeyboard
 import com.rheerkens.androidkeyboard.settings.TypingLayout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -64,7 +65,7 @@ class SuggesterTest {
     @Test
     fun shiftTapDoubleTapAndLock() {
         var now = 0L
-        val kc = KeyboardController(TypingLayout.EN_US) { now }
+        val kc = KeyboardController(TypingKeyboard.DEFAULT) { now }
         kc.onShiftTap()
         assertEquals(ShiftState.ONCE, kc.state.value.shift)
         kc.onCharTyped()
@@ -76,8 +77,9 @@ class SuggesterTest {
         assertEquals(ShiftState.LOCKED, kc.state.value.shift)
         now = 3_000; kc.onShiftTap()
         assertEquals(ShiftState.OFF, kc.state.value.shift)
-        assertEquals(TypingLayout.NL_NL, kc.cycleLayout(TypingLayout.entries))
-        assertEquals(TypingLayout.EN_US, kc.cycleLayout(TypingLayout.entries))
+        val both = TypingLayout.entries.map { TypingKeyboard(it) }
+        assertEquals(TypingKeyboard(TypingLayout.NL_NL), kc.cycleKeyboard(both))
+        assertEquals(TypingKeyboard.DEFAULT, kc.cycleKeyboard(both))
     }
 
     @Test

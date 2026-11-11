@@ -53,6 +53,7 @@ import com.rheerkens.androidkeyboard.keyboard.ui.ClipChip
 import com.rheerkens.androidkeyboard.keyboard.ui.EnterKind
 import com.rheerkens.androidkeyboard.keyboard.ui.FanSpec
 import com.rheerkens.androidkeyboard.keyboard.ui.KeyboardActions
+import com.rheerkens.androidkeyboard.keyboard.ui.KeyboardChoices
 import com.rheerkens.androidkeyboard.keyboard.ui.KeyboardRoot
 import com.rheerkens.androidkeyboard.keyboard.ui.KeyboardUiState
 import com.rheerkens.androidkeyboard.keyboard.ui.StripNote
@@ -62,7 +63,7 @@ import com.rheerkens.androidkeyboard.keyboard.wordsFrom
 import com.rheerkens.androidkeyboard.settings.InputMode
 import com.rheerkens.androidkeyboard.settings.Settings
 import com.rheerkens.androidkeyboard.settings.ThemeMode
-import com.rheerkens.androidkeyboard.settings.TypingLayout
+import com.rheerkens.androidkeyboard.settings.TypingKeyboard
 import com.rheerkens.androidkeyboard.voice.CancelReason
 import com.rheerkens.androidkeyboard.voice.VoiceConfig
 import com.rheerkens.androidkeyboard.voice.VoiceNotes
@@ -78,8 +79,10 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
@@ -102,6 +105,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     private val strip = MutableStateFlow(StripState())
     private val enterKind = MutableStateFlow(EnterKind.NEWLINE)
     private val pickerOpen = MutableStateFlow(false)
+    /** The keyboard chooser (long-press Space) is open, in keys mode. */
+    private val chooserOpen = MutableStateFlow(false)
     private var backspaceTarget: EditorBridge.Target? = null
     /** An active hold-and-slide Backspace, how much of its text before the cursor is in the field, and its level. */
     private var scrub: BackspaceScrub? = null
@@ -165,7 +170,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     private class ClearedClips(val entries: List<ClipEntry>, val primary: ClipData?, val clearedAtBefore: Long)
 
     /** What an autocorrection depends on: the word, the typing layout, and sentence position. */
-    private data class CorrectionKey(val word: String, val layout: TypingLayout, val atSentenceStart: Boolean)
+    private data class CorrectionKey(val word: String, val keyboard: TypingKeyboard, val atSentenceStart: Boolean)
     private data class CachedCorrection(val key: CorrectionKey, val fix: String?)
 
     /** Autocorrection computed with the latest suggestions; a cached null is a valid answer. */
@@ -201,7 +206,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         screenshots = RecentScreenshots(this)
         recentShots.onEach { refreshClipChips() }.launchIn(scope)
         contentResolver.registerContentObserver(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, true, mediaObserver)
-        keyboard = KeyboardController(settings.current.currentLayout)
+        keyboard = KeyboardController(settings.current.currentKeyboard)
         voice = VoiceSessionController(
             scope = scope,
             engine = AppGraph.speechEngine,
@@ -216,8 +221,17 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         physicalKeyboard.value = hasPhysicalKeyboard(resources.configuration)
         mode.value = initialMode()
         pickerOpen.onEach(::updatePickerBack).launchIn(scope)
+        chooserOpen.onEach(::updateChooserBack).launchIn(scope)
         // Refresh suggestions when the dictionary changes; readiness when models change.
         dictionary.state.drop(1).onEach { refreshStrip() }.launchIn(scope)
+        // Follow keyboards changed in Settings while the keyboard is open (e.g. the current one
+        // turned off), so the keys, the space bar and autocorrect stay on the same keyboard.
+        settings.settings.map { it.currentKeyboard }.distinctUntilChanged().onEach { current ->
+            if (keyboard.state.value.keyboard != current) {
+                keyboard.setKeyboard(current)
+                if (inputViewActive && mode.value == InputMode.KEYS) refreshStrip()
+            }
+        }.launchIn(scope)
         observedActiveId = AppGraph.models.state.value.activeId
         AppGraph.models.state.drop(1).onEach { s ->
             // A model switch (picker, companion page, or a finished download) ends any capture
@@ -245,6 +259,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                 val ek by enterKind.collectAsState()
                 val aim by wordAim.collectAsState()
                 val picker by pickerOpen.collectAsState()
+                val chooser by chooserOpen.collectAsState()
                 val sensitive by sensitiveField.collectAsState()
                 val physical by physicalKeyboard.collectAsState()
                 val clips by clipChips.collectAsState()
@@ -260,7 +275,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                     KeyboardUiState(
                         mode = m,
                         keyboard = kb,
-                        layout = Layouts.forLayer(kb.layer, kb.layout),
+                        layout = Layouts.forLayer(kb.layer, kb.keyboard),
                         strip = st.copy(enabled = s.suggestionStrip && !sensitive),
                         voice = vs,
                         models = models,
@@ -274,6 +289,11 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                         inputSession = session,
                         fan = fan,
                         wordAim = aim,
+                        keyboardChoices = if (chooser && m == InputMode.KEYS) {
+                            KeyboardChoices(TypingKeyboard.ordered(s.enabledKeyboards), kb.keyboard)
+                        } else {
+                            null
+                        },
                     ),
                     clock = System::currentTimeMillis,
                     actions = this,
@@ -398,7 +418,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         enterKind.value = bridge.enterKind()
         if (keepSession) return
         keyboard.reset()
-        keyboard.setLayout(settings.current.currentLayout)
+        keyboard.setKeyboard(settings.current.currentKeyboard)
         autoSpaced = false
         // The slim bar opens in keys mode without forgetting the remembered mode.
         mode.value = if (isMinimized()) InputMode.KEYS else initialMode()
@@ -424,6 +444,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         voice.cancel(if (finishingInput) CancelReason.EDITOR_CHANGED else CancelReason.KEYBOARD_HIDDEN)
         onBackspaceHoldEnded()
         pickerOpen.value = false
+        chooserOpen.value = false
         clearPrompt()
         owner.onHide()
         super.onFinishInputView(finishingInput)
@@ -472,6 +493,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onKey(key: Key) {
+        chooserOpen.value = false
         clearPrompt()
         if (key !is Key.Shift && key !is Key.LayerSwitch) clearNote()
         // Any key other than Backspace accepts the last autocorrection (Space may set a new one).
@@ -484,8 +506,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                 updateShift()
             }
             is Key.Globe -> {
-                val next = keyboard.cycleLayout(settings.current.enabledLayouts)
-                settings.update { it.copy(currentLayout = next) }
+                val next = keyboard.cycleKeyboard(settings.current.enabledKeyboards)
+                settings.update { it.copy(currentKeyboard = next) }
                 refreshStrip()
             }
             is Key.Space -> typeSpace()
@@ -776,7 +798,30 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onGlobeLongPress() {
+        chooserOpen.value = false
         getSystemService(InputMethodManager::class.java).showInputMethodPicker()
+    }
+
+    override fun onSpaceLongPress() {
+        clearPrompt()
+        chooserOpen.value = true
+    }
+
+    override fun onChooseKeyboard(keyboard: TypingKeyboard) {
+        chooserOpen.value = false
+        if (keyboard == this.keyboard.state.value.keyboard) return
+        this.keyboard.setKeyboard(keyboard)
+        settings.update { it.copy(currentKeyboard = keyboard) }
+        refreshStrip()
+    }
+
+    override fun onCloseKeyboardChooser() {
+        chooserOpen.value = false
+    }
+
+    override fun onOpenKeyboardSettings() {
+        chooserOpen.value = false
+        openCompanion(Destination.SETTINGS_KEYBOARDS)
     }
 
     override fun onSuggestion(suggestion: Suggestion) {
@@ -919,6 +964,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     override fun onToggleMode() {
         clearPrompt()
         pickerOpen.value = false
+        chooserOpen.value = false
         if (mode.value == InputMode.KEYS) {
             if (bridge.isSensitiveField) {
                 showNote(SENSITIVE_NOTE, warn = true)
@@ -941,6 +987,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
 
     override fun onSetMinimized(minimized: Boolean) {
         keyboardOnce.value = false
+        chooserOpen.value = false
         clearPrompt()
         clearNote()
         lastCorrection = null
@@ -1012,6 +1059,23 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
      * IME away without calling onKeyDown), so register a callback there; older versions use
      * the key events below.
      */
+    private var chooserBackCallback: Any? = null
+
+    /** Back closes the keyboard chooser instead of the keyboard (Android 13+, like the model picker). */
+    private fun updateChooserBack(open: Boolean) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val dispatcher = window.onBackInvokedDispatcher
+        val current = chooserBackCallback as OnBackInvokedCallback?
+        if (open && current == null) {
+            val cb = OnBackInvokedCallback { chooserOpen.value = false }
+            dispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, cb)
+            chooserBackCallback = cb
+        } else if (!open && current != null) {
+            dispatcher.unregisterOnBackInvokedCallback(current)
+            chooserBackCallback = null
+        }
+    }
+
     private fun updatePickerBack(open: Boolean) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
         val dispatcher = window.onBackInvokedDispatcher
@@ -1028,8 +1092,11 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         }
     }
 
+    /** Back closes the model picker or the keyboard chooser before it closes the keyboard. */
+    private fun backClosesPanel() = (pickerOpen.value || chooserOpen.value) && isInputViewShown
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_BACK && pickerOpen.value && isInputViewShown) {
+        if (keyCode == KeyEvent.KEYCODE_BACK && backClosesPanel()) {
             event.startTracking()
             return true
         }
@@ -1037,9 +1104,10 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_BACK && pickerOpen.value && isInputViewShown) {
+        if (keyCode == KeyEvent.KEYCODE_BACK && backClosesPanel()) {
             if (!event.isCanceled) {
                 pickerOpen.value = false
+                chooserOpen.value = false
             }
             return true
         }
@@ -1117,7 +1185,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     private fun correctionKey(word: String): CorrectionKey? {
         if (word.isEmpty() || word.lowercase() in rejectedCorrections) return null
         if (!Corrector.isStandaloneWord(bridge.currentTokenBeforeCursor(), word)) return null
-        return CorrectionKey(word, keyboard.state.value.layout, bridge.wordStartsSentence(word.length))
+        return CorrectionKey(word, keyboard.state.value.keyboard, bridge.wordStartsSentence(word.length))
     }
 
     /** The saved multi-word term to recase before the cursor, unless the user undid it here. */
@@ -1228,7 +1296,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         if (strip.value.note != null) strip.value = strip.value.copy(note = null)
     }
 
-    private fun suggester() = AppGraph.suggester(keyboard.state.value.layout)
+    private fun suggester() = AppGraph.suggester(keyboard.state.value.keyboard)
 
     private fun showVoiceOutcomeNote(outcome: VoiceOutcome.Cancelled) =
         showNote(VoiceNotes.outcome(outcome), warn = true)
