@@ -139,6 +139,7 @@ private fun statusLine(state: UpdateState): String {
 @Composable
 private fun UpdateActions(state: UpdateState) {
     val update: AvailableUpdate = state.update ?: return
+    val working by AppGraph.updates.working.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val uri = LocalUriHandler.current
     var canInstall by remember { mutableStateOf(Updates.canInstall(context)) }
@@ -207,7 +208,8 @@ private fun UpdateActions(state: UpdateState) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         when (status) {
             is UpdateStatus.Downloading -> OutlinedButton(onClick = { AppGraph.updates.cancelDownload() }) { Text("Cancel") }
-            is UpdateStatus.Installing -> OutlinedButton(onClick = ::update) { Text("Install again") }
+            // Disabled while the APK is still being handed to the installer, when a retry is ignored.
+            is UpdateStatus.Installing -> OutlinedButton(onClick = ::update, enabled = !working) { Text("Install again") }
             is UpdateStatus.AwaitingConfirmation -> Button(onClick = ::confirm) { Text("Install") }
             is UpdateStatus.Failed -> Button(onClick = ::update) { Text("Try again") }
             else -> Button(onClick = ::update) { Text("Update") }

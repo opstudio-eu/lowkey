@@ -136,6 +136,9 @@ class UpdateManager(
                 return
             }
             prefs.lastCheckedAt = now
+            // The user started the update while the feed loaded: leave it, its saved release and
+            // its notifications alone.
+            if (inProgress(_state.value.status)) return
             val newer = feed?.takeIf { it.versionCode > platform.installedVersionCode() }
             prefs.available = newer
             if (newer == null) {

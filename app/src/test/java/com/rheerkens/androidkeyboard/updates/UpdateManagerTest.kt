@@ -284,10 +284,13 @@ class UpdateManagerTest {
     fun aCheckWaitingForTheFeedDoesNotOverwriteAStartedUpdate() = runTest {
         val feedGate = CompletableDeferred<Unit>()
         val platform = FakePlatform().apply { feed = { update(42).toProperties() }; downloadGate = CompletableDeferred() }
-        val m = manager(platform)
+        val prefs = MemoryPrefs()
+        val m = manager(platform, prefs)
         m.check(userStarted = true)
-        // A background check is waiting for the feed while the user taps Update.
+        val notifiedBefore = platform.notified.toList()
+        // A background check is waiting for a feed without a release while the user taps Update.
         platform.feedDelay = feedGate
+        platform.feed = { null }
         val check = launch { m.check(userStarted = false) }
         advanceUntilIdle()
         m.startUpdate()
@@ -296,6 +299,9 @@ class UpdateManagerTest {
         advanceUntilIdle()
         check.join()
         assertTrue(m.state.value.status is UpdateStatus.Downloading)
+        // Nor does it touch the saved release or post a notification.
+        assertEquals(update(42), prefs.available)
+        assertEquals(notifiedBefore, platform.notified)
         platform.downloadGate!!.complete(Unit)
         advanceUntilIdle()
         assertEquals(UpdateStatus.Installing(update(42)), m.state.value.status)
