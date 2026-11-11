@@ -7,12 +7,6 @@ enum class KeyboardHeight(val label: String, val rowHeightDp: Int) {
     TALL("Tall", 56),
 }
 
-/** Typing layouts offered by the globe key. Voice dictation stays English-only. */
-enum class TypingLayout(val label: String, val shortLabel: String, val localeTag: String) {
-    EN_US("English (US)", "EN", "en-US"),
-    NL_NL("Nederlands", "NL", "nl-NL"),
-}
-
 enum class AutoStop(val label: String, val millis: Long) {
     OFF("Off", 0),
     TWO_SECONDS("2 s", 2_000),
@@ -58,8 +52,9 @@ data class Settings(
     val autoCapitalize: Boolean = true,
     val autocorrect: Boolean = true,
     val suggestionStrip: Boolean = true,
-    val enabledLayouts: Set<TypingLayout> = TypingLayout.entries.toSet(),
-    val currentLayout: TypingLayout = TypingLayout.EN_US,
+    /** Keyboard language ids (`assets/dict/languages.txt`) the globe key cycles through. */
+    val enabledLanguages: Set<String> = setOf("en_US", "nl"),
+    val currentLanguage: String = "en_US",
     /** Keep the keyboard on screen with a physical keyboard connected (Android hides it otherwise). */
     val showWithPhysicalKeyboard: Boolean = true,
     /** Show recent screenshots next to clipboard history in the minimized bar (photos permission). */
@@ -73,7 +68,10 @@ data class Settings(
     val continuousDictation: Boolean = false,
     val applyPhraseRules: Boolean = false,
     val matchTermCase: Boolean = true,
-    /** Preferred speech language code for multilingual models (`auto` = detect). */
+    /**
+     * Preferred speech language code for multilingual models (`auto` = detect,
+     * [FOLLOW_KEYBOARD] = the current keyboard language's).
+     */
     val speechLanguage: String = "en",
     val modelRetention: ModelRetention = ModelRetention.TWO_MINUTES,
     // Appearance
@@ -90,4 +88,9 @@ data class Settings(
     /** Show only the slim bar until the user expands it, remembered with and without a physical keyboard. */
     val minimizedWithPhysicalKeyboard: Boolean = true,
     val minimizedWithoutPhysicalKeyboard: Boolean = false,
-)
+) {
+    companion object {
+        /** [speechLanguage] value: dictate in the language the keyboard is set to. */
+        const val FOLLOW_KEYBOARD = "keyboard"
+    }
+}

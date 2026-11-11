@@ -118,10 +118,10 @@ private fun KeyView(
             KeyCap(if (pressed) c.keyPressed else c.keyMod) { KeyIcon(SlimIcons.Globe) }
         }
         is Key.Space -> PressTarget(
-            "Space, ${state.layout.label}", modifier, gestureKey = key, onDown = actions::onKeyDown, onTap = { actions.onKey(key) },
+            "Space, ${state.language.name}", modifier, gestureKey = key, onDown = actions::onKeyDown, onTap = { actions.onKey(key) },
         ) { pressed ->
             KeyCap(if (pressed) c.keyPressed else c.key) {
-                Text(state.layout.label, color = c.spaceText, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(state.language.name, color = c.spaceText, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
         is Key.Enter -> PressTarget(

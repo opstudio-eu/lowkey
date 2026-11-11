@@ -1,0 +1,15 @@
+the	222
+apple	150
+zebra	150
+Żółw	150
+e-mail	120
+naïve	120
+ill	100
+hid	80
+cant	60
+Wont	55
+thx	50
+empty	0
+#whitelist
+dont	don't
+im	I'm

@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -27,14 +26,15 @@ import androidx.compose.ui.platform.LocalContext
 import com.rheerkens.androidkeyboard.AppGraph
 import com.rheerkens.androidkeyboard.clipboard.RecentScreenshots
 import com.rheerkens.androidkeyboard.models.resolveLanguage
+import com.rheerkens.androidkeyboard.models.speechLanguageCode
 import com.rheerkens.androidkeyboard.companion.Destination
 import com.rheerkens.androidkeyboard.settings.AutoStop
 import com.rheerkens.androidkeyboard.settings.KeyboardHeight
 import com.rheerkens.androidkeyboard.settings.LoupeCorners
 import com.rheerkens.androidkeyboard.settings.ModelRetention
 import com.rheerkens.androidkeyboard.settings.Settings
+import com.rheerkens.androidkeyboard.models.SpeechLanguage
 import com.rheerkens.androidkeyboard.settings.ThemeMode
-import com.rheerkens.androidkeyboard.settings.TypingLayout
 
 private const val VOICE_SECTION_INDEX = 10
 
@@ -42,6 +42,8 @@ private const val VOICE_SECTION_INDEX = 10
 fun SettingsScreen(modifier: Modifier, focusVoice: Boolean, navigate: (Destination) -> Unit) {
     val s by AppGraph.settings.settings.collectAsStateWithLifecycle()
     val models by AppGraph.models.state.collectAsStateWithLifecycle()
+    // Recomposes the language summary when a download finishes or a word list is deleted.
+    val packs by AppGraph.languagePacks.state.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     fun update(t: (Settings) -> Settings) = AppGraph.settings.update(t)
     val context = LocalContext.current
@@ -92,26 +94,9 @@ fun SettingsScreen(modifier: Modifier, focusVoice: Boolean, navigate: (Destinati
             )
         }
         item {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
-                Text("Typing layouts", style = MaterialTheme.typography.bodyLarge)
-                Text(
-                    "The globe key cycles enabled layouts. Long-press it to switch keyboards.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                TypingLayout.entries.forEach { layout ->
-                    val checked = layout in s.enabledLayouts
-                    val onlyOne = checked && s.enabledLayouts.size == 1
-                    Row(
-                        Modifier.fillMaxWidth().clickable(enabled = !onlyOne, role = Role.Checkbox) {
-                            update { toggleLayout(it, layout) }
-                        },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Checkbox(checked = checked, onCheckedChange = null, enabled = !onlyOne)
-                        Text(layout.label, modifier = Modifier.padding(start = 8.dp, top = 12.dp, bottom = 12.dp))
-                    }
-                }
+            val usable = remember(s.enabledLanguages, packs.installed) { AppGraph.usableLanguages(s) }
+            LinkRow("Keyboard languages", usable.joinToString(", ") { it.name } + ". The globe key switches between them.") {
+                navigate(Destination.LANGUAGES)
             }
         }
         item { Spacer8() }
@@ -179,12 +164,18 @@ fun SettingsScreen(modifier: Modifier, focusVoice: Boolean, navigate: (Destinati
         }
         item {
             val active = models.activeModel
-            val chosen = active?.resolveLanguage(s.speechLanguage)
+            val chosen = active?.resolveLanguage(AppGraph.speechLanguage(s))
             if (active != null && chosen != null) {
+                val keyboardLanguage = AppGraph.currentLanguage(s)
+                val follow = SpeechLanguage(Settings.FOLLOW_KEYBOARD, "Same as keyboard")
+                // What following the keyboard gives with this model now, e.g. "German".
+                val followed = active.resolveLanguage(speechLanguageCode(Settings.FOLLOW_KEYBOARD, keyboardLanguage))
                 DropdownRow(
-                    "Voice language", active.languages, chosen, { it.label },
+                    "Voice language", listOf(follow) + active.languages,
+                    if (s.speechLanguage == Settings.FOLLOW_KEYBOARD) follow else chosen,
+                    { if (it == follow) "${it.label} (${followed?.label ?: chosen.label})" else it.label },
                     { v -> update { it.copy(speechLanguage = v.code) } },
-                    subtitle = "For ${active.name}. Typing layouts don't change the speech language.",
+                    subtitle = "For ${active.name}. Same as keyboard follows the globe key and reloads the model.",
                 )
             } else {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
@@ -221,13 +212,6 @@ fun SettingsScreen(modifier: Modifier, focusVoice: Boolean, navigate: (Destinati
         item { LinkRow("About and licenses") { navigate(Destination.ABOUT) } }
         item { Spacer8() }
     }
-}
-
-private fun toggleLayout(s: Settings, layout: TypingLayout): Settings {
-    val next = if (layout in s.enabledLayouts) s.enabledLayouts - layout else s.enabledLayouts + layout
-    if (next.isEmpty()) return s
-    val current = if (s.currentLayout in next) s.currentLayout else next.first()
-    return s.copy(enabledLayouts = next, currentLayout = current)
 }
 
 @Composable

@@ -134,7 +134,7 @@ private fun ModelPill(models: ModelStoreState, open: Boolean, actions: KeyboardA
     val c = LocalKeyboardColors.current
     val model = models.activeModel
     val settings by AppGraph.settings.settings.collectAsState()
-    val language = model?.resolveLanguage(settings.speechLanguage)
+    val language = model?.resolveLanguage(AppGraph.speechLanguage(settings))
     val label = when {
         model == null -> "Choose model"
         language == null -> model.name

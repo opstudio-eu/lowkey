@@ -1,5 +1,8 @@
 package com.rheerkens.androidkeyboard.models
 
+import com.rheerkens.androidkeyboard.dictionary.KeyboardLanguage
+import com.rheerkens.androidkeyboard.settings.Settings
+
 /** One file of a model package, pinned by size and SHA-256. */
 data class ModelArtifact(
     val name: String,
@@ -113,7 +116,8 @@ object ModelCatalog {
     private val WHISPER_LANGUAGES = langs(
         "en" to "English", "nl" to "Dutch", "de" to "German", "fr" to "French", "es" to "Spanish", "it" to "Italian",
         "pt" to "Portuguese", "pl" to "Polish", "sv" to "Swedish", "da" to "Danish", "no" to "Norwegian",
-        "fi" to "Finnish", "cs" to "Czech", "ro" to "Romanian", "hu" to "Hungarian", "tr" to "Turkish",
+        "fi" to "Finnish", "cs" to "Czech", "hr" to "Croatian", "sl" to "Slovenian", "lt" to "Lithuanian",
+        "lv" to "Latvian", "ro" to "Romanian", "hu" to "Hungarian", "tr" to "Turkish",
         "ru" to "Russian", "uk" to "Ukrainian", "ar" to "Arabic", "hi" to "Hindi", "ja" to "Japanese",
         "ko" to "Korean", "zh" to "Chinese", "vi" to "Vietnamese",
     )
@@ -168,6 +172,14 @@ object ModelCatalog {
 
     fun byId(id: String?): ModelInfo? = models.firstOrNull { it.id == id }
 }
+
+/**
+ * The speech language code the Voice language [setting] asks for: the setting itself, or for
+ * [Settings.FOLLOW_KEYBOARD] the [keyboard] language's Whisper code (auto-detect if it has none).
+ * [ModelInfo.resolveLanguage] then picks what the model offers.
+ */
+fun speechLanguageCode(setting: String, keyboard: KeyboardLanguage): String =
+    if (setting == Settings.FOLLOW_KEYBOARD) keyboard.speech ?: SpeechLanguage.AUTO.code else setting
 
 /**
  * The language to load [this] model with: the user's [preferred] code if the model offers it,

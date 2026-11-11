@@ -62,7 +62,6 @@ import com.rheerkens.androidkeyboard.keyboard.wordsFrom
 import com.rheerkens.androidkeyboard.settings.InputMode
 import com.rheerkens.androidkeyboard.settings.Settings
 import com.rheerkens.androidkeyboard.settings.ThemeMode
-import com.rheerkens.androidkeyboard.settings.TypingLayout
 import com.rheerkens.androidkeyboard.voice.CancelReason
 import com.rheerkens.androidkeyboard.voice.VoiceConfig
 import com.rheerkens.androidkeyboard.voice.VoiceNotes
@@ -164,8 +163,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     /** The clip history, system clip and screenshot cut-off from before a Clear clips. */
     private class ClearedClips(val entries: List<ClipEntry>, val primary: ClipData?, val clearedAtBefore: Long)
 
-    /** What an autocorrection depends on: the word, the typing layout, and sentence position. */
-    private data class CorrectionKey(val word: String, val layout: TypingLayout, val atSentenceStart: Boolean)
+    /** What an autocorrection depends on: the word, the keyboard language, and sentence position. */
+    private data class CorrectionKey(val word: String, val language: String, val atSentenceStart: Boolean)
     private data class CachedCorrection(val key: CorrectionKey, val fix: String?)
 
     /** Autocorrection computed with the latest suggestions; a cached null is a valid answer. */
@@ -201,7 +200,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         screenshots = RecentScreenshots(this)
         recentShots.onEach { refreshClipChips() }.launchIn(scope)
         contentResolver.registerContentObserver(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, true, mediaObserver)
-        keyboard = KeyboardController(settings.current.currentLayout)
+        keyboard = KeyboardController(AppGraph.currentLanguage())
         voice = VoiceSessionController(
             scope = scope,
             engine = AppGraph.speechEngine,
@@ -260,7 +259,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                     KeyboardUiState(
                         mode = m,
                         keyboard = kb,
-                        layout = Layouts.forLayer(kb.layer, kb.layout),
+                        layout = Layouts.forLayer(kb.layer, kb.language),
                         strip = st.copy(enabled = s.suggestionStrip && !sensitive),
                         voice = vs,
                         models = models,
@@ -398,7 +397,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         enterKind.value = bridge.enterKind()
         if (keepSession) return
         keyboard.reset()
-        keyboard.setLayout(settings.current.currentLayout)
+        keyboard.setLanguage(AppGraph.currentLanguage().also(AppGraph::preloadLexicon))
         autoSpaced = false
         // The slim bar opens in keys mode without forgetting the remembered mode.
         mode.value = if (isMinimized()) InputMode.KEYS else initialMode()
@@ -484,8 +483,9 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                 updateShift()
             }
             is Key.Globe -> {
-                val next = keyboard.cycleLayout(settings.current.enabledLayouts)
-                settings.update { it.copy(currentLayout = next) }
+                val next = keyboard.cycleLanguage(AppGraph.usableLanguages())
+                settings.update { it.copy(currentLanguage = next.id) }
+                AppGraph.preloadLexicon(next)
                 refreshStrip()
             }
             is Key.Space -> typeSpace()
@@ -1117,7 +1117,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     private fun correctionKey(word: String): CorrectionKey? {
         if (word.isEmpty() || word.lowercase() in rejectedCorrections) return null
         if (!Corrector.isStandaloneWord(bridge.currentTokenBeforeCursor(), word)) return null
-        return CorrectionKey(word, keyboard.state.value.layout, bridge.wordStartsSentence(word.length))
+        return CorrectionKey(word, keyboard.state.value.language.id, bridge.wordStartsSentence(word.length))
     }
 
     /** The saved multi-word term to recase before the cursor, unless the user undid it here. */
@@ -1228,7 +1228,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         if (strip.value.note != null) strip.value = strip.value.copy(note = null)
     }
 
-    private fun suggester() = AppGraph.suggester(keyboard.state.value.layout)
+    private fun suggester() = AppGraph.suggester(keyboard.state.value.language)
 
     private fun showVoiceOutcomeNote(outcome: VoiceOutcome.Cancelled) =
         showNote(VoiceNotes.outcome(outcome), warn = true)

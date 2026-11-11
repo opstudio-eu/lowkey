@@ -2,7 +2,6 @@ package com.rheerkens.androidkeyboard.dictionary
 
 import com.rheerkens.androidkeyboard.keyboard.KeyboardController
 import com.rheerkens.androidkeyboard.keyboard.ShiftState
-import com.rheerkens.androidkeyboard.settings.TypingLayout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -64,7 +63,7 @@ class SuggesterTest {
     @Test
     fun shiftTapDoubleTapAndLock() {
         var now = 0L
-        val kc = KeyboardController(TypingLayout.EN_US) { now }
+        val kc = KeyboardController(TestLanguages.language("en_US")) { now }
         kc.onShiftTap()
         assertEquals(ShiftState.ONCE, kc.state.value.shift)
         kc.onCharTyped()
@@ -76,8 +75,13 @@ class SuggesterTest {
         assertEquals(ShiftState.LOCKED, kc.state.value.shift)
         now = 3_000; kc.onShiftTap()
         assertEquals(ShiftState.OFF, kc.state.value.shift)
-        assertEquals(TypingLayout.NL_NL, kc.cycleLayout(TypingLayout.entries))
-        assertEquals(TypingLayout.EN_US, kc.cycleLayout(TypingLayout.entries))
+        val order = listOf(TestLanguages.language("en_US"), TestLanguages.language("nl"), TestLanguages.language("pl"))
+        assertEquals("nl", kc.cycleLanguage(order).id)
+        assertEquals("pl", kc.cycleLanguage(order).id)
+        assertEquals("en_US", kc.cycleLanguage(order).id)
+        // A language that is no longer usable moves to the first usable one.
+        kc.setLanguage(TestLanguages.language("de"))
+        assertEquals("en_US", kc.cycleLanguage(order).id)
     }
 
     @Test

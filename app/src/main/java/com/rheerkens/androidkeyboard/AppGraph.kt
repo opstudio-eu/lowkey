@@ -11,15 +11,19 @@ import com.rheerkens.androidkeyboard.diagnostics.SessionLog
 import com.rheerkens.androidkeyboard.dictionary.Corrector
 import com.rheerkens.androidkeyboard.dictionary.BuiltInWords
 import com.rheerkens.androidkeyboard.dictionary.DictionaryStore
+import com.rheerkens.androidkeyboard.dictionary.KeyboardLanguage
+import com.rheerkens.androidkeyboard.dictionary.LanguageCatalog
+import com.rheerkens.androidkeyboard.dictionary.LanguagePackStore
 import com.rheerkens.androidkeyboard.dictionary.Lexicon
 import com.rheerkens.androidkeyboard.dictionary.Suggester
 import com.rheerkens.androidkeyboard.models.DiskModelStore
 import com.rheerkens.androidkeyboard.models.ModelCatalog
 import com.rheerkens.androidkeyboard.models.ModelStore
 import com.rheerkens.androidkeyboard.models.resolveLanguage
+import com.rheerkens.androidkeyboard.models.speechLanguageCode
 import com.rheerkens.androidkeyboard.settings.AudioInput
+import com.rheerkens.androidkeyboard.settings.Settings
 import com.rheerkens.androidkeyboard.settings.SettingsStore
-import com.rheerkens.androidkeyboard.settings.TypingLayout
 import com.rheerkens.androidkeyboard.speech.ClipAudioSource
 import com.rheerkens.androidkeyboard.speech.LoadableModel
 import com.rheerkens.androidkeyboard.speech.LocalSpeechEngine
@@ -56,6 +60,12 @@ object AppGraph {
         private set
     lateinit var updates: UpdateManager
         private set
+    /** Keyboard languages from `assets/dict/languages.txt`. */
+    lateinit var languages: LanguageCatalog
+        private set
+    /** Downloaded word lists of the languages that are not bundled. */
+    lateinit var languagePacks: LanguagePackStore
+        private set
 
     /** Bundled WAV clips under `assets/test-clips/`; only debug builds ship any. */
     var testClips: List<String> = emptyList()
@@ -63,15 +73,18 @@ object AppGraph {
 
     val appScope: CoroutineScope = MainScope()
 
-    /** AOSP word lists per typing layout, loaded in the background on first use. */
-    private val lexicons = ConcurrentHashMap<TypingLayout, Lexicon>()
-    private val loading = ConcurrentHashMap.newKeySet<TypingLayout>()
-    private val fallbackLexicons = mapOf(
-        TypingLayout.EN_US to Lexicon.fromWords(BuiltInWords.ENGLISH + BuiltInWords.TECH),
-        TypingLayout.NL_NL to Lexicon.fromWords(BuiltInWords.DUTCH),
-    )
+    /**
+     * AOSP word lists by language id, loaded in the background on first use. Only the most
+     * recently used [MAX_LOADED_LEXICONS] stay in memory; each holds about 200,000 words.
+     */
+    private val lexicons = object : LinkedHashMap<String, Lexicon>(4, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Lexicon>?) = size > MAX_LOADED_LEXICONS
+    }
+    private val loading = ConcurrentHashMap.newKeySet<String>()
+    /** Small built-in lists used while a language's full list loads. */
+    private val fallbackLexicons = ConcurrentHashMap<String, Lexicon>()
     private lateinit var assets: AssetManager
-    private val suggesters = TypingLayout.entries.associateWith { layout -> Suggester { lexicon(layout) } }
+    private val suggesters = ConcurrentHashMap<String, Suggester>()
     private val nextClip = AtomicInteger(0)
     private var initialized = false
 
@@ -85,6 +98,17 @@ object AppGraph {
         sessionLog = SessionLog(app)
         crashLog = CrashLog(app)
         updates = Updates.create(app)
+        languages = LanguageCatalog.parse(app.assets.open(LanguageCatalog.ASSET).use { String(it.readBytes(), Charsets.UTF_8) })
+        languagePacks = LanguagePackStore(
+            dir = java.io.File(app.filesDir, "dictionaries"),
+            catalog = languages,
+            scope = appScope,
+            onInstalled = { language ->
+                synchronized(lexicons) { lexicons.remove(language.id) }
+                // A downloaded language is ready to use at once.
+                settings.update { it.copy(enabledLanguages = it.enabledLanguages + language.id) }
+            },
+        )
         testClips = app.assets.list(CLIP_DIR).orEmpty().filter { it.endsWith(".wav") }.sorted()
         val mic = MicAudioSource(app)
         val clips = ClipAudioSource(
@@ -101,7 +125,7 @@ object AppGraph {
                 val info = ModelCatalog.byId(state.activeId)
                 val dir = state.activeId?.let(models::modelDir)
                 if (info != null && dir != null) {
-                    LoadableModel(info, dir, info.resolveLanguage(settings.current.speechLanguage)?.code)
+                    LoadableModel(info, dir, info.resolveLanguage(speechLanguage(settings.current))?.code)
                 } else {
                     null
                 }
@@ -120,46 +144,72 @@ object AppGraph {
         appScope.launch {
             settings.settings.map { it.checkForUpdates }.distinctUntilChanged().collect { Updates.schedule(app, it) }
         }
-        preloadLexicon(settings.current.currentLayout)
+        preloadLexicon(currentLanguage(settings.current))
         initialized = true
     }
 
-    fun suggester(layout: TypingLayout): Suggester = suggesters.getValue(layout)
+    /** Enabled languages whose word list is on the phone, in catalog order; never empty. */
+    fun usableLanguages(s: Settings = settings.current): List<KeyboardLanguage> =
+        languages.usable(s.enabledLanguages, languagePacks::isInstalled).ifEmpty { listOf(languages.default) }
 
-    /** The layout's full word list, or a small built-in list while it loads. */
-    fun lexicon(layout: TypingLayout): Lexicon {
-        lexicons[layout]?.let { return it }
-        preloadLexicon(layout)
-        return fallbackLexicons.getValue(layout)
+    /** The language the keyboard types in: the chosen one if usable, else the first usable one. */
+    fun currentLanguage(s: Settings = settings.current): KeyboardLanguage {
+        val usable = usableLanguages(s)
+        return usable.firstOrNull { it.id == s.currentLanguage } ?: usable.first()
     }
 
-    fun preloadLexicon(layout: TypingLayout) {
-        if (lexicons.containsKey(layout) || !loading.add(layout)) return
-        appScope.launch(Dispatchers.IO) {
-            val file = when (layout) {
-                TypingLayout.EN_US -> "dict/en_US.dict"
-                TypingLayout.NL_NL -> "dict/nl.dict"
+    /** The speech language code to resolve against a model: [Settings.speechLanguage], or the keyboard's. */
+    fun speechLanguage(s: Settings = settings.current): String = speechLanguageCode(s.speechLanguage, currentLanguage(s))
+
+    /** Removes a downloaded language: its file, its loaded word list, and its place in the settings. */
+    fun deleteLanguage(id: String) {
+        languagePacks.delete(id)
+        synchronized(lexicons) { lexicons.remove(id) }
+        settings.update { it.copy(enabledLanguages = it.enabledLanguages - id) }
+    }
+
+    fun suggester(language: KeyboardLanguage): Suggester =
+        suggesters.getOrPut(language.id) { Suggester { lexicon(language) } }
+
+    /** The language's full word list, or a small built-in list while it loads. */
+    fun lexicon(language: KeyboardLanguage): Lexicon {
+        synchronized(lexicons) { lexicons[language.id] }?.let { return it }
+        preloadLexicon(language)
+        return fallbackLexicons.getOrPut(language.id) {
+            val words = when (language.id) {
+                "en_US", "en_GB" -> BuiltInWords.ENGLISH + BuiltInWords.TECH
+                "nl" -> BuiltInWords.DUTCH
+                else -> emptyList()
             }
+            Lexicon.fromWords(words, keys = language.keys)
+        }
+    }
+
+    fun preloadLexicon(language: KeyboardLanguage) {
+        if (synchronized(lexicons) { lexicons.containsKey(language.id) } || !loading.add(language.id)) return
+        appScope.launch(Dispatchers.IO) {
+            val name = language.dictionaryFile
             runCatching {
-                val base = assets.open(file).use(Lexicon::parseGzip)
-                // Tech/chat words (and, for Dutch, the English basics people mix in) count as known.
-                val extra = if (layout == TypingLayout.EN_US) BuiltInWords.TECH else BuiltInWords.TECH + BuiltInWords.ENGLISH
+                val input = if (language.bundled) assets.open("dict/$name") else languagePacks.file(language).inputStream()
+                val base = input.use { Lexicon.parseGzip(it, language.keys, language.rules) }
+                // Tech/chat words (and, outside English, the English basics people mix in) count as known.
+                val extra = if (language.id.startsWith("en_")) BuiltInWords.TECH else BuiltInWords.TECH + BuiltInWords.ENGLISH
                 base.withExtraWords(BuiltInWords.ENGLISH + extra, EXTRA_WORD_FREQUENCY).also {
                     // Initialize the spelling engine's cold path on this loader thread before
                     // making the full dictionary available to a Space press on the main thread.
                     Corrector.corrections("keyboard", it)
                 }
             }.onSuccess {
-                lexicons[layout] = it
-                Log.i(TAG, "Loaded $file: ${it.size} words")
-            }.onFailure { Log.e(TAG, "Failed to load $file", it) }
-            loading.remove(layout)
+                synchronized(lexicons) { lexicons[language.id] = it }
+                Log.i(TAG, "Loaded $name: ${it.size} words")
+            }.onFailure { Log.e(TAG, "Failed to load $name", it) }
+            loading.remove(language.id)
         }
     }
 
     /** Key of the model the next capture would load (see `LoadableModel.key`), or null. */
     fun activeModelKey(): String? = models.state.value.activeModel?.let { info ->
-        LoadableModel(info, java.io.File(""), info.resolveLanguage(settings.current.speechLanguage)?.code).key
+        LoadableModel(info, java.io.File(""), info.resolveLanguage(speechLanguage(settings.current))?.code).key
     }
 
     fun hasMicPermission(context: Context): Boolean =
@@ -173,4 +223,6 @@ object AppGraph {
     private const val TAG = "SlimKeyboard"
     /** Frequency given to built-in tech words: common enough to complete, not to dominate. */
     private const val EXTRA_WORD_FREQUENCY = 120
+    /** Word lists kept in memory: the current language plus the two used before it. */
+    private const val MAX_LOADED_LEXICONS = 3
 }

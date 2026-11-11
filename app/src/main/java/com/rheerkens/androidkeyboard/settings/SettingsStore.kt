@@ -34,10 +34,9 @@ class SettingsStore(context: Context) {
             autoCapitalize = prefs.getBoolean(K_AUTOCAP, d.autoCapitalize),
             autocorrect = prefs.getBoolean(K_AUTOCORRECT, d.autocorrect),
             suggestionStrip = prefs.getBoolean(K_STRIP, d.suggestionStrip),
-            enabledLayouts = prefs.getStringSet(K_LAYOUTS, null)
-                ?.mapNotNull { name -> TypingLayout.entries.firstOrNull { it.name == name } }
-                ?.toSet()?.ifEmpty { null } ?: d.enabledLayouts,
-            currentLayout = enumOr(prefs.getString(K_LAYOUT, null), d.currentLayout),
+            enabledLanguages = prefs.getStringSet(K_LAYOUTS, null)
+                ?.map(::languageId)?.toSet()?.ifEmpty { null } ?: d.enabledLanguages,
+            currentLanguage = prefs.getString(K_LAYOUT, null)?.let(::languageId) ?: d.currentLanguage,
             showWithPhysicalKeyboard = prefs.getBoolean(K_SHOW_WITH_PHYSICAL, d.showWithPhysicalKeyboard),
             recentScreenshots = prefs.getBoolean(K_SCREENSHOTS, d.recentScreenshots),
             autoStartVoice = prefs.getBoolean(K_AUTOSTART, d.autoStartVoice),
@@ -66,8 +65,8 @@ class SettingsStore(context: Context) {
         putBoolean(K_AUTOCAP, s.autoCapitalize)
         putBoolean(K_AUTOCORRECT, s.autocorrect)
         putBoolean(K_STRIP, s.suggestionStrip)
-        putStringSet(K_LAYOUTS, s.enabledLayouts.map { it.name }.toSet())
-        putString(K_LAYOUT, s.currentLayout.name)
+        putStringSet(K_LAYOUTS, s.enabledLanguages)
+        putString(K_LAYOUT, s.currentLanguage)
         putBoolean(K_SHOW_WITH_PHYSICAL, s.showWithPhysicalKeyboard)
         putBoolean(K_SCREENSHOTS, s.recentScreenshots)
         putBoolean(K_AUTOSTART, s.autoStartVoice)
@@ -89,10 +88,14 @@ class SettingsStore(context: Context) {
         putBoolean(K_MINIMIZED_TOUCH, s.minimizedWithoutPhysicalKeyboard)
     }
 
+    /** Language ids; versions before 0.5.4 stored the names of the old `TypingLayout` enum. */
+    private fun languageId(stored: String): String = LEGACY_LAYOUTS[stored] ?: stored
+
     private inline fun <reified E : Enum<E>> enumOr(name: String?, default: E): E =
         enumValues<E>().firstOrNull { it.name == name } ?: default
 
     private companion object {
+        val LEGACY_LAYOUTS = mapOf("EN_US" to "en_US", "NL_NL" to "nl")
         const val K_HEIGHT = "keyboard_height"
         const val K_LOUPE_CORNERS = "loupe_corner_choice"
         const val K_CHECK_UPDATES = "check_for_updates"

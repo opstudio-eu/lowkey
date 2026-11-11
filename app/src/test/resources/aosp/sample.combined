@@ -1,0 +1,26 @@
+dictionary=main:xx,locale=xx,description=Sample,date=1,version=1
+ word=the,f=222,flags=,originalFreq=222
+ word=apple,f=150,flags=,originalFreq=150
+ word=zebra,f=150,flags=,originalFreq=150
+ word=Żółw,f=150,flags=,originalFreq=150
+ word=badword,f=200,flags=offensive,originalFreq=200
+ word=apple,f=90,flags=,originalFreq=90
+ word=im,f=0,flags=,not_a_word=true
+  shortcut=I'm,f=whitelist
+ word=ill,f=100,flags=,originalFreq=100
+  shortcut=I'll,f=whitelist
+ word=dont,f=0,flags=,not_a_word=true
+  shortcut=don't,f=whitelist
+ word=cant,f=60,flags=,originalFreq=60
+  shortcut=can't,f=whitelist
+ word=Wont,f=55,flags=,originalFreq=55
+ word=wont,f=0,flags=offensive
+  shortcut=won't,f=whitelist
+ word=hid,f=80,flags=,originalFreq=80
+  shortcut=his,f=whitelist
+ word=thx,f=50,flags=,originalFreq=50
+  shortcut=thanks,f=14
+ word=e-mail,f=120,flags=,originalFreq=120
+  bigram=the,f=10
+ word=naïve,f=120,flags=,originalFreq=120
+ word=empty,f=,flags=

@@ -1,6 +1,7 @@
 package com.rheerkens.androidkeyboard.keyboard
 
-import com.rheerkens.androidkeyboard.settings.TypingLayout
+import com.rheerkens.androidkeyboard.dictionary.KeyboardLanguage
+import java.util.concurrent.ConcurrentHashMap
 
 /** One key. [weight] is its share of the row width (a letter key is 1). */
 sealed interface Key {
@@ -36,12 +37,16 @@ data class KeyboardLayout(val rows: List<List<Key>>)
 object Layouts {
     private fun chars(s: String): List<Key> = s.split(' ').filter { it.isNotEmpty() }.map { Key.Char(it) }
 
-    /** Accents per letter, most common first (Dutch, French, German, Spanish, Nordic, Polish, Czech). */
+    /**
+     * Accents per letter, most common first (Dutch, French, German, Spanish, Nordic, Polish, Czech).
+     * A keyboard language puts its own accents (`languages.txt`) before these.
+     */
     val ACCENTS: Map<String, List<String>> = mapOf(
-        "a" to "á à â ä ã å æ",
+        "a" to "á à â ä ã å æ ą",
         "c" to "ç ć č",
         "e" to "é è ê ë ē ę ė",
         "i" to "í ì î ï ī",
+        "l" to "ł",
         "n" to "ñ ń",
         "o" to "ó ò ô ö õ ø œ",
         "s" to "ß ś š",
@@ -50,29 +55,44 @@ object Layouts {
         "z" to "ž ź ż",
     ).mapValues { it.value.split(' ') }
 
-    private fun letters(s: String): List<Key> = chars(s).map { key ->
-        (key as Key.Char).copy(accents = ACCENTS[key.label].orEmpty())
-    }
+    /** Long-press accents for [letter]: the language's own first, then the general list. */
+    fun accents(letter: String, language: KeyboardLanguage): List<String> =
+        (language.accents[letter].orEmpty() + ACCENTS[letter].orEmpty()).distinct()
 
     private fun bottomRow(switchKey: Key.LayerSwitch) = listOf(
         switchKey, Key.Globe(), Key.Char(","), Key.Space(), Key.Char("."), Key.Enter(),
     )
 
-    /** QWERTY letters. Dutch also uses QWERTY; only suggestions and the space label differ. */
-    fun letters(@Suppress("UNUSED_PARAMETER") layout: TypingLayout) = KeyboardLayout(
-        listOf(
-            "qwertyuiop".mapIndexed { index, letter ->
-                Key.Char(
-                    letter.toString(),
-                    longPressOutput = ((index + 1) % 10).toString(),
-                    accents = ACCENTS[letter.toString()].orEmpty(),
-                )
-            },
-            listOf(Key.Gap()) + letters("a s d f g h j k l") + Key.Gap(),
-            listOf(Key.Shift()) + letters("z x c v b n m") + Key.Backspace(),
-            bottomRow(Key.LayerSwitch(Layer.SYMBOLS, "?123")),
+    private val letterLayouts = ConcurrentHashMap<String, KeyboardLayout>()
+
+    /**
+     * The letter layer of [language], from its three rows in `languages.txt` (QWERTY, QWERTZ,
+     * AZERTY, Nordic or Cyrillic). Every letter key is as wide; shorter rows are centred, and
+     * Shift and Backspace fill the bottom row's sides. Holding the first ten keys of the top row
+     * types 1–0.
+     */
+    fun letters(language: KeyboardLanguage): KeyboardLayout = letterLayouts.getOrPut(language.id) {
+        val (top, middle, bottom) = language.letterRows
+        val width = maxOf(top.size, middle.size, bottom.size + 2).toFloat()
+        fun key(letter: String, index: Int = -1) = Key.Char(
+            letter,
+            longPressOutput = if (index in 0..9) ((index + 1) % 10).toString() else null,
+            accents = accents(letter, language),
         )
-    )
+        fun centred(keys: List<Key>): List<Key> {
+            val side = (width - keys.size) / 2
+            return if (side > 0f) listOf(Key.Gap(side)) + keys + Key.Gap(side) else keys
+        }
+        val side = maxOf(1f, (width - bottom.size) / 2)
+        KeyboardLayout(
+            listOf(
+                centred(top.mapIndexed { i, letter -> key(letter, i) }),
+                centred(middle.map { key(it) }),
+                listOf(Key.Shift(side)) + bottom.map { key(it) } + Key.Backspace(side),
+                bottomRow(Key.LayerSwitch(Layer.SYMBOLS, "?123")),
+            )
+        )
+    }
 
     val SYMBOLS = KeyboardLayout(
         listOf(
@@ -92,8 +112,8 @@ object Layouts {
         )
     )
 
-    fun forLayer(layer: Layer, layout: TypingLayout): KeyboardLayout = when (layer) {
-        Layer.LETTERS -> letters(layout)
+    fun forLayer(layer: Layer, language: KeyboardLanguage): KeyboardLayout = when (layer) {
+        Layer.LETTERS -> letters(language)
         Layer.SYMBOLS -> SYMBOLS
         Layer.SYMBOLS_2 -> SYMBOLS_2
     }

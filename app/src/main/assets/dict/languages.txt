@@ -1,0 +1,250 @@
+# Keyboard languages. Adding one is a data change: add a section here, then (for a bundled language)
+# run scripts/build-dictionaries.py. The app and that script both read this file.
+#
+# Every word list comes from the AOSP LatinIME dictionaries (Apache-2.0) at one pinned commit:
+# <source>/<id>_wordlist.combined.gz, checked against `sha256` (of the .gz file) and `size` (its bytes).
+#
+# Section keys:
+#   name     the language's own name, shown on the space bar and in Settings
+#   english  its English name
+#   short    two- or three-letter label
+#   speech   Whisper language code used by "Voice language: Same as keyboard" (empty: auto-detect)
+#   rows     the three letter rows, separated by spaces; letters only, any script
+#   accents  long-press choices offered first, as letter:choices (the general accent list follows)
+#   bundled  true: shipped in the APK as dict/<id>.dict; false: downloaded on request
+#   accent_margin  optional: autocorrect a known word typed without accents to its accented form
+#            when that is this much more frequent (0-255 scale). Only for languages whose word list
+#            also holds accent-less spellings of common words (Polish `juz` next to `już`).
+#   capitalized_nouns  optional, true for languages that capitalize nouns (German): `zeit` -> `Zeit`.
+
+source = https://android.googlesource.com/platform/packages/inputmethods/LatinIME/+/127336e9f29d69607eab55982324b210279ae8c5/dictionaries
+
+[en_US]
+name = English (US)
+english = English (US)
+short = EN
+speech = en
+rows = qwertyuiop asdfghjkl zxcvbnm
+bundled = true
+size = 883015
+sha256 = 0f78dd455b532be169a23f233227b811fabced4b5bd7fc9c40cc05839793bcbd
+
+[en_GB]
+name = English (UK)
+english = English (UK)
+short = EN
+speech = en
+rows = qwertyuiop asdfghjkl zxcvbnm
+bundled = false
+size = 865437
+sha256 = 2d8555b0f1e256be9953a4575595f2fc76d559bffdf3fa4c9bd7f263185d9b58
+
+[nl]
+name = Nederlands
+english = Dutch
+short = NL
+speech = nl
+rows = qwertyuiop asdfghjkl zxcvbnm
+bundled = true
+size = 1054497
+sha256 = a647ed5fdd846d3240572c9cb10fb8c30880df2ebefea6184a378adb713cd0cd
+
+[pl]
+name = Polski
+english = Polish
+short = PL
+speech = pl
+rows = qwertyuiop asdfghjkl zxcvbnm
+accents = a:ą c:ć e:ę l:ł n:ń o:ó s:ś z:żź
+accent_margin = 40
+bundled = true
+size = 1090690
+sha256 = 75a7a488e014ec3b9dbdb2527f09bca6bb28c250232d9ba50cb0ee1f8738ea45
+
+[de]
+name = Deutsch
+english = German
+short = DE
+speech = de
+rows = qwertzuiopü asdfghjklöä yxcvbnm
+accents = s:ß a:ä o:ö u:ü
+capitalized_nouns = true
+bundled = false
+size = 1293447
+sha256 = 07ae553cd55f9901412065bad7617379908ed5f2a701d226ffde85a9b8ffd5c0
+
+[fr]
+name = Français
+english = French
+short = FR
+speech = fr
+rows = azertyuiop qsdfghjklm wxcvbn
+accents = e:éèêë a:àâæ c:ç i:îï o:ôœ u:ùûü y:ÿ
+bundled = false
+size = 1108423
+sha256 = cc917a0a81acab0ea12089c2fb06b5c6be98c75f23a7605bfdbbeb698abfd65e
+
+[es]
+name = Español
+english = Spanish
+short = ES
+speech = es
+rows = qwertyuiop asdfghjklñ zxcvbnm
+accents = a:á e:é i:í o:ó u:úü
+bundled = false
+size = 1165885
+sha256 = 889ad52bce2933e2a30a0560b8d5a76f5334500e776a7db7c7cb3e9e79fc2652
+
+[it]
+name = Italiano
+english = Italian
+short = IT
+speech = it
+rows = qwertyuiop asdfghjkl zxcvbnm
+accents = a:à e:èé i:ìí o:òó u:ùú
+bundled = false
+size = 935024
+sha256 = 4ac1fa3b112130416843f5abc2a61fdbd2395a41fb6a719790cd7c45934218ec
+
+[pt_BR]
+name = Português (Brasil)
+english = Portuguese (Brazil)
+short = PT
+speech = pt
+rows = qwertyuiop asdfghjkl zxcvbnm
+accents = a:ãáâà c:ç e:éê i:í o:õóô u:úü
+bundled = false
+size = 879877
+sha256 = f9b7c2f610eacebc782c7d24e64d8ad2620b449defbac326507dfb5702c6c48b
+
+[pt_PT]
+name = Português (Portugal)
+english = Portuguese (Portugal)
+short = PT
+speech = pt
+rows = qwertyuiop asdfghjkl zxcvbnm
+accents = a:ãáâà c:ç e:éê i:í o:õóô u:úü
+bundled = false
+size = 1106730
+sha256 = 5f95bd4c2b1ada44069e9551e9eff9f1dd572f42a9edac1b23a9d7bf0445971b
+
+[sv]
+name = Svenska
+english = Swedish
+short = SV
+speech = sv
+rows = qwertyuiopå asdfghjklöä zxcvbnm
+accents = e:é
+bundled = false
+size = 1140879
+sha256 = a8c8aa7d1c8dd65b331fcfb4baf739dddb87b146a5fe737ee0ac218686e379bb
+
+[da]
+name = Dansk
+english = Danish
+short = DA
+speech = da
+rows = qwertyuiopå asdfghjklæø zxcvbnm
+accents = e:é
+bundled = false
+size = 1017659
+sha256 = a06d6ea0e51b5c5eed5fd16bacc9f392b24be0e59fd5fa43eda417969d7d4332
+
+[nb]
+name = Norsk bokmål
+english = Norwegian (Bokmål)
+short = NB
+speech = no
+rows = qwertyuiopå asdfghjkløæ zxcvbnm
+accents = e:éè o:óò
+bundled = false
+size = 964757
+sha256 = 2a8076a48c03ab310bfee8df7f05ae9f587201a3de621019ebac8c4e01e10789
+
+[fi]
+name = Suomi
+english = Finnish
+short = FI
+speech = fi
+rows = qwertyuiopå asdfghjklöä zxcvbnm
+accents = s:š z:ž
+bundled = false
+size = 1269544
+sha256 = df70a90f067026cab3cd9eb27482e954f3cd0bb194ffbf6aff342efcd56fa274
+
+[cs]
+name = Čeština
+english = Czech
+short = CS
+speech = cs
+rows = qwertzuiop asdfghjkl yxcvbnm
+accents = a:á c:č d:ď e:éě i:í n:ň o:ó r:ř s:š t:ť u:úů y:ý z:ž
+bundled = false
+size = 948263
+sha256 = d9974c28a0535f68de55fbc6c914248e82382e52a79184f54883463e67e89c5d
+
+[hr]
+name = Hrvatski
+english = Croatian
+short = HR
+speech = hr
+rows = qwertzuiop asdfghjkl yxcvbnm
+accents = c:čć d:đ s:š z:ž
+bundled = false
+size = 1014511
+sha256 = feeb7f587b07c49bf487320cdf8f3f829425a9e9ead1df4a93e4e2147837b2af
+
+[sl]
+name = Slovenščina
+english = Slovenian
+short = SL
+speech = sl
+rows = qwertzuiop asdfghjkl yxcvbnm
+accents = c:čć s:š z:ž
+bundled = false
+size = 315164
+sha256 = f35d91b21722730450216f978f799d3daa9354ad9391130622df75efc59f6ecf
+
+[ro]
+name = Română
+english = Romanian
+short = RO
+speech = ro
+rows = qwertyuiop asdfghjkl zxcvbnm
+accents = a:ăâ i:î s:ș t:ț
+bundled = false
+size = 3904045
+sha256 = 47139886aea4be76bd5857a6c62cc2b84f2094d58cb2c7b8e7dc05e17452960f
+
+[lt]
+name = Lietuvių
+english = Lithuanian
+short = LT
+speech = lt
+rows = qwertyuiop asdfghjkl zxcvbnm
+accents = a:ą c:č e:ęė i:į s:š u:ųū z:ž
+bundled = false
+size = 980893
+sha256 = 63b296c5cf7a1a1da601c92933043caa402ae25c3845ddb705ccba0c902315b7
+
+[lv]
+name = Latviešu
+english = Latvian
+short = LV
+speech = lv
+rows = qwertyuiop asdfghjkl zxcvbnm
+accents = a:ā c:č e:ē g:ģ i:ī k:ķ l:ļ n:ņ s:š u:ū z:ž
+bundled = false
+size = 970376
+sha256 = dd5b95e848322ed265d1111864c26734d55e10b53183756e72339dc4ad98f190
+
+[ru]
+name = Русский
+english = Russian
+short = RU
+speech = ru
+rows = йцукенгшщзх фывапролджэ ячсмитьбю
+accents = е:ё ь:ъ
+bundled = false
+size = 1397626
+sha256 = 8ef73a234018d23f5ca9ccc6cb65adecfd5667e87a8b6c6f1ed13ab86abad16e
