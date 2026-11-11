@@ -1,6 +1,9 @@
 package com.rheerkens.androidkeyboard.updates
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -12,6 +15,7 @@ import org.junit.Test
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
+import kotlin.coroutines.CoroutineContext
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class UpdateManagerTest {
@@ -36,20 +40,48 @@ class UpdateManagerTest {
         override fun installedVersionCode() = installed
         override fun now() = now
         override suspend fun fetchFeed(): String? = feed()
+        /**
+         * When set, the download waits for it, as a slow one would. Cancelling it then fails like
+         * the real fetcher, whose closed connection throws before the coroutine notices.
+         */
+        var downloadGate: CompletableDeferred<Unit>? = null
         override suspend fun download(update: AvailableUpdate, target: File, onBytes: (Long) -> Unit) {
             downloads++
+            try {
+                downloadGate?.await()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw IOException("Socket closed")
+            }
             if (downloadFails) throw ChecksumMismatchException("bad")
             target.writeBytes(ByteArray(update.sizeBytes.toInt()))
             onBytes(update.sizeBytes)
         }
-        override fun install(apk: File, update: AvailableUpdate) { installs += apk }
+        val installedOnIo = mutableListOf<Boolean>()
+        override fun install(apk: File, update: AvailableUpdate) {
+            installs += apk
+            installedOnIo += onIo.get()
+        }
         var keptRunning = 0
         override fun keepRunning() { keptRunning++ }
         override fun notifyAvailable(update: AvailableUpdate): Boolean { notified += update.versionCode; return true }
     }
 
     private fun TestScope.manager(platform: FakePlatform, prefs: UpdatePrefs = MemoryPrefs(), dir: File = tempDir()) =
-        UpdateManager(platform, prefs, dir, this)
+        UpdateManager(platform, prefs, dir, this, io = MarkingDispatcher(StandardTestDispatcher(testScheduler)))
+
+    /** Marks the code it runs, so a test can tell what ran on the "IO" dispatcher. */
+    private class MarkingDispatcher(private val inner: CoroutineDispatcher) : CoroutineDispatcher() {
+        override fun dispatch(context: CoroutineContext, block: Runnable) {
+            inner.dispatch(context) {
+                onIo.set(true)
+                try { block.run() } finally { onIo.set(false) }
+            }
+        }
+    }
+
+    private companion object {
+        val onIo: ThreadLocal<Boolean> = ThreadLocal.withInitial { false }
+    }
 
     private fun tempDir(): File = Files.createTempDirectory("updates").toFile()
 
@@ -143,6 +175,8 @@ class UpdateManagerTest {
         assertEquals(UpdateStatus.Installing(update(42)), m.state.value.status)
         assertEquals(listOf(File(dir, "lowkey-0.5.42.apk")), platform.installs)
         assertFalse(File(dir, "lowkey-0.5.42.apk.part").exists())
+        // The APK is handed to the installer off the main thread, where the keyboard runs.
+        assertEquals(listOf(true), platform.installedOnIo)
 
         // Android asks to confirm; dismissing its dialog returns to Available, and updating again
         // reuses the download.
@@ -155,6 +189,60 @@ class UpdateManagerTest {
         advanceUntilIdle()
         assertEquals(1, platform.downloads)
         assertEquals(2, platform.installs.size)
+        assertEquals(listOf(true, true), platform.installedOnIo)
+    }
+
+    @Test
+    fun cancellingRightAfterUpdateRestoresTheCard() = runTest {
+        val platform = FakePlatform().apply { feed = { update(42).toProperties() } }
+        val m = manager(platform)
+        m.check(userStarted = true)
+        // Cancel before the download coroutine has had a chance to start.
+        m.startUpdate()
+        m.cancelDownload()
+        advanceUntilIdle()
+        assertFalse(m.working.value)
+        assertEquals(UpdateStatus.Available(update(42)), m.state.value.status)
+        assertEquals(0, platform.downloads)
+        assertTrue(platform.installs.isEmpty())
+    }
+
+    @Test
+    fun cancellingDuringTheDownloadRestoresTheCard() = runTest {
+        val platform = FakePlatform().apply { feed = { update(42).toProperties() }; downloadGate = CompletableDeferred() }
+        val dir = tempDir()
+        val m = manager(platform, dir = dir)
+        m.check(userStarted = true)
+        m.startUpdate()
+        advanceUntilIdle()
+        assertEquals(UpdateStatus.Downloading(update(42), 0), m.state.value.status)
+        assertTrue(m.working.value)
+        m.cancelDownload()
+        advanceUntilIdle()
+        assertFalse(m.working.value)
+        assertEquals(UpdateStatus.Available(update(42)), m.state.value.status)
+        assertTrue(platform.installs.isEmpty())
+        assertFalse(File(dir, "lowkey-0.5.42.apk").exists())
+    }
+
+    @Test
+    fun aCheckLeavesAWaitingConfirmationAlone() = runTest {
+        val platform = FakePlatform().apply { feed = { update(42).toProperties() } }
+        val m = manager(platform)
+        m.check(userStarted = true)
+        m.startUpdate()
+        advanceUntilIdle()
+        m.onConfirmationNeeded()
+        platform.feed = { update(43).toProperties() }
+        m.check(userStarted = true)
+        assertEquals(UpdateStatus.AwaitingConfirmation(update(42)), m.state.value.status)
+    }
+
+    @Test
+    fun aConfirmationWithoutAKnownUpdateIsIgnored() = runTest {
+        val m = manager(FakePlatform())
+        m.onConfirmationNeeded()
+        assertEquals(UpdateStatus.Idle, m.state.value.status)
     }
 
     @Test

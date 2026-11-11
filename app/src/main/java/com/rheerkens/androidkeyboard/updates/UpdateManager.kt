@@ -1,11 +1,14 @@
 package com.rheerkens.androidkeyboard.updates
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -78,6 +81,8 @@ class UpdateManager(
     private val prefs: UpdatePrefs,
     private val downloadDir: File,
     private val scope: CoroutineScope,
+    /** File work and handing the ~90 MB APK to the installer: never on the main thread, where the keyboard runs. */
+    private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private val _state = MutableStateFlow(initialState())
     val state: StateFlow<UpdateState> = _state.asStateFlow()
@@ -153,7 +158,7 @@ class UpdateManager(
         if (downloadJob?.isActive == true) return
         _state.value = _state.value.copy(status = UpdateStatus.Downloading(update, 0))
         _working.value = true
-        downloadJob = scope.launch {
+        val job = scope.launch(io) {
             try {
                 downloadDir.mkdirs()
                 val apk = File(downloadDir, update.fileName)
@@ -168,15 +173,23 @@ class UpdateManager(
                 _state.value = _state.value.copy(status = UpdateStatus.Installing(update))
                 platform.install(apk, update)
             } catch (e: CancellationException) {
-                _state.value = _state.value.copy(status = UpdateStatus.Available(update))
                 throw e
             } catch (e: Exception) {
+                // Cancelling closes the connection, so the read fails ("Socket closed") before the
+                // coroutine notices: that is the cancel, not a failed download.
+                ensureActive()
                 downloadDir.listFiles()?.forEach { it.delete() }
                 _state.value = _state.value.copy(status = UpdateStatus.Failed(downloadFailure(e), update))
-            } finally {
-                _working.value = false
             }
         }
+        // Runs however the job ends, also when it was cancelled before it started.
+        job.invokeOnCompletion { cause ->
+            if (cause is CancellationException && _state.value.status is UpdateStatus.Downloading) {
+                _state.value = _state.value.copy(status = UpdateStatus.Available(update))
+            }
+            _working.value = false
+        }
+        downloadJob = job
         platform.keepRunning()
     }
 
