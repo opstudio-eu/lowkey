@@ -11,7 +11,6 @@ import com.rheerkens.androidkeyboard.diagnostics.SessionLog
 import com.rheerkens.androidkeyboard.dictionary.BuiltInWords
 import com.rheerkens.androidkeyboard.dictionary.Corrector
 import com.rheerkens.androidkeyboard.dictionary.DictionaryStore
-import com.rheerkens.androidkeyboard.dictionary.KeyGrid
 import com.rheerkens.androidkeyboard.dictionary.Lexicon
 import com.rheerkens.androidkeyboard.dictionary.Suggester
 import com.rheerkens.androidkeyboard.keyboard.Layouts
@@ -21,7 +20,6 @@ import com.rheerkens.androidkeyboard.models.ModelStore
 import com.rheerkens.androidkeyboard.models.resolveLanguage
 import com.rheerkens.androidkeyboard.settings.AudioInput
 import com.rheerkens.androidkeyboard.settings.SettingsStore
-import com.rheerkens.androidkeyboard.settings.KeyArrangement
 import com.rheerkens.androidkeyboard.settings.TypingKeyboard
 import com.rheerkens.androidkeyboard.settings.TypingLayout
 import com.rheerkens.androidkeyboard.speech.ClipAudioSource
@@ -75,11 +73,8 @@ object AppGraph {
         TypingLayout.NL_NL to Lexicon.fromWords(BuiltInWords.DUTCH),
     )
     private lateinit var assets: AssetManager
-    private val keyGrids = KeyArrangement.entries.associateWith {
-        if (it == KeyArrangement.QWERTY) KeyGrid.QWERTY else KeyGrid(Layouts.letterCentres(it))
-    }
     private val suggesters = TypingKeyboard.ALL.associateWith { keyboard ->
-        Suggester({ lexicon(keyboard.language) }, keyGrids.getValue(keyboard.arrangement))
+        Suggester({ lexicon(keyboard.language) }, Layouts.keyGrid(keyboard.arrangement))
     }
     private val nextClip = AtomicInteger(0)
     private var initialized = false

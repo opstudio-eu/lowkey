@@ -111,7 +111,20 @@ class KeyArrangementTest {
         assertEquals("NL · AZERTY", nlAzerty.spaceLabel)
     }
 
-    private fun grid(arrangement: KeyArrangement) = KeyGrid(Layouts.letterCentres(arrangement))
+    // The grids the app's suggesters use.
+    private fun grid(arrangement: KeyArrangement) = Layouts.keyGrid(arrangement)
+
+    @Test
+    fun appGridsAreQwertysOwnOrTheDrawnKeys() {
+        assertTrue(Layouts.keyGrid(KeyArrangement.QWERTY) === KeyGrid.QWERTY)
+        for (arrangement in KeyArrangement.entries - KeyArrangement.QWERTY) {
+            val drawn = KeyGrid(Layouts.letterCentres(arrangement))
+            for (a in 'a'..'z') for (b in 'a'..'z') {
+                assertEquals("${arrangement.name} $a$b", drawn.adjacent(a, b), Layouts.keyGrid(arrangement).adjacent(a, b))
+            }
+        }
+        assertTrue(Layouts.keyGrid(KeyArrangement.AZERTY).adjacent('m', 'l'))
+    }
 
     @Test
     fun neighbouringKeysFollowTheArrangement() {

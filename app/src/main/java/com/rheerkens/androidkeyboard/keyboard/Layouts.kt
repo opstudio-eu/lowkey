@@ -1,5 +1,6 @@
 package com.rheerkens.androidkeyboard.keyboard
 
+import com.rheerkens.androidkeyboard.dictionary.KeyGrid
 import com.rheerkens.androidkeyboard.settings.KeyArrangement
 import com.rheerkens.androidkeyboard.settings.TypingKeyboard
 
@@ -81,6 +82,18 @@ object Layouts {
                 bottomRow(Key.LayerSwitch(Layer.SYMBOLS, "?123")),
             )
         )
+    }
+
+    /**
+     * Neighbouring letters for autocorrect on [arrangement]: where its keys are drawn, except
+     * QWERTY, which keeps the grid its corrections were tuned on ([KeyGrid.QWERTY]).
+     */
+    fun keyGrid(arrangement: KeyArrangement): KeyGrid = gridCache.getValue(arrangement)
+
+    private val gridCache: Map<KeyArrangement, KeyGrid> by lazy {
+        KeyArrangement.entries.associateWith {
+            if (it == KeyArrangement.QWERTY) KeyGrid.QWERTY else KeyGrid(letterCentres(it))
+        }
     }
 
     /**
