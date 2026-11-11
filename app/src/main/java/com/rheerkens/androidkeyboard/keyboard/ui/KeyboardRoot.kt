@@ -21,6 +21,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import com.rheerkens.androidkeyboard.keyboard.KeyboardLayout
 import com.rheerkens.androidkeyboard.keyboard.KeyboardState
@@ -57,6 +58,8 @@ data class KeyboardUiState(
     val fan: FanSpec = FanSpec(action = null, newLine = false),
     /** What a Backspace slide into the editor points at; null when not aiming. */
     val wordAim: WordAim? = null,
+    /** The keyboard chooser (long-press Space), shown in place of the keys; null when closed. */
+    val keyboardChoices: KeyboardChoices? = null,
 )
 
 /**
@@ -90,7 +93,15 @@ fun KeyboardRoot(state: KeyboardUiState, clock: () -> Long, actions: KeyboardAct
                         SuggestionStrip(state.strip, state.clipHistory, state.inputSession, actions)
                         ModeToggle(state.mode, actions)
                     }
-                    KeysPanel(state.layout, state.keyboard, state.rowHeightDp, state.enterKind, actions)
+                    val choices = state.keyboardChoices
+                    if (choices != null) {
+                        // Grow upward to show every enabled keyboard, up to about half the screen.
+                        val keysHeight = 4 * state.rowHeightDp + 4
+                        val cap = maxOf(keysHeight, (LocalConfiguration.current.screenHeightDp * 0.55f).toInt())
+                        KeyboardChooser(choices, chooserHeightDp(choices.keyboards.size).coerceIn(keysHeight, cap).dp, actions)
+                    } else {
+                        KeysPanel(state.layout, state.keyboard, state.rowHeightDp, state.enterKind, actions)
+                    }
                 } else {
                     if (state.pickerOpen) {
                         val keysHeight = 44 + 4 * state.rowHeightDp + 4 // strip + rows + bottom padding

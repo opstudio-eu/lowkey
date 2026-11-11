@@ -1,5 +1,6 @@
 package com.rheerkens.androidkeyboard.dictionary
 
+import com.rheerkens.androidkeyboard.keyboard.TypingKeyboard
 import java.io.File
 
 /**
@@ -12,6 +13,9 @@ object TestLanguages {
 
     fun language(id: String): KeyboardLanguage = catalog[id] ?: error("No language $id")
 
+    /** A keyboard by its id: `pl`, `en_US:AZERTY`. */
+    fun keyboard(id: String): TypingKeyboard = TypingKeyboard.parse(id, catalog) ?: error("No keyboard $id")
+
     /** The word list file of [id]: the APK's for a bundled language, else the test copy. */
     fun dictFile(id: String): File {
         val language = language(id)
@@ -21,7 +25,7 @@ object TestLanguages {
     /** A language's full lexicon plus the built-in extra words, as the app loads it. */
     fun lexicon(id: String): Lexicon {
         val language = language(id)
-        val base = dictFile(id).inputStream().use { Lexicon.parseGzip(it, language.keys, language.rules) }
+        val base = dictFile(id).inputStream().use { Lexicon.parseGzip(it, language.folding, language.rules) }
         val extra = if (id.startsWith("en_")) BuiltInWords.TECH else BuiltInWords.TECH + BuiltInWords.ENGLISH
         return base.withExtraWords(BuiltInWords.ENGLISH + extra, 120)
     }

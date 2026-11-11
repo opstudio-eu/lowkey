@@ -13,9 +13,10 @@ data class Suggestion(
  * Suggestions and autocorrect over a language [Lexicon] (AOSP word list) plus personal terms.
  * Personal terms keep their exact case and rank first; dictionary words follow the typed case
  * (`Kot` → `Kotlin`, `KO` → `KOTLIN`). Unknown words get spelling corrections from [Corrector].
- * [lexicon] is a provider so the word list can load in the background.
+ * [lexicon] is a provider so the word list can load in the background; [keys] are the letter
+ * keys typed on, whose neighbours count as likely slips.
  */
-class Suggester(private val lexicon: () -> Lexicon) {
+class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = KeyGrid.QWERTY) {
     /** A suggester over a fixed word list, most frequent first (tests and fallbacks). */
     constructor(words: List<String>) : this(constant(Lexicon.fromWords(words)))
 
@@ -46,7 +47,7 @@ class Suggester(private val lexicon: () -> Lexicon) {
         val lex = lexicon()
         val completions = lex.completions(typed, limit * 2)
         val corrections = if (Corrector.looksLikeAWord(typed) && !lex.contains(typed)) {
-            listOfNotNull(lex.whitelist[lower]) + Corrector.corrections(typed, lex, limit).map { it.word }
+            listOfNotNull(lex.whitelist[lower]) + Corrector.corrections(typed, lex, limit, keys).map { it.word }
         } else {
             emptyList()
         }
@@ -74,12 +75,12 @@ class Suggester(private val lexicon: () -> Lexicon) {
         val lex = lexicon()
         if (Corrector.looksLikeAWord(word) && word.length >= 4 && !lex.contains(word)) {
             terms.filter { ' ' !in it.text }
-                .map { it.text to Corrector.distance(word.lowercase(), it.text.lowercase(), 1.0, lex.keys) }
+                .map { it.text to Corrector.distance(word.lowercase(), it.text.lowercase(), 1.0, keys, lex.folding) }
                 .filter { it.second <= 1.0 }
                 .minByOrNull { it.second }
                 ?.let { return it.first }
         }
-        return Corrector.autocorrect(word, lex, atSentenceStart)
+        return Corrector.autocorrect(word, lex, atSentenceStart, keys)
     }
 
     /**

@@ -380,7 +380,8 @@ public final class KeyboardTouchProbe extends Instrumentation {
     private String editorText() { AccessibilityNodeInfo field=waitEditable(); field.refresh(); return field.getText() == null ? "" : field.getText().toString(); }
     private void correctionBudget(Bundle result) {
         com.rheerkens.androidkeyboard.AppGraph graph = com.rheerkens.androidkeyboard.AppGraph.INSTANCE;
-        com.rheerkens.androidkeyboard.settings.TypingLayout layout = com.rheerkens.androidkeyboard.settings.TypingLayout.EN_US;
+        com.rheerkens.androidkeyboard.keyboard.TypingKeyboard keyboard = com.rheerkens.androidkeyboard.keyboard.TypingKeyboard.Companion.parse("en_US", graph.getLanguages());
+        com.rheerkens.androidkeyboard.dictionary.KeyboardLanguage layout = keyboard.getLanguage();
         for(int i=0;i<100 && graph.lexicon(layout).getSize()<100000;i++) SystemClock.sleep(100);
         if (graph.lexicon(layout).getSize()<100000) throw new AssertionError("Full word list not ready");
         long[] times = new long[6];
@@ -389,7 +390,7 @@ public final class KeyboardTouchProbe extends Instrumentation {
             final int index=i;
             runOnMainSync(() -> {
                 long start=SystemClock.elapsedRealtimeNanos();
-                graph.suggester(layout).autocorrection(words[index], java.util.Collections.emptyList(), true);
+                graph.suggester(keyboard).autocorrection(words[index], java.util.Collections.emptyList(), true);
                 times[index]=(SystemClock.elapsedRealtimeNanos()-start)/1000000;
             });
         }

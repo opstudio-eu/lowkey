@@ -1,6 +1,6 @@
 package com.rheerkens.androidkeyboard.keyboard
 
-import com.rheerkens.androidkeyboard.dictionary.KeyboardLanguage
+import com.rheerkens.androidkeyboard.dictionary.KeyGrid
 import java.util.concurrent.ConcurrentHashMap
 
 /** One key. [weight] is its share of the row width (a letter key is 1). */
@@ -56,43 +56,80 @@ object Layouts {
     ).mapValues { it.value.split(' ') }
 
     /** Long-press accents for [letter]: the language's own first, then the general list. */
-    fun accents(letter: String, language: KeyboardLanguage): List<String> =
-        (language.accents[letter].orEmpty() + ACCENTS[letter].orEmpty()).distinct()
+    private fun accents(letter: String, keyboard: TypingKeyboard): List<String> =
+        (keyboard.language.accents[letter].orEmpty() + ACCENTS[letter].orEmpty()).distinct()
 
     private fun bottomRow(switchKey: Key.LayerSwitch) = listOf(
         switchKey, Key.Globe(), Key.Char(","), Key.Space(), Key.Char("."), Key.Enter(),
     )
 
-    private val letterLayouts = ConcurrentHashMap<String, KeyboardLayout>()
-
     /**
-     * The letter layer of [language], from its three rows in `languages.txt` (QWERTY, QWERTZ,
-     * AZERTY, Nordic or Cyrillic). Every letter key is as wide; shorter rows are centred, and
-     * Shift and Backspace fill the bottom row's sides. Holding the first ten keys of the top row
-     * types 1–0.
+     * The letter layer for [keyboard]: its language's own rows (QWERTZ with Ü, Ö and Ä for German,
+     * ЙЦУКЕН for Russian) or an alternative arrangement, with the language's accents first on
+     * long-press. The first ten keys of the top row offer the digits 1–0 on long-press. Rows are
+     * as wide as the widest of ten keys and the top two rows; shorter rows are centred with gaps,
+     * and Shift and Backspace share what the third row leaves, but stay a key and a half wide
+     * (Dvorak's nine-letter row is then twelve keys wide, and its letters a little narrower).
      */
-    fun letters(language: KeyboardLanguage): KeyboardLayout = letterLayouts.getOrPut(language.id) {
-        val (top, middle, bottom) = language.letterRows
-        val width = maxOf(top.size, middle.size, bottom.size + 2).toFloat()
-        fun key(letter: String, index: Int = -1) = Key.Char(
-            letter,
-            longPressOutput = if (index in 0..9) ((index + 1) % 10).toString() else null,
-            accents = accents(letter, language),
-        )
-        fun centred(keys: List<Key>): List<Key> {
-            val side = (width - keys.size) / 2
-            return if (side > 0f) listOf(Key.Gap(side)) + keys + Key.Gap(side) else keys
+    fun letters(keyboard: TypingKeyboard): KeyboardLayout = lettersCache.getOrPut(keyboard.id) { buildLetters(keyboard) }
+
+    private val lettersCache = ConcurrentHashMap<String, KeyboardLayout>()
+
+    private fun buildLetters(keyboard: TypingKeyboard): KeyboardLayout {
+        val (top, middle, bottom) = keyboard.rows.map { row -> row.map { letter -> letterKey(letter.toString(), keyboard) } }
+        val width = maxOf(ROW_KEYS, top.size, middle.size).toFloat()
+        val digits = top.mapIndexed { index, key ->
+            if (index < ROW_KEYS) key.copy(longPressOutput = ((index + 1) % 10).toString()) else key
         }
-        val side = maxOf(1f, (width - bottom.size) / 2)
-        KeyboardLayout(
+        fun centred(keys: List<Key>): List<Key> {
+            val gap = (width - keys.size) / 2f
+            return if (gap > 0f) listOf(Key.Gap(gap)) + keys + Key.Gap(gap) else keys
+        }
+        val side = maxOf(MIN_SIDE_KEY, (width - bottom.size) / 2f)
+        return KeyboardLayout(
             listOf(
-                centred(top.mapIndexed { i, letter -> key(letter, i) }),
-                centred(middle.map { key(it) }),
-                listOf(Key.Shift(side)) + bottom.map { key(it) } + Key.Backspace(side),
+                centred(digits),
+                centred(middle),
+                listOf(Key.Shift(side)) + bottom + Key.Backspace(side),
                 bottomRow(Key.LayerSwitch(Layer.SYMBOLS, "?123")),
             )
         )
     }
+
+    /**
+     * Neighbouring letters for autocorrect on [keyboard]: where its keys are drawn, except
+     * QWERTY rows, which keep the grid their corrections were tuned on ([KeyGrid.QWERTY]).
+     */
+    fun keyGrid(keyboard: TypingKeyboard): KeyGrid =
+        if (keyboard.rows == QWERTY_ROWS) KeyGrid.QWERTY else gridCache.getOrPut(keyboard.id) { KeyGrid(letterCentres(keyboard)) }
+
+    private val gridCache = ConcurrentHashMap<String, KeyGrid>()
+
+    /**
+     * Centres of [keyboard]'s letter keys as drawn, per letter row, in key widths of a
+     * ten-key row: rows wider than ten keys (Dvorak's third, Nordic rows) are scaled down to fit,
+     * as on screen.
+     */
+    fun letterCentres(keyboard: TypingKeyboard): List<List<Pair<Char, Double>>> =
+        letters(keyboard).rows.take(3).map { row ->
+            val scale = ROW_KEYS / row.sumOf { it.weight.toDouble() }
+            var left = 0.0
+            row.mapNotNull { key ->
+                val centre = (left + key.weight / 2.0) * scale
+                left += key.weight
+                (key as? Key.Char)?.label?.singleOrNull()?.takeIf { it.isLetter() }?.let { it to centre }
+            }
+        }
+
+    private fun letterKey(letter: String, keyboard: TypingKeyboard) = Key.Char(letter, accents = accents(letter, keyboard))
+
+    private val QWERTY_ROWS = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
+
+    /** Width of Shift and Backspace at least, in keys: as on QWERTY, so they stay easy to hit. */
+    private const val MIN_SIDE_KEY = 1.5f
+
+    /** Letter keys in a full row. */
+    private const val ROW_KEYS = 10
 
     val SYMBOLS = KeyboardLayout(
         listOf(
@@ -112,8 +149,8 @@ object Layouts {
         )
     )
 
-    fun forLayer(layer: Layer, language: KeyboardLanguage): KeyboardLayout = when (layer) {
-        Layer.LETTERS -> letters(language)
+    fun forLayer(layer: Layer, keyboard: TypingKeyboard): KeyboardLayout = when (layer) {
+        Layer.LETTERS -> letters(keyboard)
         Layer.SYMBOLS -> SYMBOLS
         Layer.SYMBOLS_2 -> SYMBOLS_2
     }

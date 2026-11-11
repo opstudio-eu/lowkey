@@ -63,7 +63,7 @@ class SuggesterTest {
     @Test
     fun shiftTapDoubleTapAndLock() {
         var now = 0L
-        val kc = KeyboardController(TestLanguages.language("en_US")) { now }
+        val kc = KeyboardController(TestLanguages.keyboard("en_US")) { now }
         kc.onShiftTap()
         assertEquals(ShiftState.ONCE, kc.state.value.shift)
         kc.onCharTyped()
@@ -75,13 +75,13 @@ class SuggesterTest {
         assertEquals(ShiftState.LOCKED, kc.state.value.shift)
         now = 3_000; kc.onShiftTap()
         assertEquals(ShiftState.OFF, kc.state.value.shift)
-        val order = listOf(TestLanguages.language("en_US"), TestLanguages.language("nl"), TestLanguages.language("pl"))
-        assertEquals("nl", kc.cycleLanguage(order).id)
-        assertEquals("pl", kc.cycleLanguage(order).id)
-        assertEquals("en_US", kc.cycleLanguage(order).id)
-        // A language that is no longer usable moves to the first usable one.
-        kc.setLanguage(TestLanguages.language("de"))
-        assertEquals("en_US", kc.cycleLanguage(order).id)
+        val order = listOf("en_US", "nl", "pl").map(TestLanguages::keyboard)
+        assertEquals("nl", kc.cycleKeyboard(order).id)
+        assertEquals("pl", kc.cycleKeyboard(order).id)
+        assertEquals("en_US", kc.cycleKeyboard(order).id)
+        // A keyboard that is no longer usable continues from the start of the cycle.
+        kc.setKeyboard(TestLanguages.keyboard("de"))
+        assertEquals("en_US", kc.cycleKeyboard(order).id)
     }
 
     @Test

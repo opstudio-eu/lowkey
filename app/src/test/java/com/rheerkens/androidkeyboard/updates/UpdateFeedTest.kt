@@ -25,6 +25,15 @@ class UpdateFeedTest {
     }
 
     @Test
+    fun theSingleApkOfNewerReleasesIsSavedUnderItsVersion() {
+        val u = AvailableUpdate.parse(
+            feed(versionName = "0.5.4", url = "https://github.com/opstudio-eu/lowkey/releases/download/v0.5.4/lowkey.apk"),
+        )
+        assertEquals("https://github.com/opstudio-eu/lowkey/releases/download/v0.5.4/lowkey.apk", u.url)
+        assertEquals("lowkey-0.5.4.apk", u.fileName)
+    }
+
+    @Test
     fun roundTripsThroughProperties() {
         val u = AvailableUpdate.parse(feed())
         assertEquals(u, AvailableUpdate.parse(u.toProperties()))

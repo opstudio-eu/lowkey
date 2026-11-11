@@ -24,7 +24,7 @@ data class SpellingRules(
  * A language's word list with frequencies (0–255), built from the AOSP LatinIME dictionaries by
  * `scripts/build-dictionaries.py` (bundled) or [AospWordList] (downloaded). Supports exact lookups,
  * frequency-ranked prefix completion that ignores accents the user left out, and candidate lookup
- * by length for spelling correction. [keys] is the language's letter layout. Pure Kotlin.
+ * by length for spelling correction. Pure Kotlin.
  */
 class Lexicon private constructor(
     /** Words sorted by their lowercase form (for prefix ranges). */
@@ -34,7 +34,7 @@ class Lexicon private constructor(
     /** Safe whitelist corrections such as `dont` -> `don't` (keys lowercase). */
     val whitelist: Map<String, String>,
     /** The language's letter layout: key neighbours and accents without their own key. */
-    val keys: KeyGrid,
+    val folding: AccentFolding,
     /** Language-specific autocorrect rules from the catalog. */
     val rules: SpellingRules = SpellingRules(),
 ) {
@@ -59,7 +59,7 @@ class Lexicon private constructor(
     private val foldedSorted: Array<String>?
 
     init {
-        val folded = Array(lower.size) { keys.fold(lower[it]) }
+        val folded = Array(lower.size) { folding.fold(lower[it]) }
         if (folded.indices.all { folded[it] === lower[it] }) {
             foldedOrder = null
             foldedSorted = null
@@ -95,7 +95,7 @@ class Lexicon private constructor(
         val best = ArrayList<Int>()
         val order = foldedOrder
         val sorted = foldedSorted
-        if (order != null && sorted != null && keys.fold(p) == p) {
+        if (order != null && sorted != null && folding.fold(p) == p) {
             var lo = lowerBound(sorted, p)
             while (lo < sorted.size && sorted[lo].startsWith(p)) {
                 val i = order[lo]
@@ -134,7 +134,7 @@ class Lexicon private constructor(
         val accentMargin = rules.accentMargin
         if (accentMargin <= 0 || typed.length <= 2) return null
         val t = typed.lowercase()
-        if (keys.fold(t) != t) return null // the user typed accents on purpose
+        if (folding.fold(t) != t) return null // the user typed accents on purpose
         val own = frequency(t) ?: return null
         var best: String? = null
         var bestFreq = own + accentMargin - 1
@@ -160,7 +160,7 @@ class Lexicon private constructor(
         val added = extra.distinctBy { it.lowercase() }.filter { !contains(it) }
         if (added.isEmpty()) return this
         val entries = words.indices.map { words[it] to freqs[it] } + added.map { it to frequency }
-        return build(entries, whitelist, keys, rules)
+        return build(entries, whitelist, folding, rules)
     }
 
     private fun lowerBound(sorted: Array<String>, p: String): Int {
@@ -180,7 +180,7 @@ class Lexicon private constructor(
         val EMPTY = fromWords(emptyList())
 
         /** Parses the `word<TAB>freq` + `#whitelist` format (optionally gzipped by the caller). */
-        fun parse(input: InputStream, keys: KeyGrid = KeyGrid.QWERTY, rules: SpellingRules = SpellingRules()): Lexicon {
+        fun parse(input: InputStream, folding: AccentFolding = AccentFolding.QWERTY, rules: SpellingRules = SpellingRules()): Lexicon {
             val entries = ArrayList<Pair<String, Int>>(200_000)
             val whitelist = HashMap<String, String>()
             var inWhitelist = false
@@ -195,25 +195,25 @@ class Lexicon private constructor(
                 val b = line.substring(tab + 1)
                 if (inWhitelist) whitelist[a.lowercase()] = b else entries += a to (b.toIntOrNull() ?: 0)
             }
-            return build(entries, whitelist, keys, rules)
+            return build(entries, whitelist, folding, rules)
         }
 
-        fun parseGzip(input: InputStream, keys: KeyGrid = KeyGrid.QWERTY, rules: SpellingRules = SpellingRules()): Lexicon =
-            GZIPInputStream(input).use { parse(it, keys, rules) }
+        fun parseGzip(input: InputStream, folding: AccentFolding = AccentFolding.QWERTY, rules: SpellingRules = SpellingRules()): Lexicon =
+            GZIPInputStream(input).use { parse(it, folding, rules) }
 
         /** A lexicon from a plain list, most frequent first (tests and fallbacks). */
         fun fromWords(
             list: List<String>,
             whitelist: Map<String, String> = emptyMap(),
-            keys: KeyGrid = KeyGrid.QWERTY,
+            folding: AccentFolding = AccentFolding.QWERTY,
             rules: SpellingRules = SpellingRules(),
         ): Lexicon =
-            build(list.mapIndexed { i, w -> w to (255 - i * 255 / maxOf(1, list.size)).coerceAtLeast(1) }, whitelist, keys, rules)
+            build(list.mapIndexed { i, w -> w to (255 - i * 255 / maxOf(1, list.size)).coerceAtLeast(1) }, whitelist, folding, rules)
 
         private fun build(
             entries: List<Pair<String, Int>>,
             whitelist: Map<String, String>,
-            keys: KeyGrid,
+            folding: AccentFolding,
             rules: SpellingRules = SpellingRules(),
         ): Lexicon {
             val sorted = entries.sortedBy { it.first.lowercase() }
@@ -222,7 +222,7 @@ class Lexicon private constructor(
                 Array(sorted.size) { sorted[it].first.lowercase() },
                 IntArray(sorted.size) { sorted[it].second },
                 whitelist,
-                keys,
+                folding,
                 rules,
             )
         }

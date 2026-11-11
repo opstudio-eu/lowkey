@@ -9,8 +9,8 @@ import java.util.Properties
  *
  * ```
  * versionCode=42
- * versionName=0.5.1
- * url=https://github.com/opstudio-eu/lowkey/releases/download/v0.5.1/lowkey-0.5.1.apk
+ * versionName=0.5.3
+ * url=https://github.com/opstudio-eu/lowkey/releases/download/v0.5.3/lowkey.apk
  * size=87993840
  * sha256=<64 lowercase hex digits>
  * ```
@@ -22,8 +22,11 @@ data class AvailableUpdate(
     val sizeBytes: Long,
     val sha256: String,
 ) {
-    /** The APK's file name, the last segment of [url]. */
-    val fileName: String get() = url.substringAfterLast('/')
+    /**
+     * The local file name of the download. It includes the version: releases since 0.5.3 all name
+     * their APK lowkey.apk, and a leftover download of another version must never be reused.
+     */
+    val fileName: String get() = "lowkey-$versionName.apk"
 
     /** The release page on GitHub, for "What's new". */
     val releasePage: String get() = "$RELEASE_PAGE_PREFIX$TAG_PREFIX$versionName"

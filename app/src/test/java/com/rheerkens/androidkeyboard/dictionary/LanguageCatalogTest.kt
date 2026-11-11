@@ -2,6 +2,7 @@ package com.rheerkens.androidkeyboard.dictionary
 
 import com.rheerkens.androidkeyboard.keyboard.Key
 import com.rheerkens.androidkeyboard.keyboard.Layouts
+import com.rheerkens.androidkeyboard.keyboard.TypingKeyboard
 import com.rheerkens.androidkeyboard.models.ModelCatalog
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -42,18 +43,21 @@ class LanguageCatalogTest {
     }
 
     @Test
-    fun everyLayoutHasEqualKeyWidthsInEachLetterRow() {
-        catalog.languages.forEach { l ->
-            val rows = Layouts.letters(l).rows.take(3)
+    fun everyKeyboardHasEqualLetterKeysAndAlignedTopRows() {
+        TypingKeyboard.all(catalog).forEach { k ->
+            val rows = Layouts.letters(k).rows.take(3)
             val widths = rows.map { row -> row.sumOf { it.weight.toDouble() } }
-            widths.forEach { assertEquals(l.id, widths[0], it, 1e-6) }
-            assertTrue(l.id, rows.flatten().filterIsInstance<Key.Char>().all { it.weight == 1f })
+            // The top two rows are equally wide; the third is at least as wide (Shift and Backspace
+            // stay a key and a half), so its letters may be a little narrower.
+            assertEquals(k.id, widths[0], widths[1], 1e-6)
+            assertTrue(k.id, widths[2] >= widths[0] - 1e-6)
+            assertTrue(k.id, rows.flatten().filterIsInstance<Key.Char>().all { it.weight == 1f })
         }
     }
 
     @Test
     fun polishLettersAreOneLongPressAwayAndListedFirst() {
-        val keys = Layouts.letters(TestLanguages.language("pl")).rows.flatten().filterIsInstance<Key.Char>().associateBy { it.label }
+        val keys = Layouts.letters(TestLanguages.keyboard("pl")).rows.flatten().filterIsInstance<Key.Char>().associateBy { it.label }
         assertEquals(listOf("ą", "á"), keys.getValue("a").accents.take(2))
         assertEquals("ć", keys.getValue("c").accents.first())
         assertEquals("ę", keys.getValue("e").accents.first())
@@ -69,7 +73,7 @@ class LanguageCatalogTest {
     @Test
     fun commonLettersOfEveryListInTheRepositoryAreTypable() {
         catalog.languages.filter { TestLanguages.dictFile(it.id).exists() }.also { assertEquals(3, it.size) }.forEach { l ->
-            val keys = Layouts.letters(l).rows.flatten().filterIsInstance<Key.Char>()
+            val keys = Layouts.letters(TypingKeyboard(l)).rows.flatten().filterIsInstance<Key.Char>()
             val typable = keys.flatMap { listOf(it.label) + it.accents }.toSet()
             // The 20,000 most frequent words (the file is sorted by frequency).
             val missing = TestLanguages.dictFile(l.id).inputStream().use { input ->
@@ -89,24 +93,24 @@ class LanguageCatalogTest {
         assertEquals("azertyuiop", top("fr"))
         assertEquals("qwertyuiopå", top("sv"))
         assertEquals("йцукенгшщзх", top("ru"))
-        val german = Layouts.letters(TestLanguages.language("de")).rows[0].filterIsInstance<Key.Char>()
+        val german = Layouts.letters(TestLanguages.keyboard("de")).rows[0].filterIsInstance<Key.Char>()
         assertEquals("0", german[9].longPressOutput)
         assertNull(german[10].longPressOutput) // ü has no digit
     }
 
     @Test
-    fun keyGridFoldsOnlyAccentsWithoutTheirOwnKey() {
-        val pl = TestLanguages.language("pl").keys
+    fun foldingKeepsAccentsThatHaveTheirOwnKey() {
+        val pl = TestLanguages.language("pl").folding
         assertEquals("zolw", pl.fold("żółw"))
         assertEquals("zrodlo", pl.fold("źródło"))
         assertEquals("dziekuje", pl.fold("dziękuję"))
-        val sv = TestLanguages.language("sv").keys
+        val sv = TestLanguages.language("sv").folding
         assertEquals("här", sv.fold("här")) // ä is a key of its own in Swedish
         assertEquals("cafe", sv.fold("café"))
-        val ru = TestLanguages.language("ru").keys
+        val ru = TestLanguages.language("ru").folding
         assertEquals("мой", ru.fold("мой")) // й is not и with a breve on a Russian keyboard
         assertEquals("еж", ru.fold("ёж"))
-        assertEquals("sarbatoare", TestLanguages.language("ro").keys.fold("sărbătoare"))
+        assertEquals("sarbatoare", TestLanguages.language("ro").folding.fold("sărbătoare"))
     }
 
     @Test
@@ -116,11 +120,11 @@ class LanguageCatalogTest {
         assertTrue(qwerty.adjacent('a', 'z'))
         assertFalse(qwerty.adjacent('q', 'p'))
         assertTrue(qwerty.adjacent('ż', 'x')) // an accented letter sits on its base key
-        val azerty = TestLanguages.language("fr").keys
+        val azerty = Layouts.keyGrid(TestLanguages.keyboard("fr"))
         assertTrue(azerty.adjacent('a', 'z'))
         assertTrue(azerty.adjacent('q', 's'))
         assertFalse(azerty.adjacent('q', 'w') && azerty.adjacent('q', 'p'))
-        val qwertz = TestLanguages.language("de").keys
+        val qwertz = Layouts.keyGrid(TestLanguages.keyboard("de"))
         assertTrue(qwertz.adjacent('t', 'z'))
         assertTrue(qwertz.adjacent('l', 'ö'))
         assertFalse(qwertz.adjacent('t', 'y'))
@@ -135,6 +139,7 @@ class LanguageCatalogTest {
             english = X
             short = XX
             rows = abc def ghi
+            layout = ABC
             bundled = false
             size = 10
             sha256 = ${"a".repeat(64)}

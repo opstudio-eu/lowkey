@@ -1,5 +1,6 @@
 package com.rheerkens.androidkeyboard.dictionary
 
+import com.rheerkens.androidkeyboard.keyboard.Layouts
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -11,7 +12,7 @@ class LanguageRulesTest {
     private val german = TestLanguages.language("de")
     private val de = Lexicon.fromWords(
         listOf("der", "die", "und", "Zeit", "haben", "heute", "essen", "Essen", "schön", "Straße", "über"),
-        keys = german.keys, rules = german.rules,
+        folding = german.folding, rules = german.rules,
     )
 
     @Test
@@ -28,12 +29,15 @@ class LanguageRulesTest {
     @Test
     fun germanUmlautsAreKeysNotAccents() {
         // ü has its own key on the German layout, so `uber` is a real typo, not a missing accent.
-        assertEquals("uber", german.keys.fold("uber"))
-        assertEquals("über", german.keys.fold("über"))
-        assertTrue(german.keys.adjacent('p', 'ü'))
+        assertEquals("uber", german.folding.fold("uber"))
+        assertEquals("über", german.folding.fold("über"))
+        val keys = Layouts.keyGrid(TestLanguages.keyboard("de"))
+        assertTrue(keys.adjacent('p', 'ü'))
         // ...but leaving out the umlaut still costs no more than a neighbouring key.
-        assertTrue(german.keys.sameBaseLetter('u', 'ü'))
-        assertEquals("über", Corrector.autocorrect("uber", de))
+        assertTrue(KeyGrid.sameBaseLetter('u', 'ü'))
+        assertEquals("über", Corrector.autocorrect("uber", de, keys = keys))
+        // German on an alternative layout without umlaut keys (QWERTY) still finds it.
+        assertEquals("über", Corrector.autocorrect("uber", de, keys = Layouts.keyGrid(TestLanguages.keyboard("de:QWERTY"))))
     }
 
     @Test

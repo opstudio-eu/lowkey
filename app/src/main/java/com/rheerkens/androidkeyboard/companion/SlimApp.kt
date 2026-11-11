@@ -29,6 +29,7 @@ import com.rheerkens.androidkeyboard.companion.screens.DiagnosticsScreen
 import com.rheerkens.androidkeyboard.companion.screens.DictionaryScreen
 import com.rheerkens.androidkeyboard.companion.screens.HomeScreen
 import com.rheerkens.androidkeyboard.companion.screens.ModelsScreen
+import com.rheerkens.androidkeyboard.companion.screens.SettingsFocus
 import com.rheerkens.androidkeyboard.companion.screens.SettingsScreen
 import com.rheerkens.androidkeyboard.companion.screens.TryItScreen
 import com.rheerkens.androidkeyboard.companion.screens.KeyboardTestSheet
@@ -67,7 +68,7 @@ fun SlimApp(pendingDestination: Destination?, onDestinationConsumed: () -> Unit)
         if (testOpen) closeTest()
         stackNames = when {
             dest.isTab -> listOf(dest.name)
-            dest == Destination.SETTINGS_VOICE -> listOf(dest.name)
+            dest == Destination.SETTINGS_VOICE || dest == Destination.SETTINGS_KEYBOARDS -> listOf(dest.name)
             else -> stackNames + dest.name
         }
     }
@@ -81,7 +82,7 @@ fun SlimApp(pendingDestination: Destination?, onDestinationConsumed: () -> Unit)
     BackHandler(enabled = stack.size > 1) { stackNames = stackNames.dropLast(1) }
 
     val rootTab = when (stack.first()) {
-        Destination.SETTINGS_VOICE -> Destination.SETTINGS
+        Destination.SETTINGS_VOICE, Destination.SETTINGS_KEYBOARDS -> Destination.SETTINGS
         else -> stack.first()
     }
 
@@ -120,12 +121,13 @@ fun SlimApp(pendingDestination: Destination?, onDestinationConsumed: () -> Unit)
             Destination.HOME -> HomeScreen(modifier, ::navigate)
             Destination.MODELS -> ModelsScreen(modifier)
             Destination.DICTIONARY -> DictionaryScreen(modifier)
-            Destination.SETTINGS -> SettingsScreen(modifier, focusVoice = false, navigate = ::navigate)
-            Destination.SETTINGS_VOICE -> SettingsScreen(modifier, focusVoice = true, navigate = ::navigate)
+            Destination.SETTINGS -> SettingsScreen(modifier, focus = SettingsFocus.TOP, navigate = ::navigate)
+            Destination.SETTINGS_VOICE -> SettingsScreen(modifier, focus = SettingsFocus.VOICE, navigate = ::navigate)
+            Destination.SETTINGS_KEYBOARDS -> SettingsScreen(modifier, focus = SettingsFocus.KEYBOARDS, navigate = ::navigate)
             Destination.TRY_IT -> TryItScreen(modifier)
             Destination.DIAGNOSTICS -> DiagnosticsScreen(modifier)
             Destination.ABOUT -> AboutScreen(modifier)
-            Destination.LANGUAGES -> LanguagesScreen(modifier)
+            Destination.LANGUAGES -> LanguagesScreen(modifier, ::navigate)
         }
     }
     if (testOpen) {

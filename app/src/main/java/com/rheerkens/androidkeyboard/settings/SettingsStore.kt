@@ -34,15 +34,20 @@ class SettingsStore(context: Context) {
 
     private fun load(): Settings {
         val d = Settings()
+        // Before keyboards had arrangements, only languages were stored (always QWERTY).
+        val (enabled, current) = loadKeyboards(
+            enabledIds = prefs.getStringSet(K_KEYBOARDS, null) ?: prefs.getStringSet(K_LAYOUTS, null),
+            currentId = prefs.getString(K_KEYBOARD, null) ?: prefs.getString(K_LAYOUT, null),
+            default = d,
+        )
         return Settings(
             keyboardHeight = enumOr(prefs.getString(K_HEIGHT, null), d.keyboardHeight),
             vibrateOnKeyPress = prefs.getBoolean(K_VIBRATE, d.vibrateOnKeyPress),
             autoCapitalize = prefs.getBoolean(K_AUTOCAP, d.autoCapitalize),
             autocorrect = prefs.getBoolean(K_AUTOCORRECT, d.autocorrect),
             suggestionStrip = prefs.getBoolean(K_STRIP, d.suggestionStrip),
-            enabledLanguages = prefs.getStringSet(K_LAYOUTS, null)
-                ?.map(::languageId)?.toSet()?.ifEmpty { null } ?: d.enabledLanguages,
-            currentLanguage = prefs.getString(K_LAYOUT, null)?.let(::languageId) ?: d.currentLanguage,
+            enabledKeyboards = enabled,
+            currentKeyboard = current,
             showWithPhysicalKeyboard = prefs.getBoolean(K_SHOW_WITH_PHYSICAL, d.showWithPhysicalKeyboard),
             recentScreenshots = prefs.getBoolean(K_SCREENSHOTS, d.recentScreenshots),
             autoStartVoice = prefs.getBoolean(K_AUTOSTART, d.autoStartVoice),
@@ -71,8 +76,10 @@ class SettingsStore(context: Context) {
         putBoolean(K_AUTOCAP, s.autoCapitalize)
         putBoolean(K_AUTOCORRECT, s.autocorrect)
         putBoolean(K_STRIP, s.suggestionStrip)
-        putStringSet(K_LAYOUTS, s.enabledLanguages)
-        putString(K_LAYOUT, s.currentLanguage)
+        putStringSet(K_KEYBOARDS, s.enabledKeyboards)
+        putString(K_KEYBOARD, s.currentKeyboard)
+        remove(K_LAYOUTS)
+        remove(K_LAYOUT)
         putBoolean(K_SHOW_WITH_PHYSICAL, s.showWithPhysicalKeyboard)
         putBoolean(K_SCREENSHOTS, s.recentScreenshots)
         putBoolean(K_AUTOSTART, s.autoStartVoice)
@@ -94,14 +101,38 @@ class SettingsStore(context: Context) {
         putBoolean(K_MINIMIZED_TOUCH, s.minimizedWithoutPhysicalKeyboard)
     }
 
-    /** Language ids; versions before 0.5.4 stored the names of the old `TypingLayout` enum. */
-    private fun languageId(stored: String): String = LEGACY_LAYOUTS[stored] ?: stored
-
     private inline fun <reified E : Enum<E>> enumOr(name: String?, default: E): E =
         enumValues<E>().firstOrNull { it.name == name } ?: default
 
-    private companion object {
-        val LEGACY_LAYOUTS = mapOf("EN_US" to "en_US", "NL_NL" to "nl")
+    internal companion object {
+        /**
+         * Enabled and current keyboard ids from what is stored, in today's form (see
+         * `TypingKeyboard.id`). Nothing stored falls back to [default]'s, and the current keyboard
+         * is always one of the enabled ones. Ids the catalog doesn't know are dropped later, when
+         * the keyboard resolves them.
+         */
+        fun loadKeyboards(enabledIds: Set<String>?, currentId: String?, default: Settings): Pair<Set<String>, String> {
+            val enabled = enabledIds?.map(::keyboardId)?.toSet()?.ifEmpty { null } ?: default.enabledKeyboards
+            val current = currentId?.let(::keyboardId)?.takeIf { it in enabled }
+                ?: default.currentKeyboard.takeIf { it in enabled }
+                ?: enabled.sorted().first()
+            return enabled to current
+        }
+
+        /**
+         * A stored keyboard id in today's form. Up to 0.5.5 only English (US) and Dutch existed,
+         * stored as `EN_US` or `EN_US:AZERTY`; both are QWERTY languages, so `:QWERTY` means their
+         * own layout (`en_US`).
+         */
+        fun keyboardId(stored: String): String {
+            val language = stored.substringBefore(':')
+            val legacy = LEGACY_LANGUAGES[language] ?: return stored
+            val arrangement = stored.substringAfter(':', "")
+            return if (arrangement.isEmpty() || arrangement == "QWERTY") legacy else "$legacy:$arrangement"
+        }
+
+        private val LEGACY_LANGUAGES = mapOf("EN_US" to "en_US", "NL_NL" to "nl")
+
         const val K_HEIGHT = "keyboard_height"
         const val K_LOUPE_CORNERS = "loupe_corner_choice"
         const val K_CHECK_UPDATES = "check_for_updates"
@@ -109,8 +140,11 @@ class SettingsStore(context: Context) {
         const val K_AUTOCAP = "auto_capitalize"
         const val K_AUTOCORRECT = "autocorrect"
         const val K_STRIP = "suggestion_strip"
+        /** Language-only keys from before arrangements; read once to migrate. */
         const val K_LAYOUTS = "enabled_layouts"
         const val K_LAYOUT = "current_layout"
+        const val K_KEYBOARDS = "enabled_keyboards"
+        const val K_KEYBOARD = "current_keyboard"
         const val K_AUTOSTART = "auto_start_voice"
         const val K_KEYBOARD_FIRST = "keyboard_first_dictation"
         const val K_REMEMBER = "remember_last_mode"

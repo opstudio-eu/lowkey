@@ -8,7 +8,7 @@ import org.junit.Test
 /** Autocorrect and suggestions against the Polish word list the phone downloads (test copy in `src/test/resources/dict/`). */
 class PolishAutocorrectQualityTest {
     private val lexicon = TestLanguages.lexicon("pl")
-    private val suggester = Suggester { lexicon }
+    private val suggester = Suggester({ lexicon })
 
     private fun check(expected: Map<String, String>) {
         val wrong = expected.mapNotNull { (typed, want) ->
@@ -59,7 +59,7 @@ class PolishAutocorrectQualityTest {
         // Words typed with accents are never changed, and the rule is off without a margin.
         assertNull(lexicon.accentRestoration("już"))
         val plain = TestLanguages.language("pl").let { l ->
-            TestLanguages.dictFile("pl").inputStream().use { Lexicon.parseGzip(it, l.keys, SpellingRules()) }
+            TestLanguages.dictFile("pl").inputStream().use { Lexicon.parseGzip(it, l.folding, SpellingRules()) }
         }
         assertNull(Corrector.autocorrect("juz", plain))
     }

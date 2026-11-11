@@ -50,7 +50,7 @@ class LanguagePackStoreTest {
         assertEquals(listOf("sv"), installed)
         assertTrue(store.isInstalled(swedish))
         assertEquals(LanguagePackState(installed = setOf("sv")), store.state.value)
-        val lexicon = store.file(swedish).inputStream().use { Lexicon.parseGzip(it, swedish.keys) }
+        val lexicon = store.file(swedish).inputStream().use { Lexicon.parseGzip(it, swedish.folding) }
         assertEquals(150, lexicon.frequency("żółw"))
         // A new store (next app start) finds it again.
         assertTrue(LanguagePackStore(dir, catalog, backgroundScope).isInstalled(swedish))

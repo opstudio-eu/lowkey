@@ -1,45 +1,64 @@
 package com.rheerkens.androidkeyboard.companion.screens
 
-import androidx.compose.foundation.clickable
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rheerkens.androidkeyboard.AppGraph
 import com.rheerkens.androidkeyboard.clipboard.RecentScreenshots
 import com.rheerkens.androidkeyboard.models.resolveLanguage
 import com.rheerkens.androidkeyboard.models.speechLanguageCode
+import com.rheerkens.androidkeyboard.dictionary.LanguagePackState
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.Role
 import com.rheerkens.androidkeyboard.companion.Destination
+import com.rheerkens.androidkeyboard.models.resolveLanguage
 import com.rheerkens.androidkeyboard.settings.AutoStop
+import com.rheerkens.androidkeyboard.settings.KeyArrangement
 import com.rheerkens.androidkeyboard.settings.KeyboardHeight
 import com.rheerkens.androidkeyboard.settings.LoupeCorners
 import com.rheerkens.androidkeyboard.settings.ModelRetention
 import com.rheerkens.androidkeyboard.settings.Settings
 import com.rheerkens.androidkeyboard.models.SpeechLanguage
 import com.rheerkens.androidkeyboard.settings.ThemeMode
+import com.rheerkens.androidkeyboard.ui.SlimIcons
 
+private const val KEYBOARDS_INDEX = 8
 private const val VOICE_SECTION_INDEX = 10
 
+/** Where Settings opens: at the top, or scrolled to a group the keyboard links to. */
+enum class SettingsFocus(val index: Int?) { TOP(null), KEYBOARDS(KEYBOARDS_INDEX), VOICE(VOICE_SECTION_INDEX) }
+
 @Composable
-fun SettingsScreen(modifier: Modifier, focusVoice: Boolean, navigate: (Destination) -> Unit) {
+fun SettingsScreen(modifier: Modifier, focus: SettingsFocus, navigate: (Destination) -> Unit) {
     val s by AppGraph.settings.settings.collectAsStateWithLifecycle()
     val models by AppGraph.models.state.collectAsStateWithLifecycle()
     // Recomposes the language summary when a download finishes or a word list is deleted.
@@ -53,12 +72,12 @@ fun SettingsScreen(modifier: Modifier, focusVoice: Boolean, navigate: (Destinati
         update { it.copy(recentScreenshots = granted) }
     }
 
-    LaunchedEffect(focusVoice) {
-        if (focusVoice) listState.scrollToItem(VOICE_SECTION_INDEX)
+    LaunchedEffect(focus) {
+        focus.index?.let { listState.scrollToItem(it) }
     }
 
     LazyColumn(modifier.fillMaxWidth(), state = listState) {
-        // Keyboard (items 0–9)
+        // Keyboard (items 0–9; the layouts are item KEYBOARDS_INDEX)
         item { SectionTitle("Keyboard") }
         item {
             ChoiceRow("Keyboard height", KeyboardHeight.entries, s.keyboardHeight, { it.label }, { v -> update { it.copy(keyboardHeight = v) } })
@@ -93,12 +112,7 @@ fun SettingsScreen(modifier: Modifier, focusVoice: Boolean, navigate: (Destinati
                 subtitle = "Show screenshots from the last day next to copied clips in the minimized bar. Needs access to photos.",
             )
         }
-        item {
-            val usable = remember(s.enabledLanguages, packs.installed) { AppGraph.usableLanguages(s) }
-            LinkRow("Keyboard languages", usable.joinToString(", ") { it.name } + ". The globe key switches between them.") {
-                navigate(Destination.LANGUAGES)
-            }
-        }
+        item { KeyboardsSetting(s, packs, ::update, navigate) }
         item { Spacer8() }
         // Voice (index VOICE_SECTION_INDEX)
         item { SectionTitle("Voice") }
@@ -211,6 +225,88 @@ fun SettingsScreen(modifier: Modifier, focusVoice: Boolean, navigate: (Destinati
         item { LinkRow("Diagnostics", "Voice session log and audio input") { navigate(Destination.DIAGNOSTICS) } }
         item { LinkRow("About and licenses") { navigate(Destination.ABOUT) } }
         item { Spacer8() }
+    }
+}
+
+/**
+ * The languages on the phone, each with a chip per letter layout: its own first, then (for
+ * Latin-script languages) the alternatives. Every chip that's on is one stop of the globe key's
+ * cycle (in the order shown) and a row of the space bar's long-press chooser. Chips sit in a fixed
+ * grid, so a checkmark appearing never moves the others. More languages download on their own page.
+ */
+@Composable
+private fun KeyboardsSetting(s: Settings, packs: LanguagePackState, update: ((Settings) -> Settings) -> Unit, navigate: (Destination) -> Unit) {
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+        Text("Keyboard layouts", style = MaterialTheme.typography.bodyLarge)
+        Text(
+            "Turn on the layouts you type with. Turning one on doesn't switch to it: tap the globe key to go " +
+                "through them in the order shown, or long-press the space bar to pick one. " +
+                "Long-press the globe key to switch to another keyboard app.",
+            style = MaterialTheme.typography.bodySmall,
+            color = muted,
+        )
+        val installed = remember(packs.installed) { AppGraph.installedKeyboards() }
+        val usableIds = installed.map { it.id }
+        val onlyOne = usableIds.count { it in s.enabledKeyboards } == 1
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val columns = if (maxWidth >= 560.dp) KeyArrangement.entries.size else 3
+            Column {
+                installed.groupBy { it.language.id }.values.forEach { options ->
+                    val language = options.first().language
+                    Text(language.name, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 12.dp, bottom = 2.dp))
+                    options.chunked(columns).forEach { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            row.forEach { keyboard ->
+                                val on = keyboard.id in s.enabledKeyboards
+                                val required = on && onlyOne
+                                FilterChip(
+                                    selected = on,
+                                    onClick = { update { it.toggleKeyboard(keyboard.id, usableIds) } },
+                                    enabled = !required,
+                                    // The chip's description names the language too; don't read the label twice.
+                                    label = { Text(keyboard.layoutLabel, Modifier.clearAndSetSemantics {}, maxLines = 1) },
+                                    leadingIcon = if (on) ({ Icon(SlimIcons.Check, null, Modifier.size(FilterChipDefaults.IconSize)) }) else null,
+                                    modifier = Modifier.weight(1f).semantics {
+                                        contentDescription = "${language.name}, ${keyboard.layoutLabel}"
+                                        if (required) stateDescription = "On, required: the last layout that's on"
+                                    },
+                                )
+                            }
+                            repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                    }
+                }
+            }
+        }
+        if (onlyOne) {
+            Text("Keep at least one layout on.", style = MaterialTheme.typography.bodySmall, color = muted, modifier = Modifier.padding(top = 4.dp))
+        }
+        Text(
+            "Current keyboard: ${AppGraph.currentKeyboard(s).fullLabel}",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(top = 10.dp),
+        )
+        Text(
+            "Layouts change only the letter keys; suggestions and autocorrect follow the language.",
+            style = MaterialTheme.typography.bodySmall,
+            color = muted,
+        )
+        Row(
+            Modifier.fillMaxWidth().padding(top = 8.dp).clickable(role = Role.Button) { navigate(Destination.LANGUAGES) }
+                .padding(vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("More languages", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
+                Text(
+                    "Download Dutch, Polish, German, French and 16 more, or delete them",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = muted,
+                )
+            }
+            Icon(SlimIcons.ChevronRight, null, tint = muted)
+        }
     }
 }
 

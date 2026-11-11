@@ -8,14 +8,15 @@ import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
 import com.rheerkens.androidkeyboard.diagnostics.CrashLog
 import com.rheerkens.androidkeyboard.diagnostics.SessionLog
-import com.rheerkens.androidkeyboard.dictionary.Corrector
 import com.rheerkens.androidkeyboard.dictionary.BuiltInWords
+import com.rheerkens.androidkeyboard.dictionary.Corrector
 import com.rheerkens.androidkeyboard.dictionary.DictionaryStore
 import com.rheerkens.androidkeyboard.dictionary.KeyboardLanguage
 import com.rheerkens.androidkeyboard.dictionary.LanguageCatalog
 import com.rheerkens.androidkeyboard.dictionary.LanguagePackStore
 import com.rheerkens.androidkeyboard.dictionary.Lexicon
 import com.rheerkens.androidkeyboard.dictionary.Suggester
+import com.rheerkens.androidkeyboard.keyboard.Layouts
 import com.rheerkens.androidkeyboard.models.DiskModelStore
 import com.rheerkens.androidkeyboard.models.ModelCatalog
 import com.rheerkens.androidkeyboard.models.ModelStore
@@ -24,6 +25,7 @@ import com.rheerkens.androidkeyboard.models.speechLanguageCode
 import com.rheerkens.androidkeyboard.settings.AudioInput
 import com.rheerkens.androidkeyboard.settings.Settings
 import com.rheerkens.androidkeyboard.settings.SettingsStore
+import com.rheerkens.androidkeyboard.keyboard.TypingKeyboard
 import com.rheerkens.androidkeyboard.speech.ClipAudioSource
 import com.rheerkens.androidkeyboard.speech.LoadableModel
 import com.rheerkens.androidkeyboard.speech.LocalSpeechEngine
@@ -89,6 +91,7 @@ object AppGraph {
     /** Small built-in lists used while a language's full list loads. */
     private val fallbackLexicons = ConcurrentHashMap<String, Lexicon>()
     private lateinit var assets: AssetManager
+    /** One per keyboard id: suggestions in its language, with slips judged on its letter rows. */
     private val suggesters = ConcurrentHashMap<String, Suggester>()
     private val nextClip = AtomicInteger(0)
     private var initialized = false
@@ -110,8 +113,8 @@ object AppGraph {
             scope = appScope,
             onInstalled = { language ->
                 invalidateLexicon(language.id)
-                // A downloaded language is ready to use at once.
-                settings.update { it.copy(enabledLanguages = it.enabledLanguages + language.id) }
+                // A downloaded language is ready to use at once, on its own layout.
+                settings.update { it.copy(enabledKeyboards = it.enabledKeyboards + TypingKeyboard(language).id) }
             },
         )
         testClips = app.assets.list(CLIP_DIR).orEmpty().filter { it.endsWith(".wav") }.sorted()
@@ -151,35 +154,46 @@ object AppGraph {
         }
         // An enabled language whose word list is missing downloads again: Dutch for installs from
         // before 0.5.4, when it was built in, or a list whose pinned checksum changed.
-        settings.current.enabledLanguages.mapNotNull(languages::get)
+        settings.current.enabledKeyboards.mapNotNull { languages[it.substringBefore(':')] }.distinct()
             .filter { !languagePacks.isInstalled(it) }
             .forEach { languagePacks.download(it.id) }
         preloadLexicon(currentLanguage(settings.current))
         initialized = true
     }
 
-    /** Enabled languages whose word list is on the phone, in catalog order; never empty. */
-    fun usableLanguages(s: Settings = settings.current): List<KeyboardLanguage> =
-        languages.usable(s.enabledLanguages, languagePacks::isInstalled).ifEmpty { listOf(languages.default) }
+    /** Every keyboard whose language's word list is on the phone, in globe order. */
+    fun installedKeyboards(): List<TypingKeyboard> =
+        TypingKeyboard.all(languages).filter { languagePacks.isInstalled(it.language) }
 
-    /** The language the keyboard types in: the chosen one if usable, else the first usable one. */
-    fun currentLanguage(s: Settings = settings.current): KeyboardLanguage {
-        val usable = usableLanguages(s)
-        return usable.firstOrNull { it.id == s.currentLanguage } ?: usable.first()
+    /** Enabled keyboards whose word list is on the phone, in globe order; never empty. */
+    fun usableKeyboards(s: Settings = settings.current): List<TypingKeyboard> =
+        TypingKeyboard.ordered(
+            s.enabledKeyboards.mapNotNull { TypingKeyboard.parse(it, languages) }.filter { languagePacks.isInstalled(it.language) }
+        ).ifEmpty { listOf(TypingKeyboard(languages.default)) }
+
+    /** The keyboard the keys show: the chosen one if usable, else the first usable one. */
+    fun currentKeyboard(s: Settings = settings.current): TypingKeyboard {
+        val usable = usableKeyboards(s)
+        val chosen = TypingKeyboard.parse(s.currentKeyboard, languages)
+        return usable.firstOrNull { it.id == chosen?.id } ?: usable.first()
     }
+
+    /** The current keyboard's language. */
+    fun currentLanguage(s: Settings = settings.current): KeyboardLanguage = currentKeyboard(s).language
+
+    /** Suggestions in [keyboard]'s language, with slips judged on its letter rows. */
+    fun suggester(keyboard: TypingKeyboard): Suggester =
+        suggesters.getOrPut(keyboard.id) { Suggester({ lexicon(keyboard.language) }, Layouts.keyGrid(keyboard)) }
 
     /** The speech language code to resolve against a model: [Settings.speechLanguage], or the keyboard's. */
     fun speechLanguage(s: Settings = settings.current): String = speechLanguageCode(s.speechLanguage, currentLanguage(s))
 
-    /** Removes a downloaded language: its file, its loaded word list, and its place in the settings. */
+    /** Removes a downloaded language: its file, its loaded word list, and its keyboards in the settings. */
     fun deleteLanguage(id: String) {
         languagePacks.delete(id)
         invalidateLexicon(id)
-        settings.update { it.copy(enabledLanguages = it.enabledLanguages - id) }
+        settings.update { s -> s.copy(enabledKeyboards = s.enabledKeyboards.filterTo(HashSet()) { it.substringBefore(':') != id }) }
     }
-
-    fun suggester(language: KeyboardLanguage): Suggester =
-        suggesters.getOrPut(language.id) { Suggester { lexicon(language) } }
 
     /** The language's full word list, or a small built-in list while it loads. */
     fun lexicon(language: KeyboardLanguage): Lexicon {
@@ -191,7 +205,7 @@ object AppGraph {
                 "nl" -> BuiltInWords.DUTCH
                 else -> emptyList()
             }
-            Lexicon.fromWords(words, keys = language.keys)
+            Lexicon.fromWords(words, folding = language.folding)
         }
     }
 
@@ -209,7 +223,7 @@ object AppGraph {
             val started = android.os.SystemClock.elapsedRealtime()
             runCatching {
                 val input = if (language.bundled) assets.open("dict/$name") else languagePacks.file(language).inputStream()
-                val base = input.use { Lexicon.parseGzip(it, language.keys, language.rules) }
+                val base = input.use { Lexicon.parseGzip(it, language.folding, language.rules) }
                 // Tech/chat words (and, outside English, the English basics people mix in) count as known.
                 val extra = if (language.id.startsWith("en_")) BuiltInWords.TECH else BuiltInWords.TECH + BuiltInWords.ENGLISH
                 base.withExtraWords(BuiltInWords.ENGLISH + extra, EXTRA_WORD_FREQUENCY).also {

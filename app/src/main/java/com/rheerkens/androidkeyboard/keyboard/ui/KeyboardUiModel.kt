@@ -7,6 +7,7 @@ import com.rheerkens.androidkeyboard.clipboard.ClipboardContent
 import com.rheerkens.androidkeyboard.keyboard.BackspaceScrub
 import com.rheerkens.androidkeyboard.keyboard.FanCommand
 import com.rheerkens.androidkeyboard.keyboard.Key
+import com.rheerkens.androidkeyboard.keyboard.TypingKeyboard
 
 /** What the Enter key does in the current editor. */
 enum class EnterKind(val label: String?) {
@@ -68,6 +69,12 @@ interface KeyboardActions {
     /** A command picked from the minimized bar's Backspace fan (never [FanCommand.WORDS]). */
     fun onFanCommand(command: FanCommand)
     fun onGlobeLongPress()
+    /** Long-press on the space bar: open the [KeyboardChooser]. */
+    fun onSpaceLongPress()
+    fun onChooseKeyboard(keyboard: TypingKeyboard)
+    fun onCloseKeyboardChooser()
+    /** Settings, scrolled to the keyboard layouts. */
+    fun onOpenKeyboardSettings()
     fun onSuggestion(suggestion: Suggestion)
     fun onPasteClipboard(content: ClipboardContent)
     fun onPasteHistory(entry: ClipEntry)

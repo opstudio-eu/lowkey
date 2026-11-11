@@ -19,6 +19,9 @@ import com.rheerkens.androidkeyboard.keyboard.AlternatesPopup
 import com.rheerkens.androidkeyboard.keyboard.shiftCase
 import kotlin.math.roundToInt
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
@@ -112,16 +115,23 @@ private fun KeyView(
             }
         }
         is Key.Globe -> PressTarget(
-            "Switch typing language. Long-press to choose keyboard", modifier, gestureKey = key,
+            "Next keyboard. Long-press to switch to another keyboard app",
+            // Announce the keyboard a tap switched to, whichever key has focus.
+            modifier.semantics {
+                stateDescription = state.keyboard.fullLabel
+                liveRegion = LiveRegionMode.Polite
+            },
+            gestureKey = key,
             onDown = actions::onKeyDown, onTap = { actions.onKey(key) }, onLongPress = actions::onGlobeLongPress,
         ) { pressed ->
             KeyCap(if (pressed) c.keyPressed else c.keyMod) { KeyIcon(SlimIcons.Globe) }
         }
         is Key.Space -> PressTarget(
-            "Space, ${state.language.name}", modifier, gestureKey = key, onDown = actions::onKeyDown, onTap = { actions.onKey(key) },
+            "Space, ${state.keyboard.fullLabel}. Long-press to choose a keyboard", modifier, gestureKey = key,
+            onDown = actions::onKeyDown, onTap = { actions.onKey(key) }, onLongPress = actions::onSpaceLongPress,
         ) { pressed ->
             KeyCap(if (pressed) c.keyPressed else c.key) {
-                Text(state.language.name, color = c.spaceText, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(state.keyboard.spaceLabel, color = c.spaceText, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
         is Key.Enter -> PressTarget(
@@ -156,7 +166,7 @@ private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardAction
     val choices = key.alternates
     var open by remember(key) { mutableStateOf(false) }
     var selected by remember(key) { mutableStateOf<Int?>(null) }
-    var placement by remember { mutableStateOf<KeyPlacement?>(null) }
+    var placement by remember(key) { mutableStateOf<KeyPlacement?>(null) }
     val popup = remember(placement, choices.size, density) {
         val p = placement
         if (p == null || choices.isEmpty()) null else with(density) {

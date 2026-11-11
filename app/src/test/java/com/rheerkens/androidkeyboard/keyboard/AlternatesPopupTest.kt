@@ -5,7 +5,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AlternatesPopupTest {
-    private val letters = Layouts.letters(TestLanguages.language("en_US")).rows.flatten().filterIsInstance<Key.Char>().associateBy { it.label }
+    private val letters = Layouts.letters(TestLanguages.keyboard("en_US")).rows.flatten().filterIsInstance<Key.Char>().associateBy { it.label }
 
     @Test
     fun topRowOffersNumberThenAccents() {
@@ -28,7 +28,7 @@ class AlternatesPopupTest {
         assertEquals("É", shiftCase("é"))
         assertEquals("Œ", shiftCase("œ"))
         assertEquals("ß", shiftCase("ß"))
-        val controller = KeyboardController(TestLanguages.language("en_US"))
+        val controller = KeyboardController(TestLanguages.keyboard("en_US"))
         controller.onShiftTap()
         assertEquals("Ë", controller.applyCase("ë"))
     }
