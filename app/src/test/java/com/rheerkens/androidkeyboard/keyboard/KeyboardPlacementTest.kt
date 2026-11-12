@@ -4,6 +4,72 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class KeyboardPlacementTest {
+    @Test fun minimizedBarUsesTheBottomEdgeInEveryModeAndProfile() {
+        for ((width, height) in listOf(400f to 800f, 800f to 400f, 720f to 1000f, 1000f to 720f)) {
+            for (mode in PlacementMode.entries) {
+                for (rows in 4..5) {
+                    val value = KeyboardPlacement(mode = mode, bottomSpace = 120f, floatingY = .1f)
+                    val frame = value.frame(width, height, rows = rows, minimized = true)
+                    assertEquals("$mode at ${width}x$height", height - 49f, frame.top, .01f)
+                    assertEquals(49f, frame.height, .01f)
+                    assertEquals(height, frame.top + frame.height, .01f)
+                }
+            }
+        }
+    }
+
+    @Test fun minimizedBarKeepsHorizontalPlacementWithoutFloatingHandleSpace() {
+        for (mode in PlacementMode.entries) {
+            for (rightHand in listOf(false, true)) {
+                val value = KeyboardPlacement(mode = mode, rightHand = rightHand, dockedWidth = .6f,
+                    dockedX = .2f, oneHandWidth = .65f, floatingWidth = 290f, floatingX = .8f, splitGap = 80f)
+                val expanded = value.frame(720f, 1000f)
+                val minimized = value.frame(720f, 1000f, minimized = true)
+                assertEquals(expanded.left, minimized.left, .01f)
+                assertEquals(expanded.width, minimized.width, .01f)
+                assertEquals(expanded.mode, minimized.mode)
+                assertEquals(49f, minimized.height, .01f)
+            }
+        }
+    }
+
+    @Test fun minimizingDoesNotChangeSavedGeometryOrExpandedPosition() {
+        for (mode in PlacementMode.entries) {
+            val saved = PlacementPreferences(profiles = PlacementProfile.entries.associateWith {
+                KeyboardPlacement(mode = mode, rowHeight = 56f, bottomSpace = 120f,
+                    dockedWidth = .7f, dockedX = .2f, oneHandWidth = .65f, rightHand = false,
+                    floatingWidth = 310f, floatingRowHeight = 40f, floatingX = .8f, floatingY = .15f,
+                    splitGap = 80f)
+            })
+            val encoded = saved.encode()
+            for (profile in PlacementProfile.entries) {
+                val value = saved.get(profile)
+                val expanded = value.frame(720f, 1000f, rows = 5)
+                repeat(3) {
+                    assertEquals(951f, value.frame(720f, 1000f, rows = 5, minimized = true).top, .01f)
+                    assertEquals(expanded, value.frame(720f, 1000f, rows = 5))
+                }
+            }
+            assertEquals(encoded, saved.encode())
+            assertEquals(saved, PlacementPreferences.decode(encoded, 48f))
+        }
+    }
+
+    @Test fun minimizedBarStaysAboveNavigationInsetsAndFitsShortViewports() {
+        for (mode in PlacementMode.entries) {
+            val value = KeyboardPlacement(mode = mode, bottomSpace = 180f, floatingY = 0f)
+            for (navigationInset in listOf(0f, 24f, 48f)) {
+                // The service supplies the usable viewport; Compose adds navigation padding below it.
+                val frame = value.frame(400f, 800f - navigationInset, minimized = true)
+                assertEquals(800f - navigationInset, frame.top + frame.height, .01f)
+                assertEquals(800f, frame.top + frame.height + navigationInset, .01f)
+            }
+            val short = value.frame(400f, 30f, minimized = true)
+            assertEquals(0f, short.top, .01f)
+            assertEquals(30f, short.height, .01f)
+        }
+    }
+
     @Test fun dockedKeyboardResizesFromEitherEdgeWithoutChangingHeight() {
         val p = KeyboardPlacement(dockedWidth = .75f, dockedX = .3f)
         val before = p.frame(720f, 1000f)

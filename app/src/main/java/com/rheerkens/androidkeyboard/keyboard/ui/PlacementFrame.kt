@@ -48,18 +48,19 @@ fun KeyboardRoot(state: KeyboardUiState, clock: () -> Long, actions: KeyboardAct
     val nav = with(density) { WindowInsets.navigationBars.union(WindowInsets.captionBar).getBottom(this).toDp().value }
     val width = state.viewportWidthDp
     val height = state.viewportHeightDp
+    val minimized = state.minimized && !editing && !menu
     val compactHeight = when {
         editing || menu -> null
-        state.minimized -> 49f
         state.mode == InputMode.VOICE && !state.pickerOpen -> 57f
         else -> null
     }
-    val frame = placement.frame(width, height, compactHeight, state.keyRows)
+    val frame = placement.frame(width, height, compactHeight, state.keyRows, minimized = minimized)
     val floating = frame.mode == PlacementMode.FLOATING
+    val floatingHandle = floating && !minimized
     val rail = if (frame.mode == PlacementMode.ONE_HANDED && width - frame.width >= 40f) 44f else 0f
     val leftRail = rail > 0 && placement.rightHand
-    val panelHeight = frame.height - if (floating) 24f else 0f
-    val displayed = state.copy(rowHeightDp = frame.rowHeight.roundToInt(), minimized = state.minimized && !editing && !menu,
+    val panelHeight = frame.height - if (floatingHandle) 24f else 0f
+    val displayed = state.copy(rowHeightDp = frame.rowHeight.roundToInt(), minimized = minimized,
         toolsOpen = menu, placement = placement, splitGapDp = frame.splitGap, contentWidthDp = frame.width)
 
     fun save(value: KeyboardPlacement) { actions.onSavePlacement(state.profile, value); draft = null }
@@ -99,7 +100,7 @@ fun KeyboardRoot(state: KeyboardUiState, clock: () -> Long, actions: KeyboardAct
                             }
                             if (editing) ResizeOverlay(placement, frame, width, height, state.keyRows, { draft = it }, ::save) { editing = false }
                         }
-                        if (floating) {
+                        if (floatingHandle) {
                             PlacementDragTarget("Move floating keyboard", Modifier.fillMaxWidth().height(24.dp).background(colors.background),
                                 placement, { base, delta -> base.move(width, height, delta.x, delta.y, state.keyRows) }, { draft = it }, ::save,
                                 movements = moveActions)
