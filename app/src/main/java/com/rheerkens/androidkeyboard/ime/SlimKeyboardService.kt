@@ -54,6 +54,7 @@ import com.rheerkens.androidkeyboard.keyboard.FanCommand
 import com.rheerkens.androidkeyboard.keyboard.Key
 import com.rheerkens.androidkeyboard.keyboard.KeyboardController
 import com.rheerkens.androidkeyboard.keyboard.Layer
+import com.rheerkens.androidkeyboard.keyboard.EmojiSuggestions
 import com.rheerkens.androidkeyboard.keyboard.Layouts
 import com.rheerkens.androidkeyboard.keyboard.ui.ClipChip
 import com.rheerkens.androidkeyboard.keyboard.ui.DarkKeyboardColors
@@ -187,7 +188,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
 
     /** What an autocorrection depends on: the word, the keyboard (language and layout), and sentence position. */
     /** [lexiconLoad] tells a result computed on a fallback list from one on the full list. */
-    private data class CorrectionKey(val word: String, val keyboard: String, val atSentenceStart: Boolean, val lexiconLoad: Int)
+    private data class CorrectionKey(val word: String, val keyboard: String, val atSentenceStart: Boolean,
+        val lexiconLoad: Int, val languages: List<String>)
     private data class CachedCorrection(val key: CorrectionKey, val fix: String?)
 
     /** Autocorrection computed with the latest suggestions; a cached null is a valid answer. */
@@ -232,6 +234,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                         .supported(paint::hasGlyph)
                 }.getOrElse { EmojiCatalog(emptyList()) }
             }
+            if (inputViewActive && mode.value == InputMode.KEYS) refreshStrip()
         }
         voice = VoiceSessionController(
             scope = scope,
@@ -257,14 +260,18 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         AppGraph.lexiconLoads.drop(1).onEach {
             if (inputViewActive && mode.value == InputMode.KEYS) refreshStrip()
         }.launchIn(scope)
-        combine(settings.settings, AppGraph.languagePacks.state) { s, _ -> AppGraph.currentKeyboard(s).id }
+        combine(settings.settings, AppGraph.languagePacks.state) { s, _ ->
+            val current = AppGraph.currentKeyboard(s)
+            current.id to AppGraph.suggestionLanguages(current, s).map { it.id }
+        }
             .distinctUntilChanged().onEach {
             val current = AppGraph.currentKeyboard()
             if (keyboard.state.value.keyboard.id != current.id) {
                 keyboard.setKeyboard(current)
-                AppGraph.preloadLexicon(current.language)
-                if (inputViewActive && mode.value == InputMode.KEYS) refreshStrip()
             }
+            cachedCorrection = null
+            preloadLanguages()
+            if (inputViewActive && mode.value == InputMode.KEYS) refreshStrip()
         }.launchIn(scope)
         observedActiveId = AppGraph.models.state.value.activeId
         AppGraph.models.state.drop(1).onEach { s ->
@@ -380,6 +387,10 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
 
     override fun onSavePlacement(profile: PlacementProfile, placement: KeyboardPlacement) {
         settings.update { it.copy(placement = it.placement.update(profile) { placement }) }
+    }
+
+    override fun onSetNumberRow(enabled: Boolean) {
+        settings.update { it.copy(numberRow = enabled) }
     }
 
     override fun onPrepareResize() {
@@ -957,6 +968,12 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onSuggestion(suggestion: Suggestion) {
+        if (suggestion.emojiName != null) {
+            if (!inputViewActive || bridge.isSensitiveField || !settings.current.suggestionStrip) return
+            val available = EmojiSuggestions.suggest(bridge.currentWordBeforeCursor(),
+                AppGraph.suggestionLanguages(keyboard.state.value.keyboard).map { it.id }, emojiCatalog.value)
+            if (available != suggestion) return
+        }
         clearNote()
         lastCorrection = null
         markOwnEdit()
@@ -976,6 +993,9 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             bridge.replaceCurrentWord(suggestion.text + " ")
         }
         autoSpaced = true
+        if (suggestion.emojiName != null) {
+            settings.update { it.copy(recentEmoji = EmojiHistory.record(it.recentEmoji, suggestion.text)) }
+        }
         keyboard.setLayer(Layer.LETTERS)
         keyboard.onCharTyped()
         updateShift()
@@ -1074,6 +1094,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onSuggestionLongPress(suggestion: Suggestion) {
+        if (suggestion.emojiName != null) return
         if (dictionary.contains(suggestion.text)) {
             showNote("“${suggestion.text}” is already in your dictionary")
         } else {
@@ -1318,7 +1339,13 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     private fun correctionKey(word: String): CorrectionKey? {
         if (word.isEmpty() || word.lowercase() in rejectedCorrections) return null
         if (!Corrector.isStandaloneWord(bridge.currentTokenBeforeCursor(), word)) return null
-        return CorrectionKey(word, keyboard.state.value.keyboard.id, bridge.wordStartsSentence(word.length), AppGraph.lexiconLoads.value)
+        return suggestionKey(word)
+    }
+
+    private fun suggestionKey(word: String): CorrectionKey {
+        val current = keyboard.state.value.keyboard
+        return CorrectionKey(word, current.id, bridge.wordStartsSentence(word.length), AppGraph.lexiconLoads.value,
+            AppGraph.suggestionLanguages(current).map { it.id })
     }
 
     /** The saved multi-word term to recase before the cursor, unless the user undid it here. */
@@ -1349,7 +1376,10 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         // Removing them here cancels a finger press even if the result is unchanged.
         strip.value = strip.value.copy(typingWord = true)
         val terms = dictionary.state.value.terms
+        val context = suggestionKey(typed)
         val suggester = suggester()
+        val session = inputSession.value
+        val emoji = EmojiSuggestions.suggest(typed, context.languages, emojiCatalog.value)
         val correcting = settings.current.autocorrect && !bridge.isSensitiveField
         // Space recases a saved multi-word term first (see typeSpace); show that in the middle.
         val phrase = if (correcting && typed.isNotEmpty()) savedPhrase(suggester, terms) else null
@@ -1360,10 +1390,10 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             val (ranked, fix) = withContext(Dispatchers.Default) {
                 suggester.suggest(typed, terms) to key?.let { suggester.autocorrection(typed, terms, it.atSentenceStart) }
             }
-            if (bridge.currentWordBeforeCursor() != typed) return@launch
+            if (inputSession.value != session || bridge.currentWordBeforeCursor() != typed || suggestionKey(typed) != context) return@launch
             if (key != null) cachedCorrection = CachedCorrection(key, fix)
             val middle = phrase?.let { Suggestion(it.second, isPersonal = true, replaceChars = it.first) } ?: fix?.let { Suggestion(it) }
-            strip.value = strip.value.copy(slots = Suggester.arrangeForStrip(typed, ranked, middle))
+            strip.value = strip.value.copy(slots = Suggester.arrangeForStrip(typed, ranked, middle, emoji))
         }
     }
 
@@ -1431,15 +1461,9 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
 
     private fun suggester() = AppGraph.suggester(keyboard.state.value.keyboard)
 
-    /**
-     * Loads the current keyboard's word list and the next one in the globe order, so the first
-     * word typed after a switch is already corrected (a list takes a second or more to load).
-     */
+    /** Load exactly the participating languages, within the full-lexicon memory budget. */
     private fun preloadLanguages() {
-        val current = keyboard.state.value.keyboard
-        AppGraph.preloadLexicon(current.language)
-        val order = AppGraph.usableKeyboards()
-        if (order.size > 1) AppGraph.preloadLexicon(order[(order.indexOfFirst { it.id == current.id } + 1) % order.size].language)
+        AppGraph.suggestionLanguages(keyboard.state.value.keyboard).forEach(AppGraph::preloadLexicon)
     }
 
     private fun showVoiceOutcomeNote(outcome: VoiceOutcome.Cancelled) =

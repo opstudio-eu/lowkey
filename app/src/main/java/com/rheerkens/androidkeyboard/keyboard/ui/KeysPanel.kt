@@ -48,6 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import com.rheerkens.androidkeyboard.keyboard.Key
 import com.rheerkens.androidkeyboard.keyboard.KeyboardLayout
 import com.rheerkens.androidkeyboard.keyboard.KeyboardState
@@ -207,7 +208,7 @@ private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardAction
         if (p == null || choices.isEmpty()) null else with(density) {
             AlternatesPopup(
                 count = choices.size, keyLeft = p.left, keyWidth = p.width, keyHeight = p.height, windowWidth = p.window,
-                cellWidth = maxOf(p.width, 32.dp.toPx()), cellHeight = 43.dp.toPx(), slop = 12.dp.toPx(),
+                cellWidth = maxOf(p.width, 40.dp.toPx()), cellHeight = 44.dp.toPx(), slop = 12.dp.toPx(),
             )
         }
     }
@@ -227,6 +228,7 @@ private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardAction
     PressTarget(
         description,
         modifier
+            .zIndex(if (open) 1f else 0f)
             .onGloballyPositioned { coords ->
                 val root = coords.findRootCoordinates()
                 val left = root.localPositionOf(coords, Offset.Zero).x
@@ -251,7 +253,7 @@ private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardAction
         onLongPressMove = popup?.let { p -> { at: Offset -> selected = p.select(at.x, at.y) } },
     ) { pressed ->
         KeyCap(if (pressed) c.keyPressed else c.key) {
-            val hint = key.longPressOutput
+            val hint = key.hint
             Text(
                 label, color = c.keyText, fontSize = 21.sp, maxLines = 1,
                 modifier = if (hint == null) Modifier else Modifier.offset(y = 3.dp),
@@ -265,29 +267,33 @@ private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardAction
         }
         if (pressed && open && popup != null) {
             val shape = RoundedCornerShape(10.dp)
-            Row(
+            Column(
                 Modifier
                     // Popup geometry is relative to the key's top-left corner, not its centre.
                     .align(Alignment.TopStart)
                     .layout { measurable, _ ->
-                        val box = measurable.measure(Constraints.fixed(popup.width.roundToInt(), popup.cellHeight.roundToInt()))
+                        val box = measurable.measure(Constraints.fixed(popup.width.roundToInt(), popup.height.roundToInt()))
                         layout(0, 0) { box.place(popup.left.roundToInt(), popup.top.roundToInt()) }
                     }
                     .shadow(3.dp, shape).background(c.popup, shape).border(1.dp, c.popupBorder, shape)
-                    .padding(3.dp)
                     .semantics { contentDescription = choiceDescription(selected) },
             ) {
-                for (cell in 0 until popup.count) {
-                    val choice = popup.choiceAt(cell)
-                    val on = choice == selected
-                    Box(
-                        Modifier.weight(1f).fillMaxHeight().background(if (on) c.enter else Color.Transparent, RoundedCornerShape(7.dp)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            cased(choices[choice]), color = if (on) c.enterInk else c.keyText, maxLines = 1,
-                            fontSize = if (popup.count == 1) 28.sp else 22.sp, fontWeight = FontWeight.Medium,
-                        )
+                for (row in 0 until popup.rows) {
+                    Row(Modifier.weight(1f).fillMaxWidth()) {
+                        for (column in 0 until popup.columns) {
+                            val choice = popup.choiceAt(column, row)
+                            val on = choice != null && choice == selected
+                            Box(
+                                Modifier.weight(1f).fillMaxHeight().padding(3.dp)
+                                    .background(if (on) c.enter else Color.Transparent, RoundedCornerShape(7.dp)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (choice != null) Text(
+                                    cased(choices[choice]), color = if (on) c.enterInk else c.keyText, maxLines = 1,
+                                    fontSize = if (popup.count == 1) 28.sp else 22.sp, fontWeight = FontWeight.Medium,
+                                )
+                            }
+                        }
                     }
                 }
             }

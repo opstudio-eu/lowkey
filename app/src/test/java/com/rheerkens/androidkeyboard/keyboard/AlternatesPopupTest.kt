@@ -39,31 +39,54 @@ class AlternatesPopupTest {
             cellWidth = 40f, cellHeight = 43f, slop = 10f)
 
     @Test
-    fun leftKeyExtendsRightWithDefaultOverKey() {
+    fun manyAlternatesFormTwoRowsWithTheDefaultAtTheKey() {
         val p = popup(keyIndex = 2, count = 8)
-        assertFalse(p.mirrored)
-        assertEquals(0f, p.left, 0f)
+        assertEquals(4, p.columns)
+        assertEquals(2, p.rows)
+        assertEquals(160f, p.width, 0f)
+        assertEquals(86f, p.height, 0f)
+        assertEquals(-40f, p.left, 0f)
         assertEquals(0, p.select(20f, 25f))
-        assertEquals(1, p.select(60f, -20f))
-        assertEquals(7, p.select(300f, -20f))
+        assertEquals(1, p.select(60f, 20f))
+        assertEquals(4, p.select(20f, -20f))
+        assertEquals(7, p.select(-20f, -20f))
     }
 
     @Test
-    fun rightKeyMirrorsSoDefaultStaysUnderFinger() {
+    fun rightEdgeKeepsDefaultUnderFingerWithoutLeavingTheWindow() {
         val p = popup(keyIndex = 8, count = 8)
-        assertTrue(p.mirrored)
-        assertEquals(-280f, p.left, 0f)
+        assertEquals(-80f, p.left, 0f)
         assertEquals(0, p.select(20f, 25f))
-        assertEquals(1, p.select(-20f, -20f))
-        assertEquals(7, p.select(-270f, -20f))
-        assertEquals(7, p.choiceAt(0))
+        assertEquals(1, p.select(60f, 25f))
+        assertEquals(4, p.select(20f, -20f))
+        assertEquals(2, p.choiceAt(0, 1))
     }
 
     @Test
-    fun popupStaysInsideWindowWhenNeitherSideFits() {
-        val p = popup(keyIndex = 5, count = 8)
-        assertFalse(p.mirrored)
-        assertEquals(400f - 320f - 200f, p.left, 0f)
+    fun popupStaysInsideWindowAcrossTheWholeKeyboard() {
+        for (key in 0..9) {
+            val p = popup(keyIndex = key, count = 9)
+            assertEquals(5, p.columns)
+            assertEquals(2, p.rows)
+            assertTrue(key * 40f + p.left >= 0f)
+            assertTrue(key * 40f + p.left + p.width <= 400f)
+            assertEquals(0, p.select(20f, 25f))
+        }
+    }
+
+    @Test fun aPartialTopRowDoesNotSelectPhantomAccents() {
+        val p = popup(keyIndex = 2, count = 7)
+        assertNull(p.choiceAt(0, 0))
+        assertNull(p.select(-20f, -20f))
+        assertEquals(0, p.select(20f, 20f))
+    }
+
+    @Test fun smallSetsStayOnOneRowAndNarrowWindowsStillFit() {
+        assertEquals(1, popup(keyIndex = 0, count = 3).rows)
+        val narrow = AlternatesPopup(9, 40f, 40f, 50f, 120f, 40f, 43f, 10f)
+        assertEquals(3, narrow.columns)
+        assertEquals(3, narrow.rows)
+        assertEquals(120f, narrow.width, 0f)
     }
 
     @Test
