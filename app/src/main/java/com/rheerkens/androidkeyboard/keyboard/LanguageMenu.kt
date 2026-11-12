@@ -1,5 +1,7 @@
 package com.rheerkens.androidkeyboard.keyboard
 
+import kotlin.math.hypot
+
 /**
  * The emoji key's hold menu of keyboard languages. No Android dependencies; the popup geometry is
  * [AlternatesPopup]'s, so it opens and slides like the accent popup.
@@ -35,10 +37,21 @@ object LanguageMenu {
 
     /**
      * The keyboards to show, and whether a last "More" cell (which opens Settings) replaces the
-     * ones that don't fit in [capacity] cells. The current keyboard always stays.
+     * ones that don't fit in [capacity] cells. The current keyboard always stays, so the menu has
+     * at least two cells (the current keyboard and More) however small [capacity] is.
      */
-    fun fit(choices: List<TypingKeyboard>, capacity: Int): Pair<List<TypingKeyboard>, Boolean> =
-        if (choices.size <= capacity) choices to false else choices.take(maxOf(1, capacity - 1)) to true
+    fun fit(choices: List<TypingKeyboard>, capacity: Int): Pair<List<TypingKeyboard>, Boolean> {
+        val cells = maxOf(2, capacity)
+        return if (choices.size <= cells) choices to false else choices.take(cells - 1) to true
+    }
+
+    /**
+     * Whether a held finger has really slid: more than [slop] from where it was when the menu
+     * opened. Until then the menu keeps the current keyboard selected, even where the key's edge
+     * lies under a neighbouring cell (the popup is clamped to the keyboard's sides).
+     */
+    fun hasMoved(fromX: Float, fromY: Float, x: Float, y: Float, slop: Float): Boolean =
+        hypot(x - fromX, y - fromY) > slop
 
     /** What letting go of the held menu does. */
     enum class Release {

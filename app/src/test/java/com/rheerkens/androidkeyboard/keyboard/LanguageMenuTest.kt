@@ -69,7 +69,17 @@ class LanguageMenuTest {
         val (shown, more) = LanguageMenu.fit(all, 12)
         assertEquals(true, more)
         assertEquals(all.take(11), shown)
-        // The current keyboard (first) always stays, even with a single cell.
+        // The current keyboard (first) always stays: the menu has at least that cell and More.
         assertEquals(all.take(1) to true, LanguageMenu.fit(all, 1))
+        assertEquals(all.take(2) to false, LanguageMenu.fit(all.take(2), 1))
+    }
+
+    @Test fun aStationaryHoldIsNotASlide() {
+        // An off-centre hold near the keyboard's edge rests over a neighbouring cell; only a real
+        // slide beyond the touch slop may select it.
+        assertEquals(false, LanguageMenu.hasMoved(60f, 30f, 60f, 30f, 8f))
+        assertEquals(false, LanguageMenu.hasMoved(60f, 30f, 65f, 34f, 8f))
+        assertEquals(true, LanguageMenu.hasMoved(60f, 30f, 70f, 30f, 8f))
+        assertEquals(LanguageMenu.Release.KEEP_OPEN, LanguageMenu.release(selected = 0, moved = false))
     }
 }

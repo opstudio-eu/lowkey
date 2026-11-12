@@ -14,6 +14,7 @@ import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.unit.Constraints
 import com.rheerkens.androidkeyboard.keyboard.AlternatesPopup
 import com.rheerkens.androidkeyboard.keyboard.LanguageMenu
@@ -206,6 +207,7 @@ private fun EmojiKey(key: Key.Emoji, state: KeyboardState, actions: KeyboardActi
     val choices = remember(menus.keyboards, state.keyboard) { LanguageMenu.choices(menus.keyboards, state.keyboard) }
     val switches = menu != null && choices.size > 1
     val holder = remember { EmojiKeyHolder() }
+    val touchSlop = LocalViewConfiguration.current.touchSlop
     // Read at the moment of the long-press: the gesture callbacks below can outlive this composition.
     val latestChoices = rememberUpdatedState(choices)
     fun open() {
@@ -230,6 +232,7 @@ private fun EmojiKey(key: Key.Emoji, state: KeyboardState, actions: KeyboardActi
             cellWidth = cellWidth, cellHeight = cellHeight, slop = with(density) { 12.dp.toPx() },
         )
         holder.moved = false
+        holder.origin = null
         menu.open = OpenLanguageMenu(shown, popup, at.x, at.y, selected = 0, sticky = false, more = more)
     }
     fun release() {
@@ -258,9 +261,14 @@ private fun EmojiKey(key: Key.Emoji, state: KeyboardState, actions: KeyboardActi
         onLongPressState = { held -> if (!held) menu?.let { if (it.open?.sticky == false) it.close() } },
         onLongPressMove = if (switches && menu != null) { at: Offset ->
             menu.open?.takeIf { !it.sticky }?.let { open ->
-                val selected = open.popup.select(at.x, at.y)
-                if (selected != 0) holder.moved = true
-                if (selected != open.selected) menu.open = open.copy(selected = selected)
+                // The first position after the menu opens is where the finger rests; a release
+                // there keeps the menu open even if that spot lies over a neighbouring cell.
+                val origin = holder.origin ?: at.also { holder.origin = it }
+                if (holder.moved || LanguageMenu.hasMoved(origin.x, origin.y, at.x, at.y, touchSlop)) {
+                    holder.moved = true
+                    val selected = open.popup.select(at.x, at.y)
+                    if (selected != open.selected) menu.open = open.copy(selected = selected)
+                }
             }
         } else null,
     ) { pressed ->
@@ -283,6 +291,8 @@ private fun EmojiKey(key: Key.Emoji, state: KeyboardState, actions: KeyboardActi
 private class EmojiKeyHolder {
     var coords: LayoutCoordinates? = null
     var moved = false
+    /** Where the finger was when the held menu first reported it. */
+    var origin: Offset? = null
 }
 
 /** Key size and left edge in the window, in pixels. */
