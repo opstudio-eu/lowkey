@@ -1,5 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
+        <activity android:name="com.rheerkens.androidkeyboard.test.LatencyFixtureActivity"
+            android:exported="true" android:theme="@android:style/Theme.Material.Light.NoActionBar"
+            android:windowSoftInputMode="adjustResize" />
         <!-- Test-only editor in a separate app UID, for real clipboard URI/IME integration. -->
         <activity android:name="com.rheerkens.androidkeyboard.test.ClipboardFixtureActivity"
             android:exported="true" android:theme="@android:style/Theme.Material.Light.NoActionBar"

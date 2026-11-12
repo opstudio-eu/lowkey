@@ -212,6 +212,8 @@ class EditorBridge(private val connection: () -> InputConnection?) {
 
     fun textBeforeCursor(n: Int): String = ic?.getTextBeforeCursor(n, 0)?.toString().orEmpty()
 
+    fun readContext(): EditorContext = EditorContext(textBeforeCursor(EditorContext.LIMIT))
+
     /** The partial word directly before the cursor (letters, digits, `_` and `'`). */
     fun currentWordBeforeCursor(): String {
         val before = textBeforeCursor(MAX_WORD)

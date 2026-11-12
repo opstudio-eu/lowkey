@@ -97,6 +97,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
 import com.rheerkens.androidkeyboard.keyboard.KeyboardPlacement
 import com.rheerkens.androidkeyboard.keyboard.EmojiCatalog
 import com.rheerkens.androidkeyboard.keyboard.EmojiHistory
@@ -158,6 +159,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     private var resizeOnOpen = false
     private var lastOwnEditAt = 0L
     private var stripJob: Job? = null
+    private var stripGeneration = 0L
+    private var stripRequest: StripRequest? = null
     private lateinit var clipboardManager: ClipboardManager
     private lateinit var clipboardReader: ClipboardReader
     private var clipboardJob: Job? = null
@@ -196,8 +199,10 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     /** What an autocorrection depends on: the word, the keyboard (language and layout), and sentence position. */
     /** [lexiconLoad] tells a result computed on a fallback list from one on the full list. */
     private data class CorrectionKey(val word: String, val keyboard: String, val atSentenceStart: Boolean,
-        val lexiconLoad: Int, val languages: List<String>)
+        val lexiconLoad: Int, val languages: List<String>, val terms: List<PersonalTerm>)
     private data class CachedCorrection(val key: CorrectionKey, val fix: String?)
+    private data class StripRequest(val context: CorrectionKey, val before: String,
+        val correcting: Boolean, val enabled: Boolean, val catalog: EmojiCatalog?, val session: Int)
 
     /** Autocorrection computed with the latest suggestions; a cached null is a valid answer. */
     private var cachedCorrection: CachedCorrection? = null
@@ -331,6 +336,9 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                     if (image != null && custom != null) KeyboardBackgroundImage(image.bitmap, custom.dim) else null
                 }
                 val (viewportWidth, viewportHeight) = placementViewport()
+                val layout = remember(kb.layer, kb.keyboard, s.numberRow, s.bottomKey) {
+                    Layouts.forLayer(kb.layer, kb.keyboard, s.numberRow, s.bottomKey)
+                }
                 val profile = PlacementProfile.forSize(viewportWidth, viewportHeight)
                 val placement = s.placement.get(profile)
                 val floating = placement.mode == PlacementMode.FLOATING
@@ -349,7 +357,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                     KeyboardUiState(
                         mode = m,
                         keyboard = kb,
-                        layout = Layouts.forLayer(kb.layer, kb.keyboard, s.numberRow, s.bottomKey),
+                        layout = layout,
                         strip = st.copy(enabled = s.suggestionStrip && !sensitive),
                         voice = vs,
                         models = models,
@@ -623,7 +631,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         onLayoutBackHandler(null)
         inputViewActive = false
         clipboardJob?.cancel()
-        stripJob?.cancel()
+        invalidateStrip()
         strip.value = strip.value.copy(clipboard = null, slots = listOf(null, null, null))
         // Hiding the keyboard or moving to another editor cancels any capture.
         voice.cancel(if (finishingInput) CancelReason.EDITOR_CHANGED else CancelReason.KEYBOARD_HIDDEN)
@@ -1366,21 +1374,24 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         val s = settings.current
         if (s.autocorrect && !bridge.isSensitiveField) {
             val terms = dictionary.state.value.terms
-            val phrase = savedPhrase(suggester(), terms)
-            val word = bridge.currentWordBeforeCursor()
-            val key = correctionKey(word)
+            val snapshot = bridge.readContext()
+            val phrase = savedPhrase(suggester(), terms, snapshot.before)
+            val word = snapshot.word
+            val key = correctionKey(snapshot, suggestionKey(snapshot))
             val fix = when {
                 phrase != null || key == null -> null
                 cachedCorrection?.key == key -> cachedCorrection?.fix
-                else -> suggester().autocorrection(word, terms, key.atSentenceStart)
+                // A fast Space must not run a dictionary scan on the input thread. On a
+                // cache miss keep the literal word; never correct it after later edits.
+                else -> null
             }
             var applied: Pair<String, String>? = null
             if (phrase != null) {
-                val original = bridge.textBeforeCursor(phrase.first)
+                val original = snapshot.before.takeLast(phrase.first)
                 bridge.replaceBeforeCursor(phrase.first, phrase.second)
                 applied = original to phrase.second
             } else if (fix != null) {
-                bridge.replaceCurrentWord(fix)
+                bridge.replaceBeforeCursor(word.length, fix)
                 applied = word to fix
             }
             bridge.commitText(separator)
@@ -1400,22 +1411,24 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
      * The key to autocorrect the word before the cursor, or null when it must be left alone:
      * nothing typed, a word the user un-corrected, or part of a URL, email, path, or hashtag.
      */
-    private fun correctionKey(word: String): CorrectionKey? {
+    private fun correctionKey(snapshot: EditorContext, context: CorrectionKey): CorrectionKey? {
+        val word = snapshot.word
         if (word.isEmpty() || word.lowercase() in rejectedCorrections) return null
-        if (!Corrector.isStandaloneWord(bridge.currentTokenBeforeCursor(), word)) return null
-        return suggestionKey(word)
+        if (!Corrector.isStandaloneWord(snapshot.token, word)) return null
+        return context
     }
 
-    private fun suggestionKey(word: String): CorrectionKey {
+    private fun suggestionKey(snapshot: EditorContext): CorrectionKey {
         val current = keyboard.state.value.keyboard
-        return CorrectionKey(word, current.id, bridge.wordStartsSentence(word.length), AppGraph.lexiconLoads.value,
-            AppGraph.suggestionLanguages(current).map { it.id })
+        return CorrectionKey(snapshot.word, current.id, snapshot.wordStartsSentence, AppGraph.lexiconLoads.value,
+            AppGraph.suggestionLanguages(current).map { it.id }, dictionary.state.value.terms)
     }
 
     /** The saved multi-word term to recase before the cursor, unless the user undid it here. */
-    private fun savedPhrase(suggester: Suggester, terms: List<PersonalTerm>): Pair<Int, String>? =
-        suggester.protectedPhrase(bridge.textBeforeCursor(MAX_TERM_CHARS), terms)
-            ?.takeIf { bridge.textBeforeCursor(it.first).lowercase() !in rejectedCorrections }
+    private fun savedPhrase(suggester: Suggester, terms: List<PersonalTerm>,
+        before: String = bridge.textBeforeCursor(MAX_TERM_CHARS)): Pair<Int, String>? =
+        suggester.protectedPhrase(before.takeLast(MAX_TERM_CHARS), terms)
+            ?.takeIf { before.takeLast(it.first).lowercase() !in rejectedCorrections }
 
     private fun updateShift() {
         keyboard.setAutoShift(settings.current.autoCapitalize && bridge.capsModeAtCursor())
@@ -1424,9 +1437,10 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     /** Recomputes suggestion slots. Notes stay until they expire or the user types. */
     private fun refreshStrip() {
         if (mode.value != InputMode.KEYS || isMinimized()) return
-        val typed = bridge.currentWordBeforeCursor()
-        stripJob?.cancel()
+        val snapshot = bridge.readContext()
+        val typed = snapshot.word
         if (typed.isEmpty() || bridge.isSensitiveField) {
+            invalidateStrip()
             cachedCorrection = null
             val image = strip.value.clipboard as? ClipboardContent.Image
             strip.value = strip.value.copy(
@@ -1436,26 +1450,37 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             )
             return
         }
+        val context = suggestionKey(snapshot)
+        val correcting = settings.current.autocorrect && !bridge.isSensitiveField
+        val request = StripRequest(context, snapshot.before, correcting, settings.current.suggestionStrip,
+            emojiCatalog.value, inputSession.value)
+        // The editor's selection echo usually reports the exact request already in flight.
+        if (stripRequest == request) return
+        invalidateStrip()
+        stripRequest = request
+        val generation = stripGeneration
         // Hide the clipboard immediately, but keep word chips mounted while recomputing.
         // Removing them here cancels a finger press even if the result is unchanged.
         strip.value = strip.value.copy(typingWord = true)
         val terms = dictionary.state.value.terms
-        val context = suggestionKey(typed)
         val suggester = suggester()
         val session = inputSession.value
         val emoji = EmojiSuggestions.suggest(typed, context.languages, emojiCatalog.value)
-        val correcting = settings.current.autocorrect && !bridge.isSensitiveField
         // Space recases a saved multi-word term first (see typeSpace); show that in the middle.
-        val phrase = if (correcting && typed.isNotEmpty()) savedPhrase(suggester, terms) else null
-        val key = if (correcting && phrase == null) correctionKey(typed) else null
+        val phrase = if (correcting) savedPhrase(suggester, terms, snapshot.before) else null
+        val key = if (correcting && phrase == null) correctionKey(snapshot, context) else null
         // Spelling search over the word list takes tens of milliseconds on a phone: run it off
         // the main thread, keep only the latest result, and cache the Space-bar autocorrection.
         stripJob = scope.launch {
-            val (ranked, fix) = withContext(Dispatchers.Default) {
-                suggester.suggest(typed, terms) to key?.let { suggester.autocorrection(typed, terms, it.atSentenceStart) }
+            val fix = withContext(Dispatchers.Default) {
+                key?.let { suggester.autocorrection(typed, terms, it.atSentenceStart) { ensureActive() } }
             }
-            if (inputSession.value != session || bridge.currentWordBeforeCursor() != typed || suggestionKey(typed) != context) return@launch
+            if (inputSession.value != session || stripGeneration != generation) return@launch
             if (key != null) cachedCorrection = CachedCorrection(key, fix)
+            val ranked = withContext(Dispatchers.Default) {
+                if (request.enabled) suggester.suggest(typed, terms, checkActive = { ensureActive() }) else emptyList()
+            }
+            if (inputSession.value != session || stripGeneration != generation) return@launch
             val middle = phrase?.let { Suggestion(it.second, isPersonal = true, replaceChars = it.first) } ?: fix?.let { Suggestion(it) }
             strip.value = strip.value.copy(slots = Suggester.arrangeForStrip(typed, ranked, middle, emoji))
         }
@@ -1548,6 +1573,14 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
 
     private fun markOwnEdit() {
         lastOwnEditAt = SystemClock.uptimeMillis()
+        invalidateStrip()
+    }
+
+    private fun invalidateStrip() {
+        stripGeneration++
+        stripRequest = null
+        stripJob?.cancel()
+        stripJob = null
     }
 
     private fun setMode(m: InputMode) {

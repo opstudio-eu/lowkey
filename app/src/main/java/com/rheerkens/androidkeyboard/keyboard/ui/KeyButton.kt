@@ -31,8 +31,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CoroutineStart
+import com.rheerkens.androidkeyboard.keyboard.KeyRollover
 
-private class KeyTouch(var active: Boolean = true, var long: Boolean = false, var job: Job? = null, var at: Offset = Offset.Zero)
+private class KeyTouch(var active: Boolean = true, var long: Boolean = false, var job: Job? = null,
+    var at: Offset = Offset.Zero, var committed: Boolean = false)
 
 /**
  * A touch target with press feedback. Supports tap, long-press, and auto-repeat while held.
@@ -40,12 +42,15 @@ private class KeyTouch(var active: Boolean = true, var long: Boolean = false, va
  * [onDown] fires immediately on touch (used for haptics). [onRepeat] fires once on touch, then
  * repeats after a short delay until release (backspace). With [onLongPressMove], a finger that
  * has long-pressed keeps its press while it slides off the key and reports each position.
+ * With [rollover], touching the next typing key accepts a pending tap before its hold timer;
+ * hold until the popup opens first when combining an accent gesture with another finger.
  */
 @Composable
 fun PressTarget(
     description: String,
     modifier: Modifier = Modifier,
     gestureKey: Any? = Unit,
+    rollover: KeyRollover? = null,
     onDown: () -> Unit = {},
     onTap: (() -> Unit)? = null,
     onLongPress: (() -> Unit)? = null,
@@ -77,7 +82,7 @@ fun PressTarget(
                 // A semantic long-click is a whole hold: start it, then release with its default choice.
                 if (hasLong) onLongClick { longPress?.invoke(); longRelease?.invoke(); true }
             }
-            .pointerInput(gestureKey, hasTap, hasLong) {
+            .pointerInput(gestureKey, hasTap, hasLong, rollover) {
                 coroutineScope {
                     val gestureScope = this
                     val touches = mutableMapOf<PointerId, KeyTouch>()
@@ -101,6 +106,11 @@ fun PressTarget(
                                         down()
                                         feedback()
                                         val owned = touch
+                                        rollover?.press(owned) {
+                                            owned.committed = true
+                                            owned.job?.cancel()
+                                            tap?.invoke()
+                                        }
                                         val r = repeat
                                         if (r != null || hasLong) {
                                             touch.job = gestureScope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -110,7 +120,8 @@ fun PressTarget(
                                                     while (owned.active) { repeat?.invoke(); delay(REPEAT_INTERVAL_MS) }
                                                 } else {
                                                     delay(viewConfiguration.longPressTimeoutMillis)
-                                                    if (owned.active) {
+                                                    if (owned.active && !owned.committed) {
+                                                        rollover?.cancel(owned)
                                                         owned.long = true
                                                         feedback()
                                                         longAt(owned.at)
@@ -128,13 +139,16 @@ fun PressTarget(
                                         longMove?.invoke(change.position)
                                     } else if (change.isConsumed || !inside(change.position.x, change.position.y, viewConfiguration.touchSlop)) {
                                         touch.active = false
+                                        rollover?.cancel(touch)
                                         touch.job?.cancel()
                                     }
                                     if (!change.pressed) {
                                         touches.remove(change.id)
                                         touch.job?.cancel()
                                         if (touch.active) {
-                                            if (touch.long) longRelease?.invoke() else if (repeat == null) tap?.invoke()
+                                            if (touch.long) longRelease?.invoke()
+                                            else if (rollover != null) rollover.release(touch)
+                                            else if (repeat == null) tap?.invoke()
                                         }
                                         change.consume()
                                     } else if (touch.active) {
@@ -145,7 +159,7 @@ fun PressTarget(
                             }
                         }
                     } finally {
-                        touches.values.forEach { it.job?.cancel() }
+                        touches.values.forEach { it.job?.cancel(); rollover?.cancel(it) }
                         touches.clear()
                         feedback()
                     }

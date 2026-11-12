@@ -25,7 +25,10 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
     constructor(words: List<String>) : this(constant(Lexicon.fromWords(words)))
 
     /** Ranked candidates for [typed], best first. Empty [typed] returns newest personal terms. */
-    fun suggest(typed: String, terms: List<PersonalTerm>, limit: Int = 3): List<Suggestion> {
+    @JvmOverloads
+    fun suggest(typed: String, terms: List<PersonalTerm>, limit: Int = 3,
+        checkActive: () -> Unit = {}): List<Suggestion> {
+        checkActive()
         val newestFirst = terms.sortedByDescending { it.addedAt }
         if (typed.isEmpty()) {
             return newestFirst.take(limit).map { Suggestion(it.text, isPersonal = true) }
@@ -52,7 +55,8 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
         val completions = interleave(lexicons.map { lex -> lex.completions(typed, limit * 2).map { it.first } })
         val corrections = if (Corrector.looksLikeAWord(typed) && lexicons.none { it.contains(typed) }) {
             interleave(lexicons.map { lex ->
-                listOfNotNull(lex.whitelist[lower]) + Corrector.corrections(typed, lex, limit, keys).map { it.word }
+                checkActive()
+                listOfNotNull(lex.whitelist[lower]) + Corrector.corrections(typed, lex, limit, keys, checkActive).map { it.word }
             })
         } else emptyList()
         // 4. If the letters start real words, complete them first ("Kot" → "Kotlin"); otherwise
@@ -73,7 +77,10 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
      * 3. A close match to a single-word saved term (`kotln` → `Kotlin`).
      * 4. The dictionary corrector (`teh` → `the`, `dont` → `don't`), conservative by design.
      */
-    fun autocorrection(word: String, terms: List<PersonalTerm>, atSentenceStart: Boolean = true): String? {
+    @JvmOverloads
+    fun autocorrection(word: String, terms: List<PersonalTerm>, atSentenceStart: Boolean = true,
+        checkActive: () -> Unit = {}): String? {
+        checkActive()
         if (terms.any { it.text == word }) return null
         terms.firstOrNull { it.text.equals(word, ignoreCase = true) }?.let { return it.text }
         // Missing words in a temporary fallback list must not look like foreign-language typos.
@@ -89,11 +96,12 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
                 .minByOrNull { it.second }
                 ?.let { return it.first }
         }
-        val primaryFix = Corrector.autocorrect(word, lex, atSentenceStart, keys)
+        val primaryFix = Corrector.autocorrect(word, lex, atSentenceStart, keys, checkActive)
         // Preserve language-specific casing/accent rules for known words in the active language.
         if (lex.contains(word)) return primaryFix
         val fixes = (listOfNotNull(primaryFix) + secondary.mapNotNull {
-            Corrector.autocorrect(word, it, atSentenceStart, keys)
+            checkActive()
+            Corrector.autocorrect(word, it, atSentenceStart, keys, checkActive)
         }).distinct()
         return fixes.singleOrNull()
     }

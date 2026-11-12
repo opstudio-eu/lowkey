@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.rheerkens.androidkeyboard.keyboard.Key
+import com.rheerkens.androidkeyboard.keyboard.KeyRollover
 import com.rheerkens.androidkeyboard.keyboard.KeyboardLayout
 import com.rheerkens.androidkeyboard.keyboard.KeyboardState
 import com.rheerkens.androidkeyboard.keyboard.Layer
@@ -77,6 +78,7 @@ fun KeysPanel(
     languageMenu: LanguageMenuState? = null,
 ) {
     val menu = KeyMenus(keyboards, languageMenu)
+    val rollover = remember(state.keyboard, state.layer) { KeyRollover() }
     val rowHeight = (rowHeightDp * keyRows.toFloat() / layout.rows.size).dp
     if (splitGapDp > 0f) {
         val rows = remember(layout, state.keyboard, state.layer) { splitRows(layout, state.keyboard, state.layer) }
@@ -89,12 +91,12 @@ fun KeysPanel(
                         if (row.fullWidth) {
                             row.left.forEach { key ->
                                 val width = if (key is Key.Space) Modifier.weight(1f) else Modifier.width(unit * key.weight)
-                                KeyView(key, state, enterKind, actions, menu, width.fillMaxHeight())
+                                KeyView(key, state, enterKind, actions, menu, width.fillMaxHeight(), rollover)
                             }
                         } else {
-                            row.left.forEach { key -> KeyView(key, state, enterKind, actions, menu, Modifier.width(unit * key.weight).fillMaxHeight()) }
+                            row.left.forEach { key -> KeyView(key, state, enterKind, actions, menu, Modifier.width(unit * key.weight).fillMaxHeight(), rollover) }
                             Spacer(Modifier.weight(1f))
-                            row.right.forEach { key -> KeyView(key, state, enterKind, actions, menu, Modifier.width(unit * key.weight).fillMaxHeight()) }
+                            row.right.forEach { key -> KeyView(key, state, enterKind, actions, menu, Modifier.width(unit * key.weight).fillMaxHeight(), rollover) }
                         }
                     }
                 }
@@ -105,7 +107,7 @@ fun KeysPanel(
     Column(Modifier.fillMaxWidth().padding(start = 3.dp, end = 3.dp, bottom = 4.dp)) {
         layout.rows.forEach { row ->
             Row(Modifier.fillMaxWidth().height(rowHeight)) {
-                row.forEach { key -> KeyView(key, state, enterKind, actions, menu, Modifier.weight(key.weight).fillMaxHeight()) }
+                row.forEach { key -> KeyView(key, state, enterKind, actions, menu, Modifier.weight(key.weight).fillMaxHeight(), rollover) }
             }
         }
     }
@@ -119,11 +121,12 @@ private fun KeyView(
     actions: KeyboardActions,
     menu: KeyMenus,
     modifier: Modifier,
+    rollover: KeyRollover,
 ) {
     val c = LocalKeyboardColors.current
     when (key) {
         is Key.Gap -> Spacer(modifier)
-        is Key.Char -> CharKey(key, state, actions, modifier)
+        is Key.Char -> CharKey(key, state, actions, modifier, rollover)
         is Key.Shift -> {
             val on = state.shift != ShiftState.OFF
             val desc = when (state.shift) {
@@ -171,6 +174,7 @@ private fun KeyView(
         }
         is Key.Space -> PressTarget(
             "Space, ${state.keyboard.fullLabel}. Long-press to switch keyboard app", modifier, gestureKey = key,
+            rollover = rollover,
             onDown = actions::onKeyDown, onTap = { actions.onKey(key) }, onLongPress = actions::onSpaceLongPress,
         ) { pressed ->
             KeyCap(if (pressed) c.keyPressed else c.key) {
@@ -179,6 +183,7 @@ private fun KeyView(
         }
         is Key.Enter -> PressTarget(
             enterKind.label ?: "Enter, new line", modifier, gestureKey = key, onDown = actions::onKeyDown, onTap = { actions.onKey(key) },
+            rollover = rollover,
         ) { pressed ->
             KeyCap(if (pressed) c.enterPressed else c.enter) {
                 val label = enterKind.label
@@ -301,7 +306,7 @@ private data class KeyPlacement(val left: Float, val width: Float, val height: F
  * release to type. Sliding away from the popup and key cancels.
  */
 @Composable
-private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardActions, modifier: Modifier) {
+private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardActions, modifier: Modifier, rollover: KeyRollover) {
     val c = LocalKeyboardColors.current
     val density = LocalDensity.current
     val shifted = state.layer == Layer.LETTERS && state.shift != ShiftState.OFF
@@ -349,7 +354,7 @@ private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardAction
                     }
                 }
             },
-        gestureKey = key, onDown = actions::onKeyDown,
+        gestureKey = key, rollover = rollover, onDown = actions::onKeyDown,
         onTap = { actions.onKey(key) },
         onLongPress = when {
             key.opensEmojiOnHold -> ({ actions.onKey(Key.Emoji()) })

@@ -96,7 +96,9 @@ object Corrector {
     }
 
     /** Ranked corrections for [typed] (lowercase compared), best first. */
-    fun corrections(typed: String, lexicon: Lexicon, limit: Int = 3, keys: KeyGrid = KeyGrid.QWERTY): List<Correction> {
+    fun corrections(typed: String, lexicon: Lexicon, limit: Int = 3, keys: KeyGrid = KeyGrid.QWERTY,
+        checkActive: () -> Unit = {}): List<Correction> {
+        checkActive()
         val t = typed.lowercase()
         val max = maxDistance(t.length)
         if (max <= 0.0) return emptyList()
@@ -108,6 +110,7 @@ object Corrector {
         val folded = folding.fold(t)
         lexicon.forEachCandidate(
             (t.length - span).coerceAtLeast(1)..t.length + span,
+            checkActive = checkActive,
             accept = { it != t && plausibleStart(folded, it, keys, folding) },
         ) { word, lower, freq ->
             val d = distance(t, lower, max, rows, keys, folding)
@@ -146,7 +149,9 @@ object Corrector {
      * Conservative: known words, short words, and code-like tokens (digits, underscores, inner
      * capitals such as `ViewModel`) are never corrected.
      */
-    fun autocorrect(typed: String, lexicon: Lexicon, atSentenceStart: Boolean = true, keys: KeyGrid = KeyGrid.QWERTY): String? {
+    fun autocorrect(typed: String, lexicon: Lexicon, atSentenceStart: Boolean = true, keys: KeyGrid = KeyGrid.QWERTY,
+        checkActive: () -> Unit = {}): String? {
+        checkActive()
         if (!looksLikeAWord(typed)) return null
         // A capitalized word mid-sentence is most likely a name ("Meet Mira"): leave it.
         if (typed[0].isUpperCase() && !atSentenceStart) return null
@@ -170,7 +175,7 @@ object Corrector {
         }
         if (lexicon.contains(typed) || typed.length <= 2) return null
         // Never turn a lowercase word into a capitalized name ("lol" → "Lil"), except where nouns are capitalized.
-        val ranked = corrections(typed, lexicon, 3, keys).filter { nouns || typed[0].isUpperCase() || !it.word[0].isUpperCase() }
+        val ranked = corrections(typed, lexicon, 3, keys, checkActive).filter { nouns || typed[0].isUpperCase() || !it.word[0].isUpperCase() }
         val best = ranked.firstOrNull() ?: return null
         val second = ranked.getOrNull(1)
         if (lexicon.frequency(best.word)?.let { it < MIN_TARGET_FREQUENCY } == true) return null
