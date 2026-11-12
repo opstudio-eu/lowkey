@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import com.rheerkens.androidkeyboard.keyboard.KeyboardLayout
 import com.rheerkens.androidkeyboard.keyboard.KeyboardState
@@ -94,7 +95,9 @@ internal fun KeyboardContent(state: KeyboardUiState, clock: () -> Long, actions:
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .background(colors.background),
+                    .background(colors.background)
+                    // While the language menu waits for a tap, only the menu is reachable with TalkBack.
+                    .then(if (languageMenu.open?.sticky == true) Modifier.clearAndSetSemantics {} else Modifier),
             ) {
                 Box(Modifier.fillMaxWidth().height(1.dp).background(colors.divider))
                 if (state.minimized) {

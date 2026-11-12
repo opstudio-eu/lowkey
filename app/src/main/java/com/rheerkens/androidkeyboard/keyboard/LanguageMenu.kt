@@ -16,6 +16,12 @@ object LanguageMenu {
         return keyboards.drop(i) + keyboards.take(i)
     }
 
+    /** Rows of the menu's grid, as [AlternatesPopup] lays out [count] cells (at most five per row). */
+    fun rows(count: Int, windowWidth: Float, cellWidth: Float): Int {
+        val columns = minOf(5, (windowWidth / cellWidth.coerceAtMost(windowWidth)).toInt().coerceAtLeast(1))
+        return (count + columns - 1) / columns
+    }
+
     /** What letting go of the held menu does. */
     enum class Release {
         /** The finger never left the current keyboard's cell: keep the menu open to tap a choice. */

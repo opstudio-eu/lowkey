@@ -11,12 +11,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -29,12 +30,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.dismiss
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rheerkens.androidkeyboard.keyboard.AlternatesPopup
@@ -76,22 +81,34 @@ class LanguageMenuState {
 @Composable
 fun BoxScope.LanguageMenuOverlay(state: LanguageMenuState, actions: KeyboardActions) {
     val menu = state.open ?: return
+    // The cells are placed in physical pixels, like the gesture geometry, also for right-to-left locales.
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { MenuContent(menu, state, actions) }
+}
+
+@Composable
+private fun BoxScope.MenuContent(menu: OpenLanguageMenu, state: LanguageMenuState, actions: KeyboardActions) {
     val c = LocalKeyboardColors.current
     val density = LocalDensity.current
     val popup = menu.popup
     if (menu.sticky) {
         DisposableEffect(state, actions) {
-            actions.onLayoutBackHandler { state.close(); true }
-            onDispose { actions.onLayoutBackHandler(null) }
+            actions.onMenuBackHandler { state.close(); true }
+            onDispose { actions.onMenuBackHandler(null) }
         }
         // Catches the next touch outside the menu: it only closes the menu, so it types nothing.
+        // The keys under it are hidden from accessibility meanwhile (see KeyboardContent).
         Box(
-            Modifier.matchParentSize().pointerInput(state) {
-                awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false).consume()
-                    state.close()
+            Modifier.matchParentSize()
+                .pointerInput(state) {
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false).consume()
+                        state.close()
+                    }
                 }
-            },
+                .semantics {
+                    contentDescription = "Close keyboard languages"
+                    onClick { state.close(); true }
+                },
         )
     }
     val shape = RoundedCornerShape(10.dp)
@@ -99,11 +116,12 @@ fun BoxScope.LanguageMenuOverlay(state: LanguageMenuState, actions: KeyboardActi
         choice?.let { "Switch to ${menu.choices[it].fullLabel}" } ?: "Slide back to choose a language"
     Column(
         Modifier
-            .offset { IntOffset((menu.keyLeft + popup.left).roundToInt(), (menu.keyTop + popup.top).roundToInt()) }
-            .size(with(density) { popup.width.toDp() }, with(density) { popup.height.toDp() })
+            .absoluteOffset { IntOffset((menu.keyLeft + popup.left).roundToInt(), (menu.keyTop + popup.top).roundToInt()) }
+            .requiredSize(with(density) { popup.width.toDp() }, with(density) { popup.height.toDp() })
             .shadow(3.dp, shape).background(c.popup, shape).border(1.dp, c.popupBorder, shape)
             .semantics {
                 paneTitle = "Keyboard languages"
+                dismiss { state.close(); true }
                 if (!menu.sticky) contentDescription = describe(menu.selected)
             },
     ) {

@@ -59,6 +59,8 @@ interface KeyboardActions {
     fun onSavePlacement(profile: com.rheerkens.androidkeyboard.keyboard.PlacementProfile, placement: com.rheerkens.androidkeyboard.keyboard.KeyboardPlacement) {}
     fun onPlacementBounds(left: Int, top: Int, right: Int, bottom: Int, floating: Boolean) {}
     fun onLayoutBackHandler(handler: (() -> Boolean)?) {}
+    /** Back for an open menu above the keys (the emoji key's languages), ahead of the layout's handler. */
+    fun onMenuBackHandler(handler: (() -> Boolean)?) {}
     fun onPrepareResize() {}
     fun onKeyDown()
     fun onKey(key: Key)

@@ -215,10 +215,15 @@ private fun EmojiKey(key: Key.Emoji, state: KeyboardState, actions: KeyboardActi
         val coords = holder.coords?.takeIf { it.isAttached && host.isAttached } ?: return
         val at = host.localPositionOf(coords, Offset.Zero)
         val popup = with(density) {
+            val windowWidth = host.size.width.toFloat()
+            val cellWidth = maxOf(coords.size.width.toFloat(), 64.dp.toPx()).coerceAtMost(windowWidth)
+            // Many keyboards make several rows; they shrink to stay inside the keyboard above the key.
+            val rows = LanguageMenu.rows(choices.size, windowWidth, cellWidth)
+            val cellHeight = if (rows > 1) minOf(52.dp.toPx(), at.y / (rows - 1)).coerceAtLeast(1f) else 52.dp.toPx()
             AlternatesPopup(
                 count = choices.size, keyLeft = at.x, keyWidth = coords.size.width.toFloat(),
-                keyHeight = coords.size.height.toFloat(), windowWidth = host.size.width.toFloat(),
-                cellWidth = maxOf(coords.size.width.toFloat(), 64.dp.toPx()), cellHeight = 52.dp.toPx(), slop = 12.dp.toPx(),
+                keyHeight = coords.size.height.toFloat(), windowWidth = windowWidth,
+                cellWidth = cellWidth, cellHeight = cellHeight, slop = 12.dp.toPx(),
             )
         }
         holder.moved = false

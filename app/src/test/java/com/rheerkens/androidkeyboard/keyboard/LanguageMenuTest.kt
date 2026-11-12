@@ -36,4 +36,21 @@ class LanguageMenuTest {
         assertEquals("EN", LanguageMenu.code(enDvorak))
         assertEquals(KeyArrangement.DVORAK.label, LanguageMenu.caption(enDvorak))
     }
+
+    @Test fun rowsMatchTheAlternatesPopupGrid() {
+        for (count in 1..21) for ((window, cell) in listOf(1080f to 168f, 360f to 64f, 100f to 64f, 50f to 64f)) {
+            val popup = AlternatesPopup(count, 0f, 40f, 48f, window, cell, 52f, 12f)
+            assertEquals("count $count, window $window", popup.rows, LanguageMenu.rows(count, window, cell))
+        }
+    }
+
+    @Test fun shrunkenRowsStayInsideTheKeyboardAboveTheKey() {
+        // 21 keyboards on a 360 dp keyboard: five rows of at most 52 dp must fit above a key 192 dp down.
+        val keyTop = 192f
+        val rows = LanguageMenu.rows(21, 360f, 64f)
+        val cell = minOf(52f, keyTop / (rows - 1))
+        val popup = AlternatesPopup(21, 50f, 40f, 48f, 360f, 64f, cell, 12f)
+        assertEquals(5, popup.rows)
+        assertEquals(0f, keyTop + popup.top, 0.01f)
+    }
 }
