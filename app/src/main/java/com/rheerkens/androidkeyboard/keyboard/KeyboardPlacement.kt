@@ -76,17 +76,18 @@ data class KeyboardPlacement(
         }
     }
 
-    fun frame(width: Float, height: Float, compactHeight: Float? = null, rows: Int = 4): PlacementFrame {
+    /** Minimized bars use the viewport bottom without changing the saved expanded placement. */
+    fun frame(width: Float, height: Float, compactHeight: Float? = null, rows: Int = 4, minimized: Boolean = false): PlacementFrame {
         val w = width.safe(360f).coerceAtLeast(1f)
         val h = height.safe(600f).coerceAtLeast(1f)
         val actualMode = if (mode == PlacementMode.SPLIT && w < 480f) PlacementMode.NORMAL else mode
         val floating = actualMode == PlacementMode.FLOATING
-        val extra = if (floating) 24f else 0f
+        val extra = if (floating && !minimized) 24f else 0f
         val rowCount = rows.coerceIn(4, 5)
         val maxRow = ((h * .7f - 49f - extra) / rowCount).coerceIn(1f, 88f)
         val row = (if (floating) floatingRowHeight else rowHeight).safe(48f).coerceIn(min(32f, maxRow), maxRow)
         val expandedHeight = (49f + row * rowCount + extra).coerceAtMost(h)
-        val panelHeight = (compactHeight?.plus(extra) ?: expandedHeight).coerceIn(1f, h)
+        val panelHeight = (if (minimized) 49f else compactHeight?.plus(extra) ?: expandedHeight).coerceIn(1f, h)
         val panelWidth = when (actualMode) {
             PlacementMode.NORMAL -> (w * dockedWidth.safe(1f)).coerceIn(min(260f, w), w)
             PlacementMode.ONE_HANDED -> (w * oneHandWidth.safe(.8f)).coerceIn(min(260f, w), (w - 44f).coerceAtLeast(min(260f, w)))
@@ -103,8 +104,11 @@ data class KeyboardPlacement(
             PlacementMode.FLOATING -> (w - panelWidth) * floatingX.safe(.5f).coerceIn(0f, 1f)
             else -> 0f
         }
-        val top = if (floating) ((h - expandedHeight) * floatingY.safe(.7f).coerceIn(0f, 1f)).coerceAtMost(h - panelHeight)
-            else h - panelHeight - bottomSpace.safe(0f).coerceIn(0f, h - panelHeight)
+        val top = when {
+            minimized -> h - panelHeight
+            floating -> ((h - expandedHeight) * floatingY.safe(.7f).coerceIn(0f, 1f)).coerceAtMost(h - panelHeight)
+            else -> h - panelHeight - bottomSpace.safe(0f).coerceIn(0f, h - panelHeight)
+        }
         return PlacementFrame(left, top, panelWidth, panelHeight, row, gap, actualMode)
     }
 }

@@ -56,6 +56,8 @@ Hold Space to open Android's keyboard-app picker directly. **Settings → Keyboa
 
 Tap the chevron at the left of the suggestion strip to minimize the keyboard. Tap the keyboard button on the minimized bar to expand it.
 
+The minimized bar sits at the bottom, above Android's navigation area, even if you moved the full keyboard upward. Expanding restores the keyboard's saved size and position.
+
 With a physical keyboard connected, Lowkey opens minimized by default. **Settings → Keyboard → Show with physical keyboard** controls whether it stays visible. Lowkey remembers your expanded or minimized choice separately for use with and without a physical keyboard.
 
 ## Delete words with gestures
