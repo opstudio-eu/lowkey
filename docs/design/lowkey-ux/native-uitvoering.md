@@ -1,6 +1,6 @@
 # Native uitvoering van het companion-ontwerp
 
-> Release-integratie: de uitvoering is voor 0.7.0 samengevoegd met main 0.6.1. De onderstaande inventaris van 26 velden beschrijft de eerste UI-preview. De vier inmiddels toegevoegde velden `placement`, `numberRow`, `bottomKey` en `recentEmoji` blijven behouden; de bijbehorende bediening staat onder Keyboard. Hoogte en positie worden met de actuele resize-bediening aangepast, met behoud van de oude hoogtewaarde als migratiebron. De nieuwe fototoegangsafhandeling, standaardwaarde en optionele Home-stap blijven eveneens behouden. Zie [0.7.0](../../releases/0.7.0.md).
+> Release-integratie: de uitvoering is voor 0.7.0 samengevoegd met main 0.6.2, inclusief screenshots in de volledige toetsenbordbalk. De onderstaande inventaris van 26 velden beschrijft de eerste UI-preview. De vier inmiddels toegevoegde velden `placement`, `numberRow`, `bottomKey` en `recentEmoji` blijven behouden; de bijbehorende bediening staat onder Keyboard. Hoogte en positie worden met de actuele resize-bediening aangepast, met behoud van de oude hoogtewaarde als migratiebron. De nieuwe fototoegangsafhandeling, standaardwaarde en optionele Home-stap blijven eveneens behouden. Zie [0.7.0](../../releases/0.7.0.md).
 
 De gebruiker heeft implementatie en een afzonderlijke test-APK gevraagd. De app-interface blijft voorlopig Engels. Toetsenbordtalen, dicteertaal en gebruikersinhoud blijven onafhankelijk daarvan. De keyboard-track wordt niet overgenomen.
 
