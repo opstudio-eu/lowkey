@@ -60,6 +60,19 @@ class SuggesterTest {
         assertEquals(listOf(null, Suggestion("zzq", isLiteral = true), null), slots)
     }
 
+    @Test fun contractionCorrectionIsNotCrowdedOutByPrefixCompletions() {
+        val lexicon = Lexicon.fromWords(listOf("image", "important", "improve", "I'm"),
+            whitelist = mapOf("im" to "I'm"))
+        val ranked = Suggester({ lexicon }).suggest("im", emptyList())
+        assertEquals("I'm", ranked.first().text)
+        assertTrue(ranked.any { it.text == "image" })
+    }
+
+    @Test fun aTransposedWordKeepsACorrectionBesidePrefixCompletions() {
+        val s = Suggester(listOf("the", "tehran", "tehri", "tehsil"))
+        assertTrue(s.suggest("teh", emptyList()).any { it.text == "the" })
+    }
+
     @Test
     fun shiftTapDoubleTapAndLock() {
         var now = 0L

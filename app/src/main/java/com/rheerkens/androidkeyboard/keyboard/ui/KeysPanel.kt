@@ -3,6 +3,7 @@ package com.rheerkens.androidkeyboard.keyboard.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.semantics.semantics
@@ -278,17 +279,20 @@ private fun EmojiKey(key: Key.Emoji, state: KeyboardState, actions: KeyboardActi
     ) { pressed ->
         KeyCap(if (pressed) c.keyPressed else c.keyMod) {
             KeyIcon(SlimIcons.Emoji)
-            // A small corner mark, like a key with long-press choices.
-            if (switches) {
-                val mark = c.muted.copy(alpha = 0.6f)
-                Box(
-                    Modifier.align(Alignment.BottomEnd).padding(end = 4.dp, bottom = 4.dp).size(5.dp).drawBehind {
-                        drawPath(Path().apply { moveTo(size.width, 0f); lineTo(size.width, size.height); lineTo(0f, size.height); close() }, mark)
-                    },
-                )
-            }
+            if (switches) LongPressMark()
         }
     }
+}
+
+/** Shared corner mark for keys with hidden choices. */
+@Composable
+private fun BoxScope.LongPressMark() {
+    val mark = LocalKeyboardColors.current.muted
+    Box(
+        Modifier.align(Alignment.BottomEnd).padding(end = 4.dp, bottom = 4.dp).size(5.dp).drawBehind {
+            drawPath(Path().apply { moveTo(size.width, 0f); lineTo(size.width, size.height); lineTo(0f, size.height); close() }, mark)
+        },
+    )
 }
 
 /** The emoji key's layout and gesture memory; not state, so updating it doesn't recompose. */
@@ -377,6 +381,7 @@ private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardAction
                     modifier = Modifier.align(Alignment.TopEnd).padding(top = 1.dp, end = 3.dp),
                 )
             }
+            if (key.accents.isNotEmpty()) LongPressMark()
         }
         if (pressed && open && popup != null) {
             val shape = RoundedCornerShape(10.dp)
