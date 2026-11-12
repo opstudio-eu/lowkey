@@ -450,7 +450,7 @@ public final class KeyboardTouchProbe extends Instrumentation {
     private android.graphics.Bitmap blurred(android.graphics.Bitmap source, android.graphics.RectF box) {
         List<com.rheerkens.androidkeyboard.editor.Mark> marks = new ArrayList<>();
         marks.add(new com.rheerkens.androidkeyboard.editor.Mark.Shape(com.rheerkens.androidkeyboard.editor.ShapeKind.RECTANGLE,
-            box.left, box.top, box.right, box.bottom, com.rheerkens.androidkeyboard.editor.ImageMarkupKt.BLUR, 8f, true));
+            box.left, box.top, box.right, box.bottom, com.rheerkens.androidkeyboard.editor.ImageMarkupKt.BLUR, 8f, true, 0f));
         return com.rheerkens.androidkeyboard.editor.ImageMarkupKt.renderEdit(source, marks,
             new android.graphics.RectF(0, 0, source.getWidth(), source.getHeight()));
     }
