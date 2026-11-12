@@ -1,8 +1,7 @@
 package com.rheerkens.androidkeyboard.companion.screens
 
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -11,9 +10,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -23,8 +23,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rheerkens.androidkeyboard.AppGraph
@@ -61,7 +63,7 @@ fun LanguagesScreen(modifier: Modifier, navigate: (Destination) -> Unit) {
     LazyColumn(modifier.fillMaxWidth()) {
         item {
             Note(
-                "Tap Use to choose a language. Turn off languages you don't use, including English (US).",
+                "Tap a language name to use it. Use the switches to turn languages on or off, including English (US).",
                 Modifier.padding(top = 12.dp),
             )
         }
@@ -83,25 +85,44 @@ fun LanguagesScreen(modifier: Modifier, navigate: (Destination) -> Unit) {
                 "In use: ${current.layoutLabel}".takeIf { inUse },
             )
             Column {
-                SwitchRow(language.name, enabled,
-                    { on -> AppGraph.settings.update { it.setLanguageEnabled(language.id, on, usableIds) } },
-                    subtitle = notes.joinToString(" · "), enabled = !lastLanguage)
-                FlowRow(
+                Row(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (!inUse) {
-                        OutlinedButton(
-                            onClick = { AppGraph.settings.update { it.selectKeyboard(preferred.id, usableIds) } },
-                            modifier = Modifier.semantics { contentDescription = "Use ${preferred.fullLabel}" },
-                        ) { Text("Use ${preferred.layoutLabel}") }
+                    Column(
+                        Modifier.weight(1f)
+                            .clickable(role = Role.Button, onClickLabel = "Use ${preferred.fullLabel}") {
+                                AppGraph.settings.update { it.selectKeyboard(preferred.id, usableIds) }
+                            }
+                            .semantics { stateDescription = if (inUse) "In use" else "Not in use" }
+                            .padding(vertical = 16.dp),
+                    ) {
+                        Text(language.name, style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            notes.joinToString(" · "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                     if (!language.bundled) {
-                        TextButton(onClick = { removing = language }, enabled = !lastLanguage,
-                            modifier = Modifier.semantics { contentDescription = "Remove ${language.englishName} download" }) {
-                            Text("Remove download")
+                        IconButton(onClick = { removing = language }, enabled = !lastLanguage) {
+                            Icon(
+                                SlimIcons.Trash,
+                                contentDescription = "Remove ${language.englishName} download",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (lastLanguage) 0.38f else 1f),
+                            )
                         }
                     }
+                    Switch(
+                        checked = enabled,
+                        onCheckedChange = { on ->
+                            AppGraph.settings.update { it.setLanguageEnabled(language.id, on, usableIds) }
+                        },
+                        enabled = !lastLanguage,
+                        modifier = Modifier.padding(start = 8.dp).semantics {
+                            contentDescription = "${language.englishName} enabled"
+                        },
+                    )
                 }
                 if (lastLanguage) {
                     Note("Keep at least one language on. Turn on another language before turning this one off.")
