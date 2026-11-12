@@ -1,11 +1,14 @@
 package com.rheerkens.androidkeyboard.clipboard
 
 import android.Manifest
+import android.app.Activity
 import android.content.ContentUris
 import android.content.Context
 import android.os.Build
 import android.provider.MediaStore
+import androidx.core.app.ActivityCompat
 import androidx.core.content.PermissionChecker
+import androidx.core.content.edit
 
 /** How much of the photo library the app can read. */
 enum class PhotoAccess {
@@ -27,6 +30,19 @@ class RecentScreenshots(private val context: Context) {
     )
 
     fun hasPermission(): Boolean = access() == PhotoAccess.ALL
+
+    /** Call before showing the photos dialog, so [deniedForever] can tell a first request from a refusal. */
+    fun markRequested() = prefs.edit { putBoolean(K_REQUESTED, true) }
+
+    /**
+     * True when Android won't show the photos dialog again: asked before, still no access, and no
+     * rationale to show (which is also the state before the first request, hence [markRequested]).
+     */
+    fun deniedForever(activity: Activity?): Boolean =
+        activity != null && access() == PhotoAccess.NONE && prefs.getBoolean(K_REQUESTED, false) &&
+            !ActivityCompat.shouldShowRequestPermissionRationale(activity, PERMISSION)
+
+    private val prefs get() = context.getSharedPreferences("permissions", Context.MODE_PRIVATE)
 
     /**
      * Checks the app op as well as the permission: a "limited access" grant from before this app
@@ -96,6 +112,7 @@ class RecentScreenshots(private val context: Context) {
             else -> PhotoAccess.NONE
         }
         const val MAX_SHOTS = 5
+        private const val K_REQUESTED = "photos_requested"
         const val MAX_AGE_MS = 24L * 60 * 60 * 1000
     }
 }

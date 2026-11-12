@@ -36,7 +36,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
-import androidx.core.app.ActivityCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rheerkens.androidkeyboard.AppGraph
@@ -75,23 +74,28 @@ fun SettingsScreen(modifier: Modifier, focus: SettingsFocus, navigate: (Destinat
     val listState = rememberLazyListState()
     fun update(t: (Settings) -> Settings) = AppGraph.settings.update(t)
     val context = LocalContext.current
-    var photoAccess by remember { mutableStateOf(RecentScreenshots(context).access()) }
+    val screenshots = remember(context) { RecentScreenshots(context) }
+    var photoAccess by remember { mutableStateOf(screenshots.access()) }
     /** Android won't show the photos dialog again: the switch opens app settings instead. */
-    var photosDeniedForever by remember { mutableStateOf(false) }
+    var photosDeniedForever by remember { mutableStateOf(screenshots.deniedForever(context as? Activity)) }
+    fun refreshPhotoAccess() {
+        photoAccess = screenshots.access()
+        photosDeniedForever = screenshots.deniedForever(context as? Activity)
+    }
     // Photo access can change in system settings while this screen is in the background.
     LifecycleResumeEffect(Unit) {
-        photoAccess = RecentScreenshots(context).access()
+        refreshPhotoAccess()
         onPauseOrDispose { }
     }
     val photosLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-        val access = RecentScreenshots(context).access()
-        photoAccess = access
+        refreshPhotoAccess()
         // Limited access keeps the setting on: the note under the switch asks for all photos,
         // and screenshots appear as soon as all photos are allowed.
-        update { s -> s.copy(recentScreenshots = access != PhotoAccess.NONE) }
-        val activity = context as? Activity
-        photosDeniedForever = access == PhotoAccess.NONE && activity != null &&
-            !ActivityCompat.shouldShowRequestPermissionRationale(activity, RecentScreenshots.PERMISSION)
+        update { s -> s.copy(recentScreenshots = photoAccess != PhotoAccess.NONE) }
+    }
+    fun requestPhotos() {
+        screenshots.markRequested()
+        photosLauncher.launch(RecentScreenshots.REQUEST)
     }
 
     LaunchedEffect(focus) {
@@ -132,14 +136,14 @@ fun SettingsScreen(modifier: Modifier, focus: SettingsFocus, navigate: (Destinat
                         when {
                             !v || photoAccess == PhotoAccess.ALL -> update { it.copy(recentScreenshots = v) }
                             photosDeniedForever -> openAppSettings(context)
-                            else -> photosLauncher.launch(RecentScreenshots.REQUEST)
+                            else -> requestPhotos()
                         }
                     },
                     subtitle = "Show screenshots from the last day next to copied clips in the minimized bar. Needs access to all photos.",
                 )
                 if (s.recentScreenshots && photoAccess == PhotoAccess.LIMITED) {
                     LimitedPhotosNote(
-                        onAllowAll = { photosLauncher.launch(RecentScreenshots.REQUEST) },
+                        onAllowAll = { requestPhotos() },
                         onTurnOff = { update { it.copy(recentScreenshots = false) } },
                     )
                 }
