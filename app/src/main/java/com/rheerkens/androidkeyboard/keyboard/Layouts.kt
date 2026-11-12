@@ -16,7 +16,10 @@ sealed interface Key {
         /** Accented letters offered after [longPressOutput] in the long-press popup. */
         val accents: List<String> = emptyList(),
         val opensEmojiOnHold: Boolean = false,
+        /** Hide the duplicate digit label when a dedicated number row is visible. */
+        val showLongPressHint: Boolean = true,
     ) : Key {
+        val hint: String? get() = longPressOutput.takeIf { showLongPressHint }
         /** Long-press popup choices; the first is selected when the popup opens. */
         val alternates: List<String> get() = listOfNotNull(longPressOutput) + accents
     }
@@ -159,7 +162,11 @@ object Layouts {
             Layer.SYMBOLS_2 -> SYMBOLS_2
         }
         val rows = layout.rows.map { row ->
-            row.map { key -> if (key is Key.Globe && bottomKey == BottomKey.EMOJI) Key.Emoji(key.weight) else key }
+            row.map { key -> when {
+                key is Key.Globe && bottomKey == BottomKey.EMOJI -> Key.Emoji(key.weight)
+                numberRow && layer == Layer.LETTERS && key is Key.Char -> key.copy(showLongPressHint = false)
+                else -> key
+            } }
         }
         return KeyboardLayout(if (numberRow && layer == Layer.LETTERS) listOf(SYMBOLS.rows.first()) + rows else rows)
     }

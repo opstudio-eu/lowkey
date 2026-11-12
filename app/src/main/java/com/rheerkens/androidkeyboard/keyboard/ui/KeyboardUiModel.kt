@@ -53,6 +53,7 @@ interface KeyboardActions {
     fun onChooseEmoji(value: String) {}
     fun onOpenTools() {}
     fun onResizeKeyboard() {}
+    fun onSetNumberRow(enabled: Boolean) {}
     fun onSelectPlacementMode(mode: com.rheerkens.androidkeyboard.keyboard.PlacementMode) {}
     fun onSavePlacement(profile: com.rheerkens.androidkeyboard.keyboard.PlacementProfile, placement: com.rheerkens.androidkeyboard.keyboard.KeyboardPlacement) {}
     fun onPlacementBounds(left: Int, top: Int, right: Int, bottom: Int, floating: Boolean) {}

@@ -1,52 +1,56 @@
 package com.rheerkens.androidkeyboard.keyboard
 
-/**
- * Geometry of a long-press popup: a row of [count] cells above a key, in the key's pixel coordinates.
- *
- * Choice 0 sits over the key. The other choices extend right, or mirror to the left when the
- * row would leave the [windowWidth]. [keyLeft] is the key's left edge in the window.
- */
+/** Compact long-press grid, expressed in coordinates relative to the pressed key. */
 class AlternatesPopup(
     val count: Int,
     keyLeft: Float,
     keyWidth: Float,
     private val keyHeight: Float,
     windowWidth: Float,
-    val cellWidth: Float,
+    cellWidth: Float,
     val cellHeight: Float,
     private val slop: Float,
 ) {
-    val width = cellWidth * count
-
-    /** True when choice 0 is the rightmost cell. */
-    val mirrored: Boolean
-
-    /** Popup left edge relative to the key's left edge. */
-    val left: Float
-
     init {
-        require(count > 0)
-        val center = keyLeft + keyWidth / 2
-        val first = center - cellWidth / 2
-        mirrored = first + width > windowWidth && first + cellWidth - width >= 0f
-        val start = if (mirrored) first + cellWidth - width else first
-        left = start.coerceAtMost(windowWidth - width).coerceAtLeast(0f) - keyLeft
+        require(count > 0 && windowWidth > 0f && cellWidth > 0f && cellHeight > 0f)
     }
 
-    /** Popup top edge relative to the key's top edge. */
-    val top: Float get() = -cellHeight
+    val cellWidth = cellWidth.coerceAtMost(windowWidth)
+    private val maxColumns = minOf(5, (windowWidth / this.cellWidth).toInt().coerceAtLeast(1))
+    val rows = (count + maxColumns - 1) / maxColumns
+    val columns = (count + rows - 1) / rows
+    val width = this.cellWidth * columns
+    val height = cellHeight * rows
 
-    /** Choice index shown in visual cell [cell], counted from the left. */
-    fun choiceAt(cell: Int): Int = if (mirrored) count - 1 - cell else cell
+    /** One-row choices stay above the key; a larger grid's bottom row covers the key. */
+    val top = -cellHeight * maxOf(1, rows - 1)
+    val left: Float
+    private val anchorColumn: Int
+
+    init {
+        val center = keyLeft + keyWidth / 2
+        val preferred = center - ((columns - 1) / 2 + .5f) * this.cellWidth
+        val start = preferred.coerceIn(0f, (windowWidth - width).coerceAtLeast(0f))
+        left = start - keyLeft
+        anchorColumn = ((center - start) / this.cellWidth).toInt().coerceIn(0, columns - 1)
+    }
+
+    /** Fill the bottom row first, starting over the key; empty cells are not selectable. */
+    fun choiceAt(column: Int, row: Int): Int? {
+        if (column !in 0 until columns || row !in 0 until rows) return null
+        val choice = (rows - 1 - row) * columns + (column - anchorColumn + columns) % columns
+        return choice.takeIf { it < count }
+    }
 
     /**
      * Choice under a finger at ([x], [y]) in key coordinates, or null when the finger has left
      * the popup and key area, which cancels the long-press.
      */
     fun select(x: Float, y: Float): Int? {
-        if (y < top - slop || y > keyHeight + slop) return null
+        if (y < top - slop || y > maxOf(keyHeight, top + height) + slop) return null
         if (x < left - slop || x > left + width + slop) return null
-        val cell = ((x - left) / cellWidth).toInt().coerceIn(0, count - 1)
-        return choiceAt(cell)
+        val column = ((x - left) / cellWidth).toInt().coerceIn(0, columns - 1)
+        val row = ((y - top) / cellHeight).toInt().coerceIn(0, rows - 1)
+        return choiceAt(column, row)
     }
 }
