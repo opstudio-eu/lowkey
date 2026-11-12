@@ -23,6 +23,7 @@ enum class Destination(val title: String, val isTab: Boolean = false) {
     DIAGNOSTICS("Diagnostics"),
     ABOUT("About and licenses"),
     LANGUAGES("Keyboard languages"),
+    KEYBOARD_THEME("Keyboard theme"),
 }
 
 /** A canonical back path also makes externally opened settings predictable. */
@@ -34,6 +35,7 @@ fun destinationPath(destination: Destination): List<Destination> = when (destina
     Destination.SETTINGS_TYPING, Destination.SETTINGS_CUSTOMIZE ->
         listOf(Destination.SETTINGS, Destination.SETTINGS_KEYBOARD, destination)
     Destination.SETTINGS_KEYBOARDS -> listOf(Destination.SETTINGS, Destination.LANGUAGES, destination)
+    Destination.KEYBOARD_THEME -> listOf(Destination.SETTINGS, Destination.SETTINGS_APPEARANCE, destination)
     Destination.DIAGNOSTICS, Destination.TRY_IT -> listOf(Destination.SETTINGS, destination)
     else -> listOf(destination)
 }

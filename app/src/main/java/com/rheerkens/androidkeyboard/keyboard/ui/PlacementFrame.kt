@@ -33,7 +33,7 @@ import kotlin.math.roundToInt
 @Composable
 fun KeyboardRoot(state: KeyboardUiState, clock: () -> Long, actions: KeyboardActions) {
     val density = LocalDensity.current
-    val colors = if (state.dark) DarkKeyboardColors else LightKeyboardColors
+    val colors = state.colors
     var menu by remember(state.inputSession, state.profile, state.viewportWidthDp, state.viewportHeightDp, state.keyRows) { mutableStateOf(false) }
     var editing by remember(state.inputSession, state.profile, state.viewportWidthDp, state.viewportHeightDp, state.keyRows) { mutableStateOf(false) }
     var draft by remember(state.inputSession, state.profile, state.viewportWidthDp, state.viewportHeightDp, state.keyRows) { mutableStateOf<KeyboardPlacement?>(null) }
@@ -78,7 +78,9 @@ fun KeyboardRoot(state: KeyboardUiState, clock: () -> Long, actions: KeyboardAct
     key(state.inputSession, state.profile, frame.mode, width, height, state.keyRows) {
         CompositionLocalProvider(LocalKeyboardColors provides colors) {
             Box(Modifier.fillMaxWidth().height(((if (floating) height else height - frame.top) + nav).dp)
-                .background(if (floating) Color.Transparent else colors.background)) {
+                // Docked, the frame paints the colour and any image once, edge to edge and under the
+                // navigation bar; floating, only the panel does, so the app shows around it.
+                .then(if (floating) Modifier else Modifier.keyboardBackground(colors, state.background))) {
                 Row(Modifier.offset(x = (frame.left - if (leftRail) rail else 0f).dp, y = (if (floating) frame.top else 0f).dp)
                     .width((frame.width + rail).dp).height(frame.height.dp)
                     .onGloballyPositioned { coordinates ->
@@ -93,15 +95,16 @@ fun KeyboardRoot(state: KeyboardUiState, clock: () -> Long, actions: KeyboardAct
                         }
                     }
                     if (leftRail) SideControls()
-                    Column(Modifier.width(frame.width.dp)) {
+                    Column(Modifier.width(frame.width.dp)
+                        .then(if (floating) Modifier.keyboardBackground(colors, state.background) else Modifier)) {
                         Box(Modifier.height(panelHeight.dp).fillMaxWidth()) {
                             Box(if (editing) Modifier.clearAndSetSemantics {} else Modifier) {
-                                KeyboardContent(displayed, clock, routed)
+                                KeyboardContent(displayed, clock, routed, drawBackground = false)
                             }
                             if (editing) ResizeOverlay(placement, frame, width, height, state.keyRows, { draft = it }, ::save) { editing = false }
                         }
                         if (floatingHandle) {
-                            PlacementDragTarget("Move floating keyboard", Modifier.fillMaxWidth().height(24.dp).background(colors.background),
+                            PlacementDragTarget("Move floating keyboard", Modifier.fillMaxWidth().height(24.dp),
                                 placement, { base, delta -> base.move(width, height, delta.x, delta.y, state.keyRows) }, { draft = it }, ::save,
                                 movements = moveActions)
                         }

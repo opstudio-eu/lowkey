@@ -25,6 +25,7 @@ import com.rheerkens.androidkeyboard.models.resolveLanguage
 import com.rheerkens.androidkeyboard.models.speechLanguageCode
 import com.rheerkens.androidkeyboard.settings.AudioInput
 import com.rheerkens.androidkeyboard.settings.Settings
+import com.rheerkens.androidkeyboard.settings.KeyboardThemeStore
 import com.rheerkens.androidkeyboard.settings.SettingsStore
 import com.rheerkens.androidkeyboard.keyboard.TypingKeyboard
 import com.rheerkens.androidkeyboard.speech.ClipAudioSource
@@ -50,6 +51,8 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 object AppGraph {
     lateinit var settings: SettingsStore
+        private set
+    lateinit var keyboardTheme: KeyboardThemeStore
         private set
     lateinit var dictionary: DictionaryStore
         private set
@@ -103,6 +106,7 @@ object AppGraph {
         val app = context.applicationContext
         assets = app.assets
         settings = SettingsStore(app)
+        keyboardTheme = KeyboardThemeStore(app, appScope)
         dictionary = DictionaryStore(app)
         models = DiskModelStore(app, appScope)
         sessionLog = SessionLog(app)

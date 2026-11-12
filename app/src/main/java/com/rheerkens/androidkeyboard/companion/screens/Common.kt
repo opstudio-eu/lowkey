@@ -31,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -92,6 +93,7 @@ fun <T> ChoiceRow(
     label: (T) -> String,
     onSelect: (T) -> Unit,
     subtitle: String? = null,
+    enabled: Boolean = true,
 ) {
     Column(Modifier.fillMaxWidth().selectableGroup().padding(horizontal = 16.dp, vertical = 10.dp)) {
         Text(title, style = MaterialTheme.typography.bodyLarge)
@@ -101,11 +103,17 @@ fun <T> ChoiceRow(
         Spacer(Modifier.size(8.dp))
         options.forEach { option ->
             Row(
-                Modifier.fillMaxWidth().selectable(selected = option == selected, role = Role.RadioButton, onClick = { onSelect(option) }).padding(vertical = 2.dp),
+                Modifier.fillMaxWidth()
+                    .selectable(selected = option == selected, enabled = enabled, role = Role.RadioButton, onClick = { onSelect(option) })
+                    .padding(vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                RadioButton(selected = option == selected, onClick = null)
-                Text(label(option), modifier = Modifier.weight(1f).padding(start = 10.dp, top = 12.dp, bottom = 12.dp))
+                RadioButton(selected = option == selected, onClick = null, enabled = enabled)
+                Text(
+                    label(option),
+                    color = if (enabled) Color.Unspecified else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                    modifier = Modifier.weight(1f).padding(start = 10.dp, top = 12.dp, bottom = 12.dp),
+                )
             }
         }
     }

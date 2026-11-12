@@ -45,7 +45,10 @@ data class KeyboardUiState(
     val pickerOpen: Boolean,
     val enterKind: EnterKind,
     val rowHeightDp: Int,
-    val dark: Boolean,
+    /** The palette to draw with: the standard one for the app theme, or the custom one. */
+    val colors: KeyboardColors,
+    /** The custom theme's background image, decoded; null for none or when it could not be loaded. */
+    val background: KeyboardBackgroundImage? = null,
     /** Show only the slim bar (keys mode, minimized by the user). */
     val minimized: Boolean = false,
     /** Recent clips and screenshots, newest first: the slim bar, and the strip when no word is typed. */
@@ -84,8 +87,14 @@ data class KeyboardUiState(
  * the same spot.
  */
 @Composable
-internal fun KeyboardContent(state: KeyboardUiState, clock: () -> Long, actions: KeyboardActions) {
-    val colors = if (state.dark) DarkKeyboardColors else LightKeyboardColors
+internal fun KeyboardContent(
+    state: KeyboardUiState,
+    clock: () -> Long,
+    actions: KeyboardActions,
+    /** False when the placement frame already paints the background (and any image) behind it. */
+    drawBackground: Boolean = true,
+) {
+    val colors = state.colors
     val languageMenu = remember { LanguageMenuState() }
     // A new editor, another panel or a changed keyboard closes the emoji key's language menu.
     LaunchedEffect(state.inputSession, state.mode, state.minimized, state.toolsOpen, state.emojiOpen,
@@ -95,7 +104,7 @@ internal fun KeyboardContent(state: KeyboardUiState, clock: () -> Long, actions:
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .background(colors.background)
+                    .then(if (drawBackground) Modifier.keyboardBackground(colors, state.background) else Modifier)
                     // While the language menu waits for a tap, only the menu is reachable with TalkBack.
                     .then(if (languageMenu.open?.sticky == true) Modifier.clearAndSetSemantics {} else Modifier),
             ) {

@@ -29,6 +29,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.ComposeView
@@ -58,13 +59,16 @@ import com.rheerkens.androidkeyboard.keyboard.Layer
 import com.rheerkens.androidkeyboard.keyboard.EmojiSuggestions
 import com.rheerkens.androidkeyboard.keyboard.Layouts
 import com.rheerkens.androidkeyboard.keyboard.ui.ClipChip
-import com.rheerkens.androidkeyboard.keyboard.ui.DarkKeyboardColors
 import com.rheerkens.androidkeyboard.keyboard.ui.EnterKind
 import com.rheerkens.androidkeyboard.keyboard.ui.FanSpec
 import com.rheerkens.androidkeyboard.keyboard.ui.KeyboardActions
 import com.rheerkens.androidkeyboard.keyboard.ui.KeyboardRoot
 import com.rheerkens.androidkeyboard.keyboard.ui.KeyboardUiState
-import com.rheerkens.androidkeyboard.keyboard.ui.LightKeyboardColors
+import com.rheerkens.androidkeyboard.keyboard.ui.resolveKeyboardColors
+import com.rheerkens.androidkeyboard.keyboard.ui.KeyboardBackgroundImage
+import com.rheerkens.androidkeyboard.keyboard.ui.NavigationBarStyle
+import com.rheerkens.androidkeyboard.keyboard.ui.keyboardNavigationBarStyle
+import com.rheerkens.androidkeyboard.settings.LoadedBackground
 import com.rheerkens.androidkeyboard.keyboard.ui.StripNote
 import com.rheerkens.androidkeyboard.keyboard.ui.StripState
 import com.rheerkens.androidkeyboard.keyboard.ui.WordAim
@@ -313,11 +317,34 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                 val fan by fanSpec.collectAsState()
                 val packs by AppGraph.languagePacks.state.collectAsState()
                 val keyboards = remember(s.enabledKeyboards, packs.installed) { AppGraph.usableKeyboards(s) }
-                val dark = resolveDark(s.theme, isSystemInDarkTheme())
+                val keyboardTheme by AppGraph.keyboardTheme.theme.collectAsState()
+                val appDark = resolveDark(s.theme, isSystemInDarkTheme())
+                val colors = remember(keyboardTheme, appDark) { resolveKeyboardColors(keyboardTheme, appDark) }
+                val custom = keyboardTheme.custom?.takeIf { keyboardTheme.enabled }
+                val imageName = custom?.image
+                // Decoded once per file on an IO thread (and cached); a missing file leaves the colour.
+                val loadedImage by produceState<LoadedBackground?>(null, imageName) {
+                    value = imageName?.let { AppGraph.keyboardTheme.images.load(it) }
+                }
+                val image = loadedImage?.takeIf { it.name == imageName }
+                val background = remember(image, custom?.dim) {
+                    if (image != null && custom != null) KeyboardBackgroundImage(image.bitmap, custom.dim) else null
+                }
                 val (viewportWidth, viewportHeight) = placementViewport()
                 val profile = PlacementProfile.forSize(viewportWidth, viewportHeight)
                 val placement = s.placement.get(profile)
-                LaunchedEffect(dark, placement.mode) { styleNavigationBar(dark, placement.mode == PlacementMode.FLOATING) }
+                val floating = placement.mode == PlacementMode.FLOATING
+                val navStyle = remember(colors.background, custom, image, floating) {
+                    keyboardNavigationBarStyle(
+                        colors.background,
+                        custom?.imageRange(image?.sample),
+                        floating = floating,
+                        edgeToEdge = Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM,
+                    )
+                }
+                // Keyed on the style, not on light or dark: a custom background can change either way,
+                // and a floating keyboard leaves the bar transparent.
+                LaunchedEffect(navStyle) { styleNavigationBar(navStyle) }
                 KeyboardRoot(
                     KeyboardUiState(
                         mode = m,
@@ -329,11 +356,12 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                         pickerOpen = picker && m == InputMode.VOICE,
                         enterKind = ek,
                         rowHeightDp = s.keyboardHeight.rowHeightDp,
+                        colors = colors,
+                        background = background,
                         numberRow = s.numberRow,
                         emojiOpen = emoji && m == InputMode.KEYS,
                         emojiCatalog = catalog,
                         recentEmoji = if (sensitive) emptyList() else s.recentEmoji,
-                        dark = dark,
                         placement = placement,
                         profile = profile,
                         viewportWidthDp = viewportWidth,
@@ -474,22 +502,25 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
 
     /**
      * The navigation bar under the keyboard (gesture handle, or back and switcher buttons) takes its
-     * icon colour from the input method's window, and before Android 15 also its background. Match
-     * both to the keyboard's theme, which can differ from the system one.
+     * icon colour from the input method's window, and before Android 15 also its background. Before
+     * Android 15 the bar is painted in the keyboard's background colour; from Android 15 the keyboard,
+     * including any background image, shows through; a floating keyboard leaves the bar
+     * transparent. [style] comes from [keyboardNavigationBarStyle], which judges an image by its
+     * worst case, not an average.
      */
     @Suppress("DEPRECATION")
-    private fun styleNavigationBar(dark: Boolean, floating: Boolean = floatingPlacement) {
+    private fun styleNavigationBar(style: NavigationBarStyle) {
         val win = window.window ?: return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             val light = WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
-            win.insetsController?.setSystemBarsAppearance(if (dark) 0 else light, light)
+            win.insetsController?.setSystemBarsAppearance(if (style.lightIcons) 0 else light, light)
         } else {
             val flag = View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
             val flags = win.decorView.systemUiVisibility
-            win.decorView.systemUiVisibility = if (dark) flags and flag.inv() else flags or flag
+            win.decorView.systemUiVisibility = if (style.lightIcons) flags and flag.inv() else flags or flag
         }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-            win.navigationBarColor = if (floating) android.graphics.Color.TRANSPARENT else (if (dark) DarkKeyboardColors else LightKeyboardColors).background.toArgb()
+            win.navigationBarColor = style.color.toArgb()
         }
     }
 

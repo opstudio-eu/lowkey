@@ -13,6 +13,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -61,7 +62,7 @@ internal fun EmojiPanel(catalog: EmojiCatalog?, recent: List<String>, height: Dp
                             stateDescription = if (category == name) "Selected" else "Not selected"
                         }, onTap = { category = name }) { pressed ->
                             Box(Modifier.fillMaxSize().padding(3.dp)
-                                .background(if (pressed || category == name) c.keyPressed else c.background, RoundedCornerShape(8.dp)),
+                                .background(if (pressed || category == name) c.keyPressed else Color.Transparent, RoundedCornerShape(8.dp)),
                                 contentAlignment = Alignment.Center) {
                                 Text(categoryIcons[name] ?: name.take(1), fontSize = 24.sp, color = c.keyText)
                             }

@@ -59,13 +59,14 @@ fun SettingsScreen(modifier: Modifier, focus: SettingsFocus, navigate: (Destinat
     val models by AppGraph.models.state.collectAsStateWithLifecycle()
     // Recomposes the layout grid and language summary when a download finishes or a word list is deleted.
     val packs by AppGraph.languagePacks.state.collectAsStateWithLifecycle()
+    val keyboardTheme by AppGraph.keyboardTheme.theme.collectAsStateWithLifecycle()
     val update: Update = { t -> AppGraph.settings.update(t) }
     val photos = rememberPhotoAccess()
     val photosGranted = photos.access == PhotoAccess.ALL
 
     LazyColumn(modifier.fillMaxWidth()) {
         when (focus) {
-            SettingsFocus.TOP -> topPage(s, models, photosGranted, navigate)
+            SettingsFocus.TOP -> topPage(s, models, photosGranted, keyboardTheme.enabled, navigate)
             SettingsFocus.KEYBOARD -> keyboardPage(s, update, navigate, resizeKeyboard)
             SettingsFocus.TYPING -> typingPage(s, update, navigate)
             SettingsFocus.CUSTOMIZE -> customizePage(s, update)
@@ -95,11 +96,18 @@ fun SettingsScreen(modifier: Modifier, focus: SettingsFocus, navigate: (Destinat
                     )
                 }
             }
-            SettingsFocus.APPEARANCE -> item {
-                ChoiceRow(
-                    "Theme", ThemeMode.entries, s.theme, { it.label }, { v -> update { it.copy(theme = v) } },
-                    subtitle = "For the app and the keyboard. System follows your phone's dark theme.",
-                )
+            SettingsFocus.APPEARANCE -> {
+                item {
+                    ChoiceRow(
+                        "Theme", ThemeMode.entries, s.theme, { it.label }, { v -> update { it.copy(theme = v) } },
+                        subtitle = "For the app and the keyboard. System follows your phone's dark theme.",
+                    )
+                }
+                item(key = "keyboard-theme") {
+                    LinkRow("Keyboard theme", keyboardThemeSummary(keyboardTheme.enabled)) {
+                        navigate(Destination.KEYBOARD_THEME)
+                    }
+                }
             }
             SettingsFocus.UPDATES -> item { UpdatesSection() }
         }
@@ -107,7 +115,13 @@ fun SettingsScreen(modifier: Modifier, focus: SettingsFocus, navigate: (Destinat
     }
 }
 
-private fun LazyListScope.topPage(s: Settings, models: ModelStoreState, photosGranted: Boolean, navigate: (Destination) -> Unit) {
+private fun LazyListScope.topPage(
+    s: Settings,
+    models: ModelStoreState,
+    photosGranted: Boolean,
+    customKeyboardTheme: Boolean,
+    navigate: (Destination) -> Unit,
+) {
     item(key = "keyboard") {
         LinkRow("Keyboard", "Size, position, typing and key feedback") { navigate(Destination.SETTINGS_KEYBOARD) }
     }
@@ -122,7 +136,10 @@ private fun LazyListScope.topPage(s: Settings, models: ModelStoreState, photosGr
             navigate(Destination.SETTINGS_CLIPBOARD)
         }
     }
-    item(key = "appearance") { LinkRow("Appearance", "Theme: ${s.theme.label}") { navigate(Destination.SETTINGS_APPEARANCE) } }
+    item(key = "appearance") {
+        val keyboard = if (customKeyboardTheme) " · custom keyboard colors" else ""
+        LinkRow("Appearance", "Theme: ${s.theme.label}$keyboard") { navigate(Destination.SETTINGS_APPEARANCE) }
+    }
     item(key = "updates") {
         LinkRow("Updates", if (acceptsReleaseUpdates(BuildConfig.APPLICATION_ID)) "Automatic checks ${onOff(s.checkForUpdates)}" else "Manual APK updates for this preview") { navigate(Destination.SETTINGS_UPDATES) }
     }
@@ -419,3 +436,7 @@ internal fun moreLanguagesSummary(available: List<String>): String = when {
     available.size <= 4 -> "Download ${available.dropLast(1).joinToString(", ")} or ${available.last()}, or delete languages"
     else -> "Download ${available.take(3).joinToString(", ")} and ${available.size - 3} more, or delete languages"
 }
+
+/** The Keyboard theme link's summary on the Appearance page. */
+internal fun keyboardThemeSummary(custom: Boolean): String =
+    if (custom) "Custom colors" else "Standard colors, following the app theme"
