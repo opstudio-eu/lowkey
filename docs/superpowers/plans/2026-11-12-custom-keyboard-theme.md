@@ -1,5 +1,27 @@
 # Custom keyboard theme: implementation plan
 
+## Device follow-up: Android 15
+
+The test emulator was brought online with a manual cold start after the device panel's launch
+failed. An isolated test application ID was used without replacing existing installations.
+
+Verified by interacting with the editor and the actual IME:
+
+- Selected a locally generated portrait image through the system photo picker.
+- Applied the suggested 56% dimming and saved the image.
+- Removed the image in a draft, then cancelled: the saved image returned.
+- Saw the image behind normal keys, the minimized bar and the voice row; keys remained opaque.
+- Typed using a letter key and used its long press to insert the associated number.
+- Set only the advanced space-label colour to `FFDD44`, saved, and saw the yellow label on the
+  actual keyboard while other labels retained their colours.
+- Relaunched the application and confirmed the image reference, dimming and colour override
+  remained in its stored settings.
+
+Still unverified on-device: every colour role, accent popup selection, clipboard and model/keyboard
+picker details, EXIF rotations, transparent/unsupported images, interrupted imports, simulated disk
+failure, missing-image recovery, and Android 14 navigation bars. Existing unit coverage does not
+replace those remaining device checks. No speech model was installed in this test application.
+
 Design: [2026-11-12-custom-keyboard-theme-design.md](../specs/2026-11-12-custom-keyboard-theme-design.md).
 
 1. **Contrast in main.** Move `contrast`, `AA_TEXT` and `AA_NON_TEXT` from the test sources to `companion/theme/Contrast.kt` in main; add `prefersLightInk(color)` and `bestInk(color)`. Existing tests keep their imports.
