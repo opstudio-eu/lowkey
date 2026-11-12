@@ -1,6 +1,6 @@
 # Keyboard size, position and modes
 
-Status: co-design revision for approval. This document describes proposed behavior, not shipped features.
+Status: co-design approved in conversation. This document describes agreed target behavior, not shipped features.
 
 ## Intent and agreed scope
 

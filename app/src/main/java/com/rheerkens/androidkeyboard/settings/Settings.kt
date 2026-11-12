@@ -1,5 +1,7 @@
 package com.rheerkens.androidkeyboard.settings
 
+import com.rheerkens.androidkeyboard.keyboard.PlacementPreferences
+
 /** Keyboard key-row height preset. */
 enum class KeyboardHeight(val label: String, val rowHeightDp: Int) {
     COMPACT("Compact", 42),
@@ -66,6 +68,7 @@ enum class LoupeCorners(val label: String, val corners: List<Int>) {
 
 /** Every user-visible setting. Immutable snapshot; see [SettingsStore]. */
 data class Settings(
+    val placement: PlacementPreferences = PlacementPreferences(),
     // Keyboard
     val keyboardHeight: KeyboardHeight = KeyboardHeight.NORMAL,
     val vibrateOnKeyPress: Boolean = true,
