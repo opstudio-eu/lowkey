@@ -1,26 +1,19 @@
 # Custom keyboard theme: implementation plan
 
-## Device follow-up: Android 15
+## Current verification status
 
-The test emulator was brought online with a manual cold start after the device panel's launch
-failed. An isolated test application ID was used without replacing existing installations.
+The current, complete status is in
+[2026-11-12-custom-keyboard-theme-verification.md](2026-11-12-custom-keyboard-theme-verification.md):
+what passed in the UI on Android 15 and Android 14, what is covered by unit tests only, and what
+was not verified and why. The "pending" notes further down are kept as history and are superseded
+by that report. Device testing found one bug (no contrast warning for clipboard chip text on the
+key colour), now fixed with a regression test.
 
-Verified by interacting with the editor and the actual IME:
-
-- Selected a locally generated portrait image through the system photo picker.
-- Applied the suggested 56% dimming and saved the image.
-- Removed the image in a draft, then cancelled: the saved image returned.
-- Saw the image behind normal keys, the minimized bar and the voice row; keys remained opaque.
-- Typed using a letter key and used its long press to insert the associated number.
-- Set only the advanced space-label colour to `FFDD44`, saved, and saw the yellow label on the
-  actual keyboard while other labels retained their colours.
-- Relaunched the application and confirmed the image reference, dimming and colour override
-  remained in its stored settings.
-
-Still unverified on-device: every colour role, accent popup selection, clipboard and model/keyboard
-picker details, EXIF rotations, transparent/unsupported images, interrupted imports, simulated disk
-failure, missing-image recovery, and Android 14 navigation bars. Existing unit coverage does not
-replace those remaining device checks. No speech model was installed in this test application.
+First device pass (Android 15), kept for reference: a portrait image chosen through the photo
+picker with the suggested 56% dimming and saved; Remove then Cancel restored it; the image showed
+behind normal keys, the minimized bar and the voice row with opaque keys; a letter key typed and its
+long press inserted the number; a space-label override `FFDD44` changed only that label; the image,
+dimming and override survived an app relaunch.
 
 Design: [2026-11-12-custom-keyboard-theme-design.md](../specs/2026-11-12-custom-keyboard-theme-design.md).
 
@@ -44,7 +37,10 @@ Design: [2026-11-12-custom-keyboard-theme-design.md](../specs/2026-11-12-custom-
 15. **Editor.** Draft is the whole `CustomKeyboardTheme`; image section with picker, Replace, Remove and Dimming; Advanced colors grouped with Automatic/override and reset; contrast section with image note and dimming suggestion.
 16. **Checks.** Unit tests, `assembleDebug`, `lintDebug`; on the emulator: override one role and see only it change, reset, save/cancel, choose/replace/remove an image, missing file fallback, relaunch, and the real keyboard in keys, voice, model picker, minimized, chooser, popups, suggestions, clipboard and navigation bar.
 
-## Verification status
+## Verification status (history)
+
+The device notes in this and the following sections were written before device testing finished;
+see the verification report linked at the top for the current status.
 
 The editor was exercised on Android 15: custom selection, hex input, sliders, contrast correction,
 Cancel and Save. Review tightened hex validation so invalid or overlong pasted text cannot silently
@@ -100,4 +96,12 @@ or failing), `assembleDebug` and `lintDebug` pass.
 
 Device verification is still pending (the emulator was held by another session). Also verify the
 disabled controls during an import, the save error (hard to force on a device), and rotation during
-an import.
+an import. (Superseded: the verification report lists which of these were done on a device and
+which remain automated only.)
+
+### Contrast pair for clipboard chips
+
+Device testing showed clipboard chips draw suggestion text on the key colour without a matching
+contrast check. `keyboardContrastChecks` now includes "Clipboard text on clipboard chips", with a
+regression test in `CustomKeyboardThemeTest`. `testDebugUnitTest` (374 tests, none skipped or
+failing), `assembleDebug` and `lintDebug` pass.
