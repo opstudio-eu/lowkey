@@ -135,6 +135,7 @@ private fun SuggestionChip(s: Suggestion?, modifier: Modifier, center: Boolean, 
         return
     }
     val desc = when {
+        s.emojiName != null -> "Insert emoji: ${s.emojiName}"
         s.isLiteral -> "Typed word ${s.text}. Long-press to add to dictionary"
         s.isPersonal -> "Insert ${s.text}, saved term"
         else -> "Insert ${s.text}"
@@ -142,7 +143,7 @@ private fun SuggestionChip(s: Suggestion?, modifier: Modifier, center: Boolean, 
     PressTarget(
         desc, modifier, gestureKey = s,
         onTap = { actions.onSuggestion(s) },
-        onLongPress = { actions.onSuggestionLongPress(s) },
+        onLongPress = if (s.emojiName == null) ({ actions.onSuggestionLongPress(s) }) else null,
     ) { pressed ->
         Row(
             Modifier.fillMaxSize().background(if (pressed) c.keyMod else c.background).padding(horizontal = 4.dp),
@@ -156,7 +157,7 @@ private fun SuggestionChip(s: Suggestion?, modifier: Modifier, center: Boolean, 
             Text(
                 s.text,
                 color = if (s.isPersonal || center) c.chipSaved else c.chipText,
-                fontSize = 14.sp,
+                fontSize = if (s.emojiName != null) 22.sp else 14.sp,
                 fontWeight = if (center || s.isPersonal) FontWeight.Medium else FontWeight.Normal,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
