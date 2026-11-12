@@ -11,8 +11,8 @@
 
 Keep the three-lexicon memory budget and existing physical layout. Protect personal
 terms, sensitive fields, Space semantics and rejected corrections. No unrelated
-placement changes, logo edits, releases or merges. All execution artifacts belong
-under ignored artifacts/.
+placement changes or logo edits. Release preparation is limited to version metadata
+and release notes. All execution artifacts belong under ignored artifacts/.
 
 ## Review focus
 
@@ -67,13 +67,13 @@ new EmojiSuggestionsTest.kt, docs/user-guide.md.
 
 ## Verification result
 
-`testDebugUnitTest assembleDebug --max-workers=2` passed after the compact-popup
-follow-up: 362 tests across 52 suites, zero failures, errors or skips. This includes
+`testDebugUnitTest assembleDebug --max-workers=2` passed after integration with the
+0.6.1 baseline: 366 tests across 52 suites, zero failures, errors or skips. This includes
 16 new multilingual and emoji tests and three additional number-hint/grid regressions.
 The source leak checks (including new files and the private denylist) passed.
 A debug APK was installed on an Android 15 phone emulator and verified through actual
-taps, holds and slides. No physical-device installation, release, merge or push was
-performed. Media and accessibility snapshots remain under ignored artifacts/.
+taps, holds and slides. No physical-device installation was performed. Media and
+accessibility snapshots remain under ignored artifacts/.
 
 | Emulator check | Observed result |
 | --- | --- |
@@ -85,7 +85,10 @@ performed. Media and accessibility snapshots remain under ignored artifacts/.
 | Wide and narrow windows | Landscape enables Split and renders both keyboard halves. Portrait uses the normal layout and labels Split as Wide only. The one-handed menu remains readable and marks the active mode. |
 
 The emulator covered phone portrait, landscape and one-handed layouts. A physical
-Fold device was not tested.
+Fold device was not tested. The complete interaction pass preceded integration of
+the 0.6.1 minimized-bar fix. A second pass on the integrated build stopped when the
+device tool repeatedly rejected navigation in Android's keyboard settings; that
+integrated UI pass is not claimed as complete.
 
 ## Follow-up: number hints and compact accents
 
