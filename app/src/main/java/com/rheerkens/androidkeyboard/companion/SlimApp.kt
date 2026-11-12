@@ -54,6 +54,7 @@ fun SlimApp(pendingDestination: Destination?, onDestinationConsumed: () -> Unit)
     val stack = stackNames.map { Destination.valueOf(it) }
     val current = stack.last()
     var testOpen by rememberSaveable { mutableStateOf(false) }
+    var resizeKeyboard by rememberSaveable { mutableStateOf(false) }
     var testDraft by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue()) }
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
@@ -93,6 +94,7 @@ fun SlimApp(pendingDestination: Destination?, onDestinationConsumed: () -> Unit)
                 actions = {
                     TextButton(onClick = {
                         focusManager.clearFocus(force = true)
+                        resizeKeyboard = false
                         testOpen = true
                     }) {
                         Icon(SlimIcons.Keyboard, null, Modifier.padding(end = 6.dp))
@@ -121,9 +123,9 @@ fun SlimApp(pendingDestination: Destination?, onDestinationConsumed: () -> Unit)
             Destination.HOME -> HomeScreen(modifier, ::navigate)
             Destination.MODELS -> ModelsScreen(modifier)
             Destination.DICTIONARY -> DictionaryScreen(modifier)
-            Destination.SETTINGS -> SettingsScreen(modifier, focus = SettingsFocus.TOP, navigate = ::navigate)
-            Destination.SETTINGS_VOICE -> SettingsScreen(modifier, focus = SettingsFocus.VOICE, navigate = ::navigate)
-            Destination.SETTINGS_KEYBOARDS -> SettingsScreen(modifier, focus = SettingsFocus.KEYBOARDS, navigate = ::navigate)
+            Destination.SETTINGS -> SettingsScreen(modifier, focus = SettingsFocus.TOP, navigate = ::navigate, resizeKeyboard = { resizeKeyboard = true; testOpen = true })
+            Destination.SETTINGS_VOICE -> SettingsScreen(modifier, focus = SettingsFocus.VOICE, navigate = ::navigate, resizeKeyboard = { resizeKeyboard = true; testOpen = true })
+            Destination.SETTINGS_KEYBOARDS -> SettingsScreen(modifier, focus = SettingsFocus.KEYBOARDS, navigate = ::navigate, resizeKeyboard = { resizeKeyboard = true; testOpen = true })
             Destination.TRY_IT -> TryItScreen(modifier)
             Destination.DIAGNOSTICS -> DiagnosticsScreen(modifier)
             Destination.ABOUT -> AboutScreen(modifier)
@@ -137,7 +139,7 @@ fun SlimApp(pendingDestination: Destination?, onDestinationConsumed: () -> Unit)
             Destination.ABOUT -> "About"
             else -> current.title
         }
-        KeyboardTestSheet(returnTo, testDraft, { testDraft = it }, ::closeTest)
+        KeyboardTestSheet(returnTo, testDraft, { testDraft = it }, ::closeTest, resizeKeyboard)
     }
 }
 

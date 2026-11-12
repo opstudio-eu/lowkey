@@ -1,6 +1,7 @@
 package com.rheerkens.androidkeyboard.keyboard
 
 import com.rheerkens.androidkeyboard.dictionary.KeyGrid
+import com.rheerkens.androidkeyboard.settings.BottomKey
 import java.util.concurrent.ConcurrentHashMap
 
 /** One key. [weight] is its share of the row width (a letter key is 1). */
@@ -14,6 +15,7 @@ sealed interface Key {
         val longPressOutput: String? = null,
         /** Accented letters offered after [longPressOutput] in the long-press popup. */
         val accents: List<String> = emptyList(),
+        val opensEmojiOnHold: Boolean = false,
     ) : Key {
         /** Long-press popup choices; the first is selected when the popup opens. */
         val alternates: List<String> get() = listOfNotNull(longPressOutput) + accents
@@ -23,6 +25,7 @@ sealed interface Key {
     /** Switches between layers; [label] is `?123`, `=\<`, or `ABC`. */
     data class LayerSwitch(val target: Layer, val label: String, override val weight: Float = 1.5f) : Key
     data class Globe(override val weight: Float = 1f) : Key
+    data class Emoji(override val weight: Float = 1f) : Key
     data class Space(override val weight: Float = 4f) : Key
     data class Enter(override val weight: Float = 1.5f) : Key
     /** Flexible spacer used to center the middle letter row. */
@@ -60,7 +63,7 @@ object Layouts {
         (keyboard.language.accents[letter].orEmpty() + ACCENTS[letter].orEmpty()).distinct()
 
     private fun bottomRow(switchKey: Key.LayerSwitch) = listOf(
-        switchKey, Key.Globe(), Key.Char(","), Key.Space(), Key.Char("."), Key.Enter(),
+        switchKey, Key.Globe(), Key.Char(",", opensEmojiOnHold = true), Key.Space(), Key.Char("."), Key.Enter(),
     )
 
     /**
@@ -149,9 +152,15 @@ object Layouts {
         )
     )
 
-    fun forLayer(layer: Layer, keyboard: TypingKeyboard): KeyboardLayout = when (layer) {
-        Layer.LETTERS -> letters(keyboard)
-        Layer.SYMBOLS -> SYMBOLS
-        Layer.SYMBOLS_2 -> SYMBOLS_2
+    fun forLayer(layer: Layer, keyboard: TypingKeyboard, numberRow: Boolean = false, bottomKey: BottomKey = BottomKey.EMOJI): KeyboardLayout {
+        val layout = when (layer) {
+            Layer.LETTERS -> letters(keyboard)
+            Layer.SYMBOLS -> SYMBOLS
+            Layer.SYMBOLS_2 -> SYMBOLS_2
+        }
+        val rows = layout.rows.map { row ->
+            row.map { key -> if (key is Key.Globe && bottomKey == BottomKey.EMOJI) Key.Emoji(key.weight) else key }
+        }
+        return KeyboardLayout(if (numberRow && layer == Layer.LETTERS) listOf(SYMBOLS.rows.first()) + rows else rows)
     }
 }

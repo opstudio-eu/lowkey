@@ -39,8 +39,8 @@ import androidx.compose.ui.semantics.Role
 import com.rheerkens.androidkeyboard.companion.Destination
 import com.rheerkens.androidkeyboard.models.resolveLanguage
 import com.rheerkens.androidkeyboard.settings.AutoStop
+import com.rheerkens.androidkeyboard.settings.BottomKey
 import com.rheerkens.androidkeyboard.settings.KeyArrangement
-import com.rheerkens.androidkeyboard.settings.KeyboardHeight
 import com.rheerkens.androidkeyboard.settings.LoupeCorners
 import com.rheerkens.androidkeyboard.settings.ModelRetention
 import com.rheerkens.androidkeyboard.settings.Settings
@@ -55,7 +55,7 @@ private const val VOICE_SECTION_INDEX = 10
 enum class SettingsFocus(val index: Int?) { TOP(null), KEYBOARDS(KEYBOARDS_INDEX), VOICE(VOICE_SECTION_INDEX) }
 
 @Composable
-fun SettingsScreen(modifier: Modifier, focus: SettingsFocus, navigate: (Destination) -> Unit) {
+fun SettingsScreen(modifier: Modifier, focus: SettingsFocus, navigate: (Destination) -> Unit, resizeKeyboard: () -> Unit = {}) {
     val s by AppGraph.settings.settings.collectAsStateWithLifecycle()
     val models by AppGraph.models.state.collectAsStateWithLifecycle()
     // Recomposes the language summary when a download finishes or a word list is deleted.
@@ -72,7 +72,19 @@ fun SettingsScreen(modifier: Modifier, focus: SettingsFocus, navigate: (Destinat
         // Keyboard (items 0–9; the layouts are item KEYBOARDS_INDEX)
         item { SectionTitle("Keyboard") }
         item {
-            ChoiceRow("Keyboard height", KeyboardHeight.entries, s.keyboardHeight, { it.label }, { v -> update { it.copy(keyboardHeight = v) } })
+            Column {
+                LinkRow("Size and position", "Resize and move the keyboard directly", resizeKeyboard)
+                LinkRow("Reset size and position", "Restore default sizes and positions; keep your keyboard modes") {
+                    update { it.copy(placement = it.placement.resetGeometry()) }
+                }
+                SwitchRow("Automatically split on large screens", s.placement.automaticSplit,
+                    { enabled -> update { it.copy(placement = it.placement.withAutomaticSplit(enabled)) } },
+                    "Use split by default on large screens; remember manual choices")
+                SwitchRow("Number row", s.numberRow, { enabled -> update { it.copy(numberRow = enabled) } },
+                    "Show a dedicated 1–0 row above the letters")
+                ChoiceRow("Key beside Space", BottomKey.entries, s.bottomKey, { it.label },
+                    { value -> update { it.copy(bottomKey = value) } })
+            }
         }
         item { SwitchRow("Key-press vibration", s.vibrateOnKeyPress, { v -> update { it.copy(vibrateOnKeyPress = v) } }) }
         item {

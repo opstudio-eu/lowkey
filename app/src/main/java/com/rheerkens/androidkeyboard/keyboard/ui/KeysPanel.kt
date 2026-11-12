@@ -35,6 +35,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.BoxWithConstraints
+import com.rheerkens.androidkeyboard.keyboard.splitRows
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -60,10 +63,37 @@ fun KeysPanel(
     rowHeightDp: Int,
     enterKind: EnterKind,
     actions: KeyboardActions,
+    splitGapDp: Float = 0f,
+    keyRows: Int = layout.rows.size,
 ) {
+    val rowHeight = (rowHeightDp * keyRows.toFloat() / layout.rows.size).dp
+    if (splitGapDp > 0f) {
+        val rows = remember(layout, state.keyboard, state.layer) { splitRows(layout, state.keyboard, state.layer) }
+        val units = rows.filterNot { it.fullWidth }.maxOf { maxOf(it.left.sumOf { key -> key.weight.toDouble() }, it.right.sumOf { key -> key.weight.toDouble() }) }.toFloat()
+        BoxWithConstraints(Modifier.fillMaxWidth().padding(start = 3.dp, end = 3.dp, bottom = 4.dp)) {
+            val unit = ((maxWidth - splitGapDp.dp) / (2 * units)).coerceAtLeast(1.dp)
+            Column {
+                rows.forEach { row ->
+                    Row(Modifier.fillMaxWidth().height(rowHeight)) {
+                        if (row.fullWidth) {
+                            row.left.forEach { key ->
+                                val width = if (key is Key.Space) Modifier.weight(1f) else Modifier.width(unit * key.weight)
+                                KeyView(key, state, enterKind, actions, width.fillMaxHeight())
+                            }
+                        } else {
+                            row.left.forEach { key -> KeyView(key, state, enterKind, actions, Modifier.width(unit * key.weight).fillMaxHeight()) }
+                            Spacer(Modifier.weight(1f))
+                            row.right.forEach { key -> KeyView(key, state, enterKind, actions, Modifier.width(unit * key.weight).fillMaxHeight()) }
+                        }
+                    }
+                }
+            }
+        }
+        return
+    }
     Column(Modifier.fillMaxWidth().padding(start = 3.dp, end = 3.dp, bottom = 4.dp)) {
         layout.rows.forEach { row ->
-            Row(Modifier.fillMaxWidth().height(rowHeightDp.dp)) {
+            Row(Modifier.fillMaxWidth().height(rowHeight)) {
                 row.forEach { key -> KeyView(key, state, enterKind, actions, Modifier.weight(key.weight).fillMaxHeight()) }
             }
         }
@@ -114,6 +144,11 @@ private fun KeyView(
                 }
             }
         }
+        is Key.Emoji -> PressTarget(
+            "Emoji", modifier, gestureKey = key, onDown = actions::onKeyDown, onTap = { actions.onKey(key) },
+        ) { pressed ->
+            KeyCap(if (pressed) c.keyPressed else c.keyMod) { KeyIcon(SlimIcons.Emoji) }
+        }
         is Key.Globe -> PressTarget(
             "Next keyboard. Long-press to switch to another keyboard app",
             // Announce the keyboard a tap switched to, whichever key has focus.
@@ -127,7 +162,7 @@ private fun KeyView(
             KeyCap(if (pressed) c.keyPressed else c.keyMod) { KeyIcon(SlimIcons.Globe) }
         }
         is Key.Space -> PressTarget(
-            "Space, ${state.keyboard.fullLabel}. Long-press to choose a keyboard", modifier, gestureKey = key,
+            "Space, ${state.keyboard.fullLabel}. Long-press to switch keyboard app", modifier, gestureKey = key,
             onDown = actions::onKeyDown, onTap = { actions.onKey(key) }, onLongPress = actions::onSpaceLongPress,
         ) { pressed ->
             KeyCap(if (pressed) c.keyPressed else c.key) {
@@ -182,6 +217,7 @@ private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardAction
         else -> "Accent: ${cased(choices[i])}"
     }
     val description = when {
+        key.opensEmojiOnHold -> "Comma. Hold for emoji"
         choices.isEmpty() -> label
         open -> "$label. ${choiceDescription(selected)}. Release to type"
         key.longPressOutput == null -> "$label. Long-press for accents"
@@ -205,7 +241,11 @@ private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardAction
             },
         gestureKey = key, onDown = actions::onKeyDown,
         onTap = { actions.onKey(key) },
-        onLongPress = if (choices.isEmpty()) null else { { selected = 0 } },
+        onLongPress = when {
+            key.opensEmojiOnHold -> ({ actions.onKey(Key.Emoji()) })
+            choices.isEmpty() -> null
+            else -> ({ selected = 0 })
+        },
         onLongPressRelease = if (choices.isEmpty()) null else { { selected?.let { actions.onKey(Key.Char(choices[it])) } } },
         onLongPressState = { open = it },
         onLongPressMove = popup?.let { p -> { at: Offset -> selected = p.select(at.x, at.y) } },

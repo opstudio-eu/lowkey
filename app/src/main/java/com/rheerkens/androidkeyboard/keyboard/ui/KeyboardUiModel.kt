@@ -7,7 +7,6 @@ import com.rheerkens.androidkeyboard.clipboard.ClipboardContent
 import com.rheerkens.androidkeyboard.keyboard.BackspaceScrub
 import com.rheerkens.androidkeyboard.keyboard.FanCommand
 import com.rheerkens.androidkeyboard.keyboard.Key
-import com.rheerkens.androidkeyboard.keyboard.TypingKeyboard
 
 /** What the Enter key does in the current editor. */
 enum class EnterKind(val label: String?) {
@@ -46,6 +45,15 @@ val LocalWordAim = androidx.compose.runtime.compositionLocalOf<WordAim?> { null 
 
 /** Callbacks from the keyboard UI into the input method. */
 interface KeyboardActions {
+    fun onCloseEmoji() {}
+    fun onChooseEmoji(value: String) {}
+    fun onOpenTools() {}
+    fun onResizeKeyboard() {}
+    fun onSelectPlacementMode(mode: com.rheerkens.androidkeyboard.keyboard.PlacementMode) {}
+    fun onSavePlacement(profile: com.rheerkens.androidkeyboard.keyboard.PlacementProfile, placement: com.rheerkens.androidkeyboard.keyboard.KeyboardPlacement) {}
+    fun onPlacementBounds(left: Int, top: Int, right: Int, bottom: Int, floating: Boolean) {}
+    fun onLayoutBackHandler(handler: (() -> Boolean)?) {}
+    fun onPrepareResize() {}
     fun onKeyDown()
     fun onKey(key: Key)
     fun onBackspace()
@@ -69,10 +77,8 @@ interface KeyboardActions {
     /** A command picked from the minimized bar's Backspace fan (never [FanCommand.WORDS]). */
     fun onFanCommand(command: FanCommand)
     fun onGlobeLongPress()
-    /** Long-press on the space bar: open the [KeyboardChooser]. */
+    /** Long-press on Space opens Android's input-method picker directly. */
     fun onSpaceLongPress()
-    fun onChooseKeyboard(keyboard: TypingKeyboard)
-    fun onCloseKeyboardChooser()
     /** Settings, scrolled to the keyboard layouts. */
     fun onOpenKeyboardSettings()
     fun onSuggestion(suggestion: Suggestion)
