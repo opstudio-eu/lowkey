@@ -91,7 +91,10 @@ fun keyboardContrastChecks(c: KeyboardColors, image: LuminanceRange? = null): Li
     pair("Suggestions", ColorRole.CHIP_TEXT, "the background", ColorRole.BACKGROUND)
     pair("Suggestions", ColorRole.CHIP_TEXT, "popups", ColorRole.POPUP)
     pair("Suggestions", ColorRole.CHIP_TEXT, "pressed keys", ColorRole.KEY_PRESSED)
-    // A pressed suggestion and the dictionary prompt are filled with the function key colour.
+    // Clipboard chips (the strip's clipboard button and the minimized bar's copied clips) draw
+    // suggestion text on the key colour, and on the function key colour while pressed.
+    pair("Clipboard text", ColorRole.CHIP_TEXT, "clipboard chips", ColorRole.KEY)
+    // A pressed suggestion or clipboard chip and the dictionary prompt are filled with the function key colour.
     pair("Suggestions", ColorRole.CHIP_TEXT, "pressed suggestions", ColorRole.KEY_MOD)
     pair("Saved words", ColorRole.CHIP_SAVED, "pressed suggestions", ColorRole.KEY_MOD)
     pair("Saved words", ColorRole.CHIP_SAVED, "the background", ColorRole.BACKGROUND)

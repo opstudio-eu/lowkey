@@ -62,6 +62,17 @@ class CustomKeyboardThemeTest {
     }
 
     @Test
+    fun suggestionTextMatchingTheKeysIsReportedForClipboardChips() {
+        // Clipboard chips draw suggestion text on the key colour; found on a device where an
+        // override equal to the keys made copied clips invisible without any warning.
+        val colors = CustomKeyboardTheme(forest).with(ColorRole.CHIP_TEXT, forest.keys).effectiveColors()
+        val failure = keyboardContrastFailures(colors)
+            .single { it.foregroundRole == ColorRole.CHIP_TEXT && it.surfaceRole == ColorRole.KEY }
+        assertEquals("Clipboard text on clipboard chips: 1.0:1, needs 4.5:1", failure.description)
+        assertTrue(keyboardContrastFailures(deriveKeyboardColors(forest)).none { it.surfaceRole == ColorRole.KEY })
+    }
+
+    @Test
     fun resetReturnsARoleToItsDerivedColour() {
         val custom = CustomKeyboardTheme(forest).with(ColorRole.MUTED, hex("FF0000")).with(ColorRole.AMBER, hex("00FF00"))
         val reset = custom.with(ColorRole.MUTED, null)
