@@ -1,20 +1,26 @@
 package com.rheerkens.androidkeyboard.companion.screens
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
@@ -27,10 +33,7 @@ import com.rheerkens.androidkeyboard.dictionary.KeyboardLanguage
 import com.rheerkens.androidkeyboard.dictionary.LanguagePackState
 import com.rheerkens.androidkeyboard.ui.SlimIcons
 
-/**
- * Keyboard languages: the word lists on the phone (delete the downloaded ones) and those that can
- * be downloaded. Which keyboards the globe key switches between is chosen in Settings, per layout.
- */
+/** Installed languages can be selected, disabled, or removed without leaving this screen. */
 @Composable
 fun LanguagesScreen(modifier: Modifier, navigate: (Destination) -> Unit) {
     val s by AppGraph.settings.settings.collectAsStateWithLifecycle()
@@ -39,39 +42,69 @@ fun LanguagesScreen(modifier: Modifier, navigate: (Destination) -> Unit) {
     val onPhone = all.filter { it.bundled || it.id in packs.installed }
     val available = all.filter { !it.bundled && it.id !in packs.installed }
     val current = AppGraph.currentKeyboard(s)
+    val installed = AppGraph.installedKeyboards()
+    val usableIds = installed.map { it.id }
+    var removing by remember { mutableStateOf<KeyboardLanguage?>(null) }
+
+    removing?.let { language ->
+        AlertDialog(
+            onDismissRequest = { removing = null },
+            title = { Text("Remove ${language.name} download?") },
+            text = { Text("This removes its word list and turns off its layouts. You can download it again later.") },
+            confirmButton = {
+                TextButton(onClick = { AppGraph.deleteLanguage(language.id); removing = null }) { Text("Remove") }
+            },
+            dismissButton = { TextButton(onClick = { removing = null }) { Text("Cancel") } },
+        )
+    }
 
     LazyColumn(modifier.fillMaxWidth()) {
         item {
             Note(
-                "Each language has its own keys, accents on long-press, suggestions and autocorrect. A downloaded " +
-                    "language is turned on at once; choose its layouts in Settings.",
+                "Tap Use to choose a language. Turn off languages you don't use, including English (US).",
                 Modifier.padding(top = 12.dp),
             )
         }
         item { LinkRow("Keyboard layouts", "Current keyboard: ${current.fullLabel}") { navigate(Destination.SETTINGS_KEYBOARDS) } }
         item { SectionTitle("On this phone") }
         items(onPhone, key = { "on-" + it.id }) { language ->
-            Row(
-                Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f).padding(vertical = 10.dp)) {
-                    Text(language.name, style = MaterialTheme.typography.bodyLarge)
-                    val notes = listOfNotNull(
-                        language.englishName.takeIf { it != language.name },
-                        if (language.bundled) "Built in" else "Downloaded",
-                        "Typing now".takeIf { language.id == current.language.id },
-                    )
-                    Text(
-                        notes.joinToString(" · "),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                if (!language.bundled) {
-                    IconButton(onClick = { AppGraph.deleteLanguage(language.id) }) {
-                        Icon(SlimIcons.Trash, "Delete ${language.englishName} word list")
+            val options = installed.filter { it.language.id == language.id }
+            val enabled = options.any { it.id in s.enabledKeyboards }
+            val inUse = current.language.id == language.id
+            val lastLanguage = enabled && installed.none {
+                it.language.id != language.id && it.id in s.enabledKeyboards
+            }
+            val preferred = current.takeIf { inUse }
+                ?: options.firstOrNull { it.id in s.enabledKeyboards } ?: options.first()
+            val notes = listOfNotNull(
+                language.englishName.takeIf { it != language.name },
+                if (language.bundled) "Built in" else "Downloaded",
+                if (enabled) "On" else "Off",
+                "In use: ${current.layoutLabel}".takeIf { inUse },
+            )
+            Column {
+                SwitchRow(language.name, enabled,
+                    { on -> AppGraph.settings.update { it.setLanguageEnabled(language.id, on, usableIds) } },
+                    subtitle = notes.joinToString(" · "), enabled = !lastLanguage)
+                FlowRow(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    if (!inUse) {
+                        OutlinedButton(
+                            onClick = { AppGraph.settings.update { it.selectKeyboard(preferred.id, usableIds) } },
+                            modifier = Modifier.semantics { contentDescription = "Use ${preferred.fullLabel}" },
+                        ) { Text("Use ${preferred.layoutLabel}") }
                     }
+                    if (!language.bundled) {
+                        TextButton(onClick = { removing = language }, enabled = !lastLanguage,
+                            modifier = Modifier.semantics { contentDescription = "Remove ${language.englishName} download" }) {
+                            Text("Remove download")
+                        }
+                    }
+                }
+                if (lastLanguage) {
+                    Note("Keep at least one language on. Turn on another language before turning this one off.")
                 }
             }
         }
@@ -82,7 +115,7 @@ fun LanguagesScreen(modifier: Modifier, navigate: (Destination) -> Unit) {
         item {
             Note(
                 "Word lists come from the Android Open Source Project keyboard (Apache 2.0). English (US) is " +
-                    "built in. The others download from android.googlesource.com at a pinned version, are checked " +
+                    "built in and can be turned off. The others download from android.googlesource.com at a pinned version, are checked " +
                     "against their SHA-256, and are converted on the phone. Nothing you type is sent anywhere.",
                 Modifier.padding(vertical = 12.dp),
             )

@@ -334,16 +334,21 @@ private fun KeyboardsSetting(s: Settings, packs: LanguagePackState, update: Upda
     val fontScale = LocalDensity.current.fontScale
     // A lazy item stacks its children, so the grid and the link share one column.
     Column {
+    val installed = remember(packs.installed) { AppGraph.installedKeyboards() }
+    val usableIds = installed.map { it.id }
+    DropdownRow(
+        "Keyboard in use", installed.filter { it.id in s.enabledKeyboards }, AppGraph.currentKeyboard(s),
+        { it.fullLabel }, { keyboard -> update { it.selectKeyboard(keyboard.id, usableIds) } },
+        subtitle = "Your choice is remembered. Turn layouts on or off below.",
+    )
     Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
         Text(
-            "Turn on the layouts you type with. Turning one on doesn't switch to it: tap the globe key to go " +
-                "through them in the order shown, or long-press the space bar to pick one. " +
+            "Turn on the layouts you type with, then choose Keyboard in use above to switch. " +
+                "You can also tap the globe key or long-press the space bar while typing. " +
                 "Long-press the globe key to switch to another keyboard app.",
             style = MaterialTheme.typography.bodySmall,
             color = muted,
         )
-        val installed = remember(packs.installed) { AppGraph.installedKeyboards() }
-        val usableIds = installed.map { it.id }
         val onlyOne = usableIds.count { it in s.enabledKeyboards } == 1
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             val columns = when {
