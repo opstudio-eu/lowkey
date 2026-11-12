@@ -63,7 +63,7 @@ The minimized bar shows up to ten recent clips. The full keyboard shows them whe
 
 Clips are captured while Lowkey is the selected keyboard, even when hidden. History lasts until the app process ends. Copied images are cached privately and removed when they leave history or the app restarts. Clips marked sensitive are not saved in history, and history is hidden in password fields.
 
-To include recent screenshots, enable **Settings → Keyboard → Recent screenshots** and grant photo access. This setting is off by default. It adds up to five screenshots from the last day; tapping one copies it into history and pastes it.
+Recent screenshots are on by default. They appear once Lowkey may read your photos: tap **Allow** in step 5 of the Home setup, or the **Settings → Keyboard → Recent screenshots** switch, and choose **Allow all**. To turn them off, use that switch. It adds up to five screenshots from the last day; tapping one copies it into history and pastes it. With **Allow limited access**, Android hides screenshots you take later, so the switch stays off and Settings asks for all photos instead. Step 5 on the Home checklist shows the same state and has a button to fix it.
 
 ## Edit an image before pasting
 

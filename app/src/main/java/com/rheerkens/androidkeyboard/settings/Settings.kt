@@ -81,8 +81,11 @@ data class Settings(
     val currentKeyboard: String = DEFAULT_KEYBOARD,
     /** Keep the keyboard on screen with a physical keyboard connected (Android hides it otherwise). */
     val showWithPhysicalKeyboard: Boolean = true,
-    /** Show recent screenshots next to clipboard history in the minimized bar (photos permission). */
-    val recentScreenshots: Boolean = false,
+    /**
+     * Show recent screenshots next to clipboard history in the minimized bar. On by default; they
+     * appear once all photos are allowed (Home's setup step 5 or the Settings switch asks).
+     */
+    val recentScreenshots: Boolean = true,
     // Voice
     val keyboardFirstDictation: Boolean = true,
     val autoStartVoice: Boolean = true,

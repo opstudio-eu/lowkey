@@ -44,6 +44,7 @@ import androidx.core.app.ActivityCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rheerkens.androidkeyboard.AppGraph
+import com.rheerkens.androidkeyboard.clipboard.PhotoAccess
 import com.rheerkens.androidkeyboard.companion.Destination
 import com.rheerkens.androidkeyboard.companion.SystemImeStatus
 import com.rheerkens.androidkeyboard.ui.SlimIcons
@@ -82,7 +83,10 @@ fun HomeScreen(modifier: Modifier, navigate: (Destination) -> Unit) {
             !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.RECORD_AUDIO)
     }
 
-    val steps = listOf(ime.enabled, ime.selected, mic, models.activeModel != null)
+    val photos = rememberPhotoAccess()
+    val screenshotsOn = settings.recentScreenshots && photos.access == PhotoAccess.ALL
+
+    val steps = listOf(ime.enabled, ime.selected, mic, models.activeModel != null, screenshotsOn)
     val done = steps.count { it }
 
     Column(modifier.verticalScroll(rememberScrollState()).padding(bottom = 16.dp)) {
@@ -93,7 +97,7 @@ fun HomeScreen(modifier: Modifier, navigate: (Destination) -> Unit) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        SectionTitle("Setup · $done of 4 done")
+        SectionTitle("Setup · $done of ${steps.size} done")
         SlimCard(Modifier.padding(horizontal = 16.dp)) {
             StepRow(
                 number = 1, title = "Enable Lowkey Keyboard in system settings",
@@ -130,6 +134,27 @@ fun HomeScreen(modifier: Modifier, navigate: (Destination) -> Unit) {
                 status = models.activeModel?.let { "${it.name} active" } ?: "No model installed",
                 done = models.activeModel != null, action = "Get a model",
             ) { navigate(Destination.MODELS) }
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            StepRow(
+                number = 5, title = "Show recent screenshots",
+                status = when {
+                    screenshotsOn -> "Allowed. New screenshots appear next to your clips."
+                    photos.access == PhotoAccess.ALL -> "Photos allowed, but turned off"
+                    photos.access == PhotoAccess.LIMITED -> "Limited to photos you picked. New screenshots stay hidden."
+                    photos.deniedForever -> "Denied. Allow all photos in app settings."
+                    else -> "Paste screenshots from the keyboard. Needs access to all photos."
+                },
+                done = screenshotsOn,
+                action = when {
+                    photos.access == PhotoAccess.ALL -> "Turn on"
+                    photos.deniedForever -> "App settings"
+                    photos.access == PhotoAccess.LIMITED -> "Allow all"
+                    else -> "Allow"
+                },
+            ) {
+                if (photos.access == PhotoAccess.ALL) AppGraph.settings.update { it.copy(recentScreenshots = true) }
+                else photos.request()
+            }
         }
 
         SectionTitle("Overview")
