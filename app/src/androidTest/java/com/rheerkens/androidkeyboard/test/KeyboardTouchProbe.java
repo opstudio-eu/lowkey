@@ -21,10 +21,27 @@ import java.util.List;
 public final class KeyboardTouchProbe extends Instrumentation {
     private Bundle arguments;
     private UiAutomation ui;
+    private com.rheerkens.androidkeyboard.settings.Settings savedSettings;
+    @Override public void finish(int code, Bundle results) {
+        if (savedSettings != null) {
+            runOnMainSync(() -> {
+                TypingProbeConfig.restore(savedSettings);
+                // Instrumentation finish stops the target process; flush pending apply() writes.
+                if (!getTargetContext().getSharedPreferences("settings", 0).edit().commit())
+                    throw new AssertionError("Could not restore typing preferences");
+            });
+            savedSettings = null;
+        }
+        super.finish(code, results);
+    }
     @Override public void onCreate(Bundle args) { super.onCreate(args); arguments = args; start(); }
     @Override public void onStart() {
         Bundle result = new Bundle();
         try {
+            if (arguments.getString("typingDefaults", "0").equals("1")) {
+                runOnMainSync(() -> savedSettings = TypingProbeConfig.configure());
+                TypingProbeConfig.awaitDictionary();
+            }
             if (arguments.getString("probe", "burst").equals("registration")) { registration(result); return; }
             if (arguments.getString("probe", "burst").equals("correction")) { correctionBudget(result); return; }
             if (arguments.getString("probe", "burst").equals("blur")) { blur(result); return; }
@@ -32,9 +49,10 @@ public final class KeyboardTouchProbe extends Instrumentation {
             AccessibilityServiceInfo info = ui.getServiceInfo();
             info.flags |= AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS;
             ui.setServiceInfo(info);
+            if (arguments.getString("probe", "burst").equals("latency")) { latency(result); return; }
             if (arguments.getString("probe", "burst").equals("clipboard")) { clipboard(result); return; }
             startActivitySync(new Intent().setClassName(getTargetContext(), "com.rheerkens.androidkeyboard.companion.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-            AccessibilityNodeInfo launch = waitLabel("Test keyboard");
+            AccessibilityNodeInfo launch = waitLabel("Try your keyboard");
             while (launch != null && !launch.performAction(AccessibilityNodeInfo.ACTION_CLICK)) launch = launch.getParent();
             expandKeyboard();
             waitLabel("Switch to voice typing");
@@ -47,6 +65,7 @@ public final class KeyboardTouchProbe extends Instrumentation {
             if (arguments.getString("probe", "burst").equals("numbers")) { numbers(result); return; }
             if (arguments.getString("probe", "burst").startsWith("autocomplete")) { autocomplete(result); return; }
             if (arguments.getString("probe", "burst").equals("accents")) { accents(result); return; }
+            if (arguments.getString("probe", "burst").equals("hold-overlap")) { holdOverlap(result); return; }
             Rect a = bounds(waitLabel("s")), b = bounds(waitLabel("d"));
             Bundle coordinates = new Bundle(); coordinates.putString("stream", "key s="+a+" d="+b+"\n"); sendStatus(0,coordinates);
             try (java.io.FileOutputStream f = new java.io.FileOutputStream(new java.io.File(getTargetContext().getCacheDir(), "probe-before.png"))) { ui.takeScreenshot().compress(android.graphics.Bitmap.CompressFormat.PNG,100,f); }
@@ -63,9 +82,10 @@ public final class KeyboardTouchProbe extends Instrumentation {
                     SystemClock.sleep(20);
                     touch(down, MotionEvent.ACTION_POINTER_DOWN | (1 << MotionEvent.ACTION_POINTER_INDEX_SHIFT), new int[]{0,1}, new Rect[]{a,second});
                     SystemClock.sleep(20);
-                    touch(down, MotionEvent.ACTION_POINTER_UP | (mode.equals("same-key-reverse") ? 1 << MotionEvent.ACTION_POINTER_INDEX_SHIFT : 0), new int[]{0,1}, new Rect[]{a,second});
+                    boolean reverse = mode.equals("same-key-reverse") || mode.equals("rollover");
+                    touch(down, MotionEvent.ACTION_POINTER_UP | (reverse ? 1 << MotionEvent.ACTION_POINTER_INDEX_SHIFT : 0), new int[]{0,1}, new Rect[]{a,second});
                     SystemClock.sleep(20);
-                    touch(down, MotionEvent.ACTION_UP, new int[]{mode.equals("same-key-reverse") ? 0:1}, new Rect[]{second});
+                    touch(down, MotionEvent.ACTION_UP, new int[]{reverse ? 0:1}, new Rect[]{reverse ? a:second});
                     expected.append(mode.startsWith("same-key") ? "ss" : "sd");
                 } else {
                     long down = SystemClock.uptimeMillis();
@@ -88,9 +108,63 @@ public final class KeyboardTouchProbe extends Instrumentation {
             if (!expected.toString().equals(actual.toLowerCase(java.util.Locale.ROOT))) throw new AssertionError(report);
             finish(0, result);
         } catch (Throwable e) {
+            e.printStackTrace();
             try { if(ui != null) cancelPointers(); } catch(Throwable ignored) {}
             result.putString("stream", "FAIL: "+e+"\n"); finish(1, result);
         }
+    }
+    private void latency(Bundle result) throws Exception {
+        startActivitySync(new Intent().setClassName(getTargetContext(),
+            "com.rheerkens.androidkeyboard.companion.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        getTargetContext().startActivity(new Intent().setClassName(
+            getContext().getPackageName(), "com.rheerkens.androidkeyboard.test.LatencyFixtureActivity")
+            .putExtra("readDelayMs", Integer.parseInt(arguments.getString("readDelayMs", "5")))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
+        waitLabel("Latency fixture");
+        waitLabel("Switch to voice typing");
+        // typingDefaults waits for the actual dictionary publication before this fixture opens.
+        SystemClock.sleep(500);
+        Rect a = bounds(waitLabel("s")), b = bounds(waitLabel("d"));
+        clickLabel("Reset latency counters");
+        int count = Integer.parseInt(arguments.getString("count", "20"));
+        int interval = Integer.parseInt(arguments.getString("interval", "40"));
+        long[] releases = new long[count];
+        for (int i = 0; i < count; i++) {
+            Rect key = i % 2 == 0 ? a : b;
+            long down = SystemClock.uptimeMillis();
+            touch(down, MotionEvent.ACTION_DOWN, new int[]{0}, new Rect[]{key});
+            SystemClock.sleep(20);
+            releases[i] = SystemClock.uptimeMillis();
+            touch(down, MotionEvent.ACTION_UP, new int[]{0}, new Rect[]{key});
+            SystemClock.sleep(interval);
+        }
+        SystemClock.sleep(1500);
+        if (!editorText().equalsIgnoreCase("sd".repeat(count / 2))) throw new AssertionError("Lost/reordered latency input: " + editorText());
+        clickLabel("Report latency counters");
+        String stats = nodes().stream().map(n -> String.valueOf(n.getText()))
+            .filter(s -> s.startsWith("Latency reads=")).findFirst().orElseThrow();
+        result.putString("stream", "probe=latency releases=" + java.util.Arrays.toString(releases) + " " + stats + "\n");
+        finish(0, result);
+    }
+    private void holdOverlap(Bundle result) {
+        Rect held = bounds(waitLabel("e")), typed = bounds(waitLabel("s"));
+        long down = SystemClock.uptimeMillis();
+        touch(down, MotionEvent.ACTION_DOWN, new int[]{0}, new Rect[]{held});
+        SystemClock.sleep(650);
+        if (!descriptionContains("Number preview: 3")) throw new AssertionError("Hold popup not open");
+        touch(down, MotionEvent.ACTION_POINTER_DOWN | (1 << MotionEvent.ACTION_POINTER_INDEX_SHIFT),
+            new int[]{0, 1}, new Rect[]{held, typed});
+        SystemClock.sleep(30);
+        touch(down, MotionEvent.ACTION_POINTER_UP | (1 << MotionEvent.ACTION_POINTER_INDEX_SHIFT),
+            new int[]{0, 1}, new Rect[]{held, typed});
+        SystemClock.sleep(100);
+        if (!editorText().equalsIgnoreCase("s")) throw new AssertionError("Hold committed before release");
+        if (!descriptionContains("Number preview: 3")) throw new AssertionError("Other finger dismissed hold");
+        touch(down, MotionEvent.ACTION_UP, new int[]{0}, new Rect[]{held});
+        SystemClock.sleep(100);
+        if (!editorText().equalsIgnoreCase("s3")) throw new AssertionError("Hold result missing: " + editorText());
+        result.putString("stream", "probe=hold-overlap PASS: established popup survives another typing finger\n");
+        finish(0, result);
     }
     /** Query Android's parsed registration, not the XML source: disabled languages must not be advertised. */
     @SuppressWarnings("deprecation")
@@ -183,9 +257,12 @@ public final class KeyboardTouchProbe extends Instrumentation {
         SystemClock.sleep(180);
     }
     private void setEditorText(String text) {
+        setEditorText(text, 300);
+    }
+    private void setEditorText(String text, long settleMs) {
         Bundle value = new Bundle(); value.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text);
         if (!waitEditable().performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, value)) throw new AssertionError("Cannot edit fixture");
-        SystemClock.sleep(300);
+        SystemClock.sleep(settleMs);
     }
     private boolean hasClipboardAction() {
         return nodes().stream().anyMatch(node -> String.valueOf(node.getContentDescription()).startsWith("Paste clipboard") ||
@@ -202,12 +279,50 @@ public final class KeyboardTouchProbe extends Instrumentation {
         }
     }
     private void autocomplete(Bundle result) throws Exception {
+        if (arguments.getString("probe", "").equals("autocomplete-miss")) {
+            setEditorText("please ");
+            try (AutoCloseable blocked = TypingProbeConfig.blockSuggestions()) {
+                setEditorText("please recieve");
+                tap(bounds(waitLabel("Space")));
+                waitEditorText("please recieve ");
+            }
+            SystemClock.sleep(500);
+            waitEditorText("please recieve ");
+            result.putString("stream", "probe=autocomplete-miss PASS: no synchronous correction with workers blocked; no late replacement\n");
+            finish(0, result);
+            return;
+        }
+        if (arguments.getString("probe", "").equals("autocomplete-stale")) {
+            for (String previous : new String[]{"please recieve", "please functon", "please tyoing"}) {
+                setEditorText(previous, 0);
+                setEditorText("please hello", 0);
+                SystemClock.sleep(500);
+                tap(bounds(waitLabel("Space")));
+                waitEditorText("please hello ");
+            }
+            setEditorText("please recieve known");
+            Bundle selection = new Bundle();
+            selection.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, 14);
+            selection.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, 14);
+            if (!waitEditable().performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, selection))
+                throw new AssertionError("Could not move cursor");
+            waitLabel("Insert receive");
+            tap(bounds(waitLabel("Space")));
+            waitEditorText("please receive  known");
+            tap(bounds(waitLabel("Backspace")));
+            waitEditorText("please recieve known");
+            result.putString("stream", "probe=autocomplete-stale PASS: replaced input and cursor move invalidate stale work; middle-of-text correction undo\n");
+            finish(0, result);
+            return;
+        }
         if (arguments.getString("probe", "").equals("autocomplete-boundaries")) {
             for (String[] example : new String[][]{{"teh", "the", "."}, {"recieve", "receive", ","}, {"tyoing", "typing", "."}}) {
                 setEditorText("please " + example[0]);
+                // This is the cache-hit test. Cache misses intentionally preserve the word.
+                waitLabel("Insert " + example[1]);
                 tap(bounds(waitLabel(example[2])));
                 waitEditorText("please " + example[1] + example[2]);
-                tap(bounds(waitLabel("Backspace. Hold to delete faster. Swipe up and release to clear all text")));
+                tap(bounds(waitLabel("Backspace")));
                 waitEditorText("please " + example[0]);
                 tap(bounds(waitLabel(example[2])));
                 waitEditorText("please " + example[0] + example[2]);
@@ -322,31 +437,39 @@ public final class KeyboardTouchProbe extends Instrumentation {
         if(!editorText().equals(expected.toString())) throw new AssertionError("Cancelled hold inserted a number");
         result.putString("stream","probe=numbers expected="+expected+" actual="+editorText()+" preview and cancellation verified\n"); finish(0,result);
     }
-    /** Long-presses [letter], slides [cells] popup cells (negative = left), and checks the choice. */
-    private void accent(String letter, int cells, boolean below, String opened, String chosen) {
+    /** Long-presses a letter, slides to its visible accent cell, and checks the choice. */
+    private void accent(String letter, boolean below, String opened, String chosen) {
         Rect key = bounds(waitLabel(letter));
         float x = key.centerX(), y = key.centerY();
         long down = SystemClock.uptimeMillis();
         touchAt(down, MotionEvent.ACTION_DOWN, x, y);
         SystemClock.sleep(650);
         if (!descriptionContains(opened)) throw new AssertionError("Popup for "+letter+" missing "+opened);
-        float toX = x + cells*key.width(), toY = below ? key.bottom + 2*key.height() : y - key.height();
+        float toX, toY;
+        if (below) {
+            toX = x; toY = key.bottom + 2 * key.height();
+        } else {
+            String glyph = chosen.substring("Accent: ".length());
+            if (glyph.isEmpty()) glyph = "é";
+            Rect cell = bounds(waitLabel(glyph));
+            toX = cell.centerX(); toY = cell.centerY();
+        }
         for (int step=1; step<=6; step++) { touchAt(down, MotionEvent.ACTION_MOVE, x+(toX-x)*step/6, y+(toY-y)*step/6); SystemClock.sleep(60); }
         SystemClock.sleep(250);
         if (!descriptionContains(chosen)) throw new AssertionError("Slide on "+letter+" did not select "+chosen+"; saw "+popupDescriptions());
-        if (!below) assertHighlightUnder(toX, key);
+        if (!below) assertHighlightUnder(toX, toY, key);
         touchAt(down, MotionEvent.ACTION_UP, toX, toY);
         SystemClock.sleep(250);
     }
     private void accents(Bundle result) throws Exception {
-        accent("e", 1, false, "Number preview: 3", "Accent: ");
-        accent("e", 4, false, "Number preview: 3", "Accent: ë");
-        accent("a", 0, false, "Accent: á", "Accent: á");
-        accent("o", -1, false, "Number preview: 9", "Accent: ó");
-        accent("n", 0, true, "Accent: ñ", "Slide back to choose");
+        accent("e", false, "Number preview: 3", "Accent: ");
+        accent("e", false, "Number preview: 3", "Accent: ë");
+        accent("a", false, "Accent: á", "Accent: á");
+        accent("o", false, "Number preview: 9", "Accent: ó");
+        accent("n", true, "Accent: ñ", "Slide back to choose");
         String before = editorText();
         tap(bounds(waitLabel("Shift"))); SystemClock.sleep(300);
-        accent("e", 1, false, "Number preview: 3", "Accent: É");
+        accent("e", false, "Number preview: 3", "Accent: É");
         String actual = editorText();
         try (java.io.FileOutputStream f = new java.io.FileOutputStream(new java.io.File(getTargetContext().getCacheDir(), "accents.png"))) { ui.takeScreenshot().compress(android.graphics.Bitmap.CompressFormat.PNG,100,f); }
         String report = "probe=accents before-shift="+before+" actual="+actual;
@@ -354,14 +477,18 @@ public final class KeyboardTouchProbe extends Instrumentation {
         if (!before.toLowerCase(java.util.Locale.ROOT).equals("éëáó") || !actual.equals(before+"É")) throw new AssertionError(report);
         finish(0, result);
     }
-    /** The highlighted popup cell must be drawn above [key], centred under the finger at [x]. */
-    private void assertHighlightUnder(float x, Rect key) {
+    /** The highlighted popup cell must be centred under the finger in its actual grid row. */
+    private void assertHighlightUnder(float x, float atY, Rect key) {
+        Rect enter = bounds(waitLabel("Enter, new line"));
         android.graphics.Bitmap shot = ui.takeScreenshot();
         float dp = getTargetContext().getResources().getDisplayMetrics().density;
-        int y = Math.round(key.top - 20*dp), min = -1, max = -1;
+        // Popup selections use the Enter colour. Sample the current theme rather than
+        // hard-coding the palette from an older release.
+        int highlight = shot.getPixel(enter.left + Math.round(10 * dp), enter.top + Math.round(10 * dp));
+        int y = Math.round(atY), min = -1, max = -1;
         for (int px=0; px<shot.getWidth(); px++) {
             int c = shot.getPixel(px, y);
-            if (near(c, 0xFFA9C7FA) || near(c, 0xFF2F5FA7)) { if (min < 0) min = px; max = px; }
+            if (near(c, highlight)) { if (min < 0) min = px; max = px; }
         }
         shot.recycle();
         if (min < 0) throw new AssertionError("No highlighted popup cell drawn above "+key);
@@ -527,7 +654,9 @@ public final class KeyboardTouchProbe extends Instrumentation {
         for(int i=0;i<80;i++) {
             for(AccessibilityNodeInfo n:nodes()) {
                 String description = String.valueOf(n.getContentDescription()), text = String.valueOf(n.getText());
-                if(label.equals(description) || label.equals(text) || java.util.Arrays.asList(description.split(", ")).contains(label) ||
+                if(label.equals(description) || label.equals(text) ||
+                    (label.equals("Backspace") && description.startsWith("Backspace.")) ||
+                    java.util.Arrays.asList(description.split(", ")).contains(label) ||
                     (label.length()==1 && (label.equalsIgnoreCase(description) ||
                         description.toLowerCase(java.util.Locale.ROOT).startsWith(label+". long-press") || label.equalsIgnoreCase(text)))) return n;
             }

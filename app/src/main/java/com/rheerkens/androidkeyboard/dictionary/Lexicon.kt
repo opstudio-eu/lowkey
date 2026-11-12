@@ -152,10 +152,15 @@ class Lexicon private constructor(
     }
 
     /** Visits eligible candidates without per-word Sequence/Pair/boxed-index allocations. */
-    internal fun forEachCandidate(range: IntRange, accept: (String) -> Boolean, visit: (String, String, Int) -> Unit) {
+    internal fun forEachCandidate(range: IntRange, checkActive: () -> Unit = {},
+        accept: (String) -> Boolean, visit: (String, String, Int) -> Unit) {
+        var visited = 0
         for (len in range) {
             val indices = byLength[len] ?: continue
-            for (i in indices) if (accept(lower[i])) visit(words[i], lower[i], freqs[i])
+            for (i in indices) {
+                if (visited++ % 128 == 0) checkActive()
+                if (accept(lower[i])) visit(words[i], lower[i], freqs[i])
+            }
         }
     }
 
