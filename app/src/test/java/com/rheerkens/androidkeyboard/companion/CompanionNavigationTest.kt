@@ -13,6 +13,11 @@ class CompanionNavigationTest {
         assertEquals(listOf(Destination.SETTINGS, Destination.SETTINGS_KEYBOARD, Destination.SETTINGS_TYPING), destinationPath(Destination.SETTINGS_TYPING))
     }
 
+    @Test fun helpPagesReturnToTheirSettingsEntryPoint() {
+        assertEquals(listOf(Destination.SETTINGS, Destination.TRY_IT), destinationPath(Destination.TRY_IT))
+        assertEquals(listOf(Destination.SETTINGS, Destination.DIAGNOSTICS), destinationPath(Destination.DIAGNOSTICS))
+    }
+
     @Test fun rootTabsHaveNoSyntheticBackEntry() {
         for (tab in listOf(Destination.HOME, Destination.MODELS, Destination.DICTIONARY, Destination.SETTINGS)) {
             assertEquals(listOf(tab), destinationPath(tab))

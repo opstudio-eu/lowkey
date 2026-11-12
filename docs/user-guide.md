@@ -109,6 +109,6 @@ Add an optional caption and tap **Attach** to return the edited image to the ori
 
 ## Try settings and manage updates
 
-Tap **Test keyboard** in the app's top bar to open a test field over the current page. Its draft stays available when you close and reopen it. The **Try it** page has additional editor types.
+Tap the keyboard icon on the keyboard, voice or language pages to open a test field over the current page. Home offers **Try your keyboard** once Lowkey is set up. The draft stays available when you close and reopen the test field. **Settings → Try it** has additional editor types.
 
 **Settings → Updates** lets you check now or turn automatic checks off. Downloads continue when you leave the app. If Android needs confirmation, tap the ready-to-install notification or **Install** in the Home update banner. Without notification permission, update notices appear in the app.

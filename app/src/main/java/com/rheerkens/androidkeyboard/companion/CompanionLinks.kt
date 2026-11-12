@@ -34,8 +34,7 @@ fun destinationPath(destination: Destination): List<Destination> = when (destina
     Destination.SETTINGS_TYPING, Destination.SETTINGS_CUSTOMIZE ->
         listOf(Destination.SETTINGS, Destination.SETTINGS_KEYBOARD, destination)
     Destination.SETTINGS_KEYBOARDS -> listOf(Destination.SETTINGS, Destination.LANGUAGES, destination)
-    Destination.DIAGNOSTICS -> listOf(Destination.SETTINGS, Destination.ABOUT, destination)
-    Destination.TRY_IT -> listOf(Destination.HOME, destination)
+    Destination.DIAGNOSTICS, Destination.TRY_IT -> listOf(Destination.SETTINGS, destination)
     else -> listOf(destination)
 }
 
