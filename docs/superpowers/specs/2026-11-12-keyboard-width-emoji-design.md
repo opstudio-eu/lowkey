@@ -5,7 +5,7 @@ The user approved the four-point proposal in conversation: horizontal sizing in 
 ## Behavior
 
 - Normal mode gains independent left/right resize handles and horizontal movement while remaining docked. Height and width do not change each other. Save its width and relative horizontal position per existing screen profile. Floating also gets both width handles; one-handed keeps its outer-side anchor. Split retains its full-width outer frame and adjustable middle gap.
-- Space remains a space on tap. Holding it opens Languages & layouts with enabled Lowkey layouts and the existing Other keyboards route to Android's picker. No separate language key is required for this route.
+- Space remains a space on tap. After testing the demo, the user requested that holding it open Android's keyboard-app picker directly, without the intermediate Languages & layouts panel. No separate language key is required for this route. Lowkey layout management remains in Settings; tapping the optional language key still cycles through enabled Lowkey layouts.
 - The key beside Space defaults to Emoji. A Keyboard setting can replace it with the existing language key. Preserve long-press Space in either configuration.
 - Keep emoji accessible by holding the comma when the language key is selected (also available with the emoji key). This is a local interaction choice to avoid making the two features mutually exclusive.
 - Emoji opens inside the current keyboard frame; ABC returns to letters. Show category tabs and a scrollable grid, including a recent category. Holding an emoji with variants offers its supported skin tones. Insert one complete Unicode sequence, without added whitespace. Remember at most 40 distinct recent choices locally; do not record choices in sensitive fields.

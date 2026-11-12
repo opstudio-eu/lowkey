@@ -60,7 +60,6 @@ import com.rheerkens.androidkeyboard.keyboard.ui.DarkKeyboardColors
 import com.rheerkens.androidkeyboard.keyboard.ui.EnterKind
 import com.rheerkens.androidkeyboard.keyboard.ui.FanSpec
 import com.rheerkens.androidkeyboard.keyboard.ui.KeyboardActions
-import com.rheerkens.androidkeyboard.keyboard.ui.KeyboardChoices
 import com.rheerkens.androidkeyboard.keyboard.ui.KeyboardRoot
 import com.rheerkens.androidkeyboard.keyboard.ui.KeyboardUiState
 import com.rheerkens.androidkeyboard.keyboard.ui.LightKeyboardColors
@@ -70,7 +69,6 @@ import com.rheerkens.androidkeyboard.keyboard.ui.WordAim
 import com.rheerkens.androidkeyboard.keyboard.wordsFrom
 import com.rheerkens.androidkeyboard.settings.InputMode
 import com.rheerkens.androidkeyboard.settings.Settings
-import com.rheerkens.androidkeyboard.keyboard.TypingKeyboard
 import com.rheerkens.androidkeyboard.voice.CancelReason
 import com.rheerkens.androidkeyboard.voice.VoiceConfig
 import com.rheerkens.androidkeyboard.voice.VoiceNotes
@@ -118,8 +116,6 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     private val strip = MutableStateFlow(StripState())
     private val enterKind = MutableStateFlow(EnterKind.NEWLINE)
     private val pickerOpen = MutableStateFlow(false)
-    /** The keyboard chooser (long-press Space) is open, in keys mode. */
-    private val chooserOpen = MutableStateFlow(false)
     private val emojiOpen = MutableStateFlow(false)
     private val emojiCatalog = MutableStateFlow<EmojiCatalog?>(null)
     private var backspaceTarget: EditorBridge.Target? = null
@@ -251,8 +247,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         physicalKeyboard.value = hasPhysicalKeyboard(resources.configuration)
         mode.value = initialMode()
         pickerOpen.onEach(::updatePickerBack).launchIn(scope)
-        chooserOpen.onEach { updateChooserBack(it || emojiOpen.value) }.launchIn(scope)
-        emojiOpen.onEach { updateChooserBack(it || chooserOpen.value) }.launchIn(scope)
+        emojiOpen.onEach(::updateEmojiBack).launchIn(scope)
         // Refresh suggestions when the dictionary changes; readiness when models change.
         dictionary.state.drop(1).onEach { refreshStrip() }.launchIn(scope)
         // Follow keyboards changed in Settings while the keyboard is open (e.g. the current one
@@ -298,7 +293,6 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                 val ek by enterKind.collectAsState()
                 val aim by wordAim.collectAsState()
                 val picker by pickerOpen.collectAsState()
-                val chooser by chooserOpen.collectAsState()
                 val emoji by emojiOpen.collectAsState()
                 val catalog by emojiCatalog.collectAsState()
                 val sensitive by sensitiveField.collectAsState()
@@ -339,11 +333,6 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                         inputSession = session,
                         fan = fan,
                         wordAim = aim,
-                        keyboardChoices = if (chooser && m == InputMode.KEYS) {
-                            KeyboardChoices(AppGraph.usableKeyboards(s), kb.keyboard)
-                        } else {
-                            null
-                        },
                     ),
                     clock = System::currentTimeMillis,
                     actions = this,
@@ -397,7 +386,6 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         voice.cancel(CancelReason.SWITCHED_TO_KEYS)
         mode.value = InputMode.KEYS
         pickerOpen.value = false
-        chooserOpen.value = false
         emojiOpen.value = false
         keyboardOnce.value = true
         keyboardOnceEditor = bridge.editorKey()
@@ -581,7 +569,6 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         voice.cancel(if (finishingInput) CancelReason.EDITOR_CHANGED else CancelReason.KEYBOARD_HIDDEN)
         onBackspaceHoldEnded()
         pickerOpen.value = false
-        chooserOpen.value = false
         emojiOpen.value = false
         clearPrompt()
         owner.onHide()
@@ -631,7 +618,6 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onKey(key: Key) {
-        chooserOpen.value = false
         if (key !is Key.Emoji) emojiOpen.value = false
         clearPrompt()
         if (key !is Key.Shift && key !is Key.LayerSwitch) clearNote()
@@ -942,15 +928,12 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onGlobeLongPress() {
-        chooserOpen.value = false
+        clearPrompt()
+        emojiOpen.value = false
         getSystemService(InputMethodManager::class.java).showInputMethodPicker()
     }
 
-    override fun onSpaceLongPress() {
-        clearPrompt()
-        emojiOpen.value = false
-        chooserOpen.value = true
-    }
+    override fun onSpaceLongPress() = onGlobeLongPress()
 
     override fun onCloseEmoji() {
         emojiOpen.value = false
@@ -968,21 +951,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         }
     }
 
-    override fun onChooseKeyboard(keyboard: TypingKeyboard) {
-        chooserOpen.value = false
-        if (keyboard == this.keyboard.state.value.keyboard) return
-        this.keyboard.setKeyboard(keyboard)
-        settings.update { it.copy(currentKeyboard = keyboard.id) }
-        preloadLanguages()
-        refreshStrip()
-    }
-
-    override fun onCloseKeyboardChooser() {
-        chooserOpen.value = false
-    }
-
     override fun onOpenKeyboardSettings() {
-        chooserOpen.value = false
         emojiOpen.value = false
         openCompanion(Destination.SETTINGS_KEYBOARDS)
     }
@@ -1127,7 +1096,6 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     override fun onToggleMode() {
         clearPrompt()
         pickerOpen.value = false
-        chooserOpen.value = false
         emojiOpen.value = false
         if (mode.value == InputMode.KEYS) {
             if (bridge.isSensitiveField) {
@@ -1151,7 +1119,6 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
 
     override fun onSetMinimized(minimized: Boolean) {
         keyboardOnce.value = false
-        chooserOpen.value = false
         emojiOpen.value = false
         clearPrompt()
         clearNote()
@@ -1224,20 +1191,20 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
      * IME away without calling onKeyDown), so register a callback there; older versions use
      * the key events below.
      */
-    private var chooserBackCallback: Any? = null
+    private var emojiBackCallback: Any? = null
 
-    /** Back closes the keyboard chooser instead of the keyboard (Android 13+, like the model picker). */
-    private fun updateChooserBack(open: Boolean) {
+    /** Back closes emoji instead of the keyboard (Android 13+, like the model picker). */
+    private fun updateEmojiBack(open: Boolean) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
         val dispatcher = window.onBackInvokedDispatcher
-        val current = chooserBackCallback as OnBackInvokedCallback?
+        val current = emojiBackCallback as OnBackInvokedCallback?
         if (open && current == null) {
-            val cb = OnBackInvokedCallback { chooserOpen.value = false; emojiOpen.value = false }
+            val cb = OnBackInvokedCallback { emojiOpen.value = false }
             dispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, cb)
-            chooserBackCallback = cb
+            emojiBackCallback = cb
         } else if (!open && current != null) {
             dispatcher.unregisterOnBackInvokedCallback(current)
-            chooserBackCallback = null
+            emojiBackCallback = null
         }
     }
 
@@ -1257,8 +1224,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         }
     }
 
-    /** Back closes the model picker or the keyboard chooser before it closes the keyboard. */
-    private fun backClosesPanel() = (pickerOpen.value || chooserOpen.value || emojiOpen.value || layoutBackHandler != null) && isInputViewShown
+    /** Back closes our panels before it closes the keyboard; Android owns its keyboard picker. */
+    private fun backClosesPanel() = (pickerOpen.value || emojiOpen.value || layoutBackHandler != null) && isInputViewShown
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         if (keyCode == KeyEvent.KEYCODE_BACK && backClosesPanel()) {
@@ -1273,7 +1240,6 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             if (!event.isCanceled) {
                 layoutBackHandler?.invoke()
                 pickerOpen.value = false
-                chooserOpen.value = false
                 emojiOpen.value = false
             }
             return true

@@ -52,8 +52,6 @@ data class KeyboardUiState(
     val fan: FanSpec = FanSpec(action = null, newLine = false),
     /** What a Backspace slide into the editor points at; null when not aiming. */
     val wordAim: WordAim? = null,
-    /** The keyboard chooser (long-press Space), shown in place of the keys; null when closed. */
-    val keyboardChoices: KeyboardChoices? = null,
     val placement: com.rheerkens.androidkeyboard.keyboard.KeyboardPlacement = com.rheerkens.androidkeyboard.keyboard.KeyboardPlacement(rowHeight = rowHeightDp.toFloat()),
     val profile: com.rheerkens.androidkeyboard.keyboard.PlacementProfile = com.rheerkens.androidkeyboard.keyboard.PlacementProfile.COMPACT_PORTRAIT,
     val viewportWidthDp: Float = 360f,
@@ -99,16 +97,11 @@ internal fun KeyboardContent(state: KeyboardUiState, clock: () -> Long, actions:
                         SuggestionStrip(state.strip, state.clipHistory, state.inputSession, actions)
                         ModeToggle(state.mode, actions)
                     }
-                    val choices = state.keyboardChoices
                     if (state.toolsOpen) {
                         KeyboardTools(state, actions)
                     } else if (state.emojiOpen) {
                         EmojiPanel(state.emojiCatalog, state.recentEmoji,
                             (state.keyRows * state.rowHeightDp + 4).dp, actions)
-                    } else if (choices != null) {
-                        // Grow upward to show every enabled keyboard, up to about half the screen.
-                        val keysHeight = state.keyRows * state.rowHeightDp + 4
-                        KeyboardChooser(choices, keysHeight.dp, actions)
                     } else {
                         KeysPanel(state.layout, state.keyboard, state.rowHeightDp, state.enterKind, actions, state.splitGapDp, state.keyRows)
                     }

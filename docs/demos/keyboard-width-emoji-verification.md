@@ -28,3 +28,9 @@ Actual Android 15 touchscreen interactions verified:
 These interactions were performed before the final comma long-press addition. Its layout coverage passes in the final unit-test run. After installing the final APK, Android switched the selected input method. The automation helper failed twice while reading Android's input-method chooser, including the advised retry. Device interaction stopped there, so comma long-press, persistence after a fresh process, and a further rotation check are not claimed as verified on the final APK. Earlier placement-track rotation checks remain recorded separately in `keyboard-layout-reference.md`.
 
 The prior demo delivery predates this follow-up. No release, new transfer, or physical-device installation was performed for these changes.
+
+## Demo feedback: direct Android keyboard picker
+
+After testing demo build 50, the user requested removal of the intermediate language/layout list. Holding Space now calls the same Android input-method picker previously reached through **Other keyboards**. The custom chooser, its callbacks and its state were removed. Lowkey layout management stays in Settings, and tapping the optional language key still cycles enabled Lowkey layouts. Emoji Back handling remains separate from Android's picker.
+
+The updated source passes all 335 unit tests, `assembleDebug`, `lintDebug` and the private-denylist source check. No additional unit test was added for the direct forwarding call. An actual device check was attempted, but the emulator connection could not be opened after a connectivity retry. This revision's system-picker interaction is therefore not claimed as device-verified. An updated demo is prepared for user testing before release.
