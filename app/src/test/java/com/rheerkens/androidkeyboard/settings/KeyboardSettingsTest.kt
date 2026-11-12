@@ -69,4 +69,51 @@ class KeyboardSettingsTest {
         val only = Settings(enabledKeyboards = setOf("pl", "sv"), currentKeyboard = "pl")
         assertSame(only, only.toggleKeyboard("pl", usable))
     }
+
+    @Test
+    fun choosingDutchEnablesItAndRemembersItsLayoutAfterReload() {
+        val chosen = defaults.selectKeyboard("nl:AZERTY", listOf("en_US", "nl", "nl:AZERTY"))
+        assertEquals("nl:AZERTY", chosen.currentKeyboard)
+        assertEquals(setOf("en_US", "nl:AZERTY"), chosen.enabledKeyboards)
+        assertEquals(chosen.enabledKeyboards to "nl:AZERTY",
+            SettingsStore.loadKeyboards(chosen.enabledKeyboards, chosen.currentKeyboard, defaults))
+    }
+
+    @Test
+    fun choosingAnUndownloadedKeyboardDoesNotChangeTheSelection() {
+        assertSame(defaults, defaults.selectKeyboard("nl", listOf("en_US")))
+    }
+
+    @Test
+    fun builtInEnglishCanBeTurnedOffIncludingAllItsLayouts() {
+        val before = Settings(enabledKeyboards = setOf("en_US", "en_US:AZERTY", "nl:AZERTY"), currentKeyboard = "nl:AZERTY")
+        val after = before.setLanguageEnabled("en_US", false, listOf("en_US", "en_US:AZERTY", "nl", "nl:AZERTY"))
+        assertEquals(setOf("nl:AZERTY"), after.enabledKeyboards)
+        assertEquals("nl:AZERTY", after.currentKeyboard)
+        assertEquals(setOf("nl:AZERTY") to "nl:AZERTY",
+            SettingsStore.loadKeyboards(after.enabledKeyboards, after.currentKeyboard, defaults))
+    }
+
+    @Test
+    fun turningOffTheCurrentLanguageSelectsAnotherEnabledLanguage() {
+        val before = Settings(enabledKeyboards = setOf("en_US", "nl:AZERTY"))
+        val after = before.setLanguageEnabled("en_US", false, listOf("en_US", "nl", "nl:AZERTY"))
+        assertEquals("nl:AZERTY", after.currentKeyboard)
+    }
+
+    @Test
+    fun theLastUsableLanguageCannotBeTurnedOffEvenWithSeveralLayouts() {
+        val before = Settings(enabledKeyboards = setOf("nl", "nl:AZERTY", "pl"), currentKeyboard = "nl:AZERTY")
+        assertSame(before, before.setLanguageEnabled("nl", false, listOf("en_US", "nl", "nl:AZERTY")))
+    }
+
+    @Test
+    fun enablingALanguageKeepsItsExistingLayoutAndDoesNotSwitchTyping() {
+        val before = Settings(enabledKeyboards = setOf("en_US", "nl:AZERTY"))
+        assertSame(before, before.setLanguageEnabled("nl", true, listOf("en_US", "nl", "nl:AZERTY")))
+        val enabled = defaults.setLanguageEnabled("nl", true, listOf("en_US", "nl", "nl:AZERTY"))
+        assertEquals(setOf("en_US", "nl"), enabled.enabledKeyboards)
+        assertEquals("en_US", enabled.currentKeyboard)
+        assertSame(defaults, defaults.setLanguageEnabled("pl", true, listOf("en_US")))
+    }
 }

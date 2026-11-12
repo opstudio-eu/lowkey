@@ -124,6 +124,23 @@ data class Settings(
     val minimizedWithPhysicalKeyboard: Boolean = true,
     val minimizedWithoutPhysicalKeyboard: Boolean = false,
 ) {
+    /** Selects an installed layout and remembers it, enabling it if necessary. */
+    fun selectKeyboard(id: String, usable: List<String>): Settings =
+        if (id in usable) copy(enabledKeyboards = enabledKeyboards + id, currentKeyboard = id) else this
+
+    /** Turns a language's layouts on/off; even the built-in language is optional. */
+    fun setLanguageEnabled(languageId: String, enabled: Boolean, usable: List<String>): Settings {
+        val options = usable.filter { it.substringBefore(':') == languageId }
+        if (options.isEmpty()) return this
+        if (enabled && options.any { it in enabledKeyboards }) return this
+        val next = if (enabled) enabledKeyboards + options.first()
+            else enabledKeyboards.filterNot { it.substringBefore(':') == languageId }.toSet()
+        val remaining = usable.filter { it in next }
+        if (remaining.isEmpty()) return this
+        return copy(enabledKeyboards = next,
+            currentKeyboard = currentKeyboard.takeIf { it in remaining } ?: remaining.first())
+    }
+
     /**
      * Turns keyboard [id] on or off. [usable] lists, in globe order, the ids of every keyboard
      * whose word list is on the phone: the last usable one that is on stays on, and the current

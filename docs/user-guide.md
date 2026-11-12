@@ -16,7 +16,9 @@ Under **Voice → Storage & performance → Keep model loaded**, choose how long
 
 ## Add keyboard languages
 
-English (US) is built in. Dutch, Polish, English (UK), German, French, Spanish, Italian, Portuguese (Brazil and Portugal), Swedish, Danish, Norwegian (Bokmål), Finnish, Czech, Croatian, Slovenian, Romanian, Lithuanian, Latvian and Russian download on request: open **Settings → Languages & layouts** and tap **Download**. Each word list is 0.4–5.2 MB. Lowkey downloads it from the Android Open Source Project at a fixed version, checks it against a known checksum, and converts it on your phone. A downloaded language is turned on at once; delete it on the same page.
+English (US) is built in. Dutch, Polish, English (UK), German, French, Spanish, Italian, Portuguese (Brazil and Portugal), Swedish, Danish, Norwegian (Bokmål), Finnish, Czech, Croatian, Slovenian, Romanian, Lithuanian, Latvian and Russian download on request: open **Settings → Languages & layouts** and tap **Download**. Each word list is 0.4–5.2 MB. Lowkey downloads it from the Android Open Source Project at a fixed version, checks it against a known checksum, and converts it on your phone. A downloaded language is turned on at once.
+
+Tap **Use** under a language to switch to it; Lowkey remembers the choice. Turn a language's switch off to remove all its layouts from the keyboard switcher. **English (US) can also be turned off**; its bundled word list stays on the phone. Keep at least one language on. **Remove download** deletes a downloaded word list after confirmation; turn on another language first if it is your last active one.
 
 Each language has its own suggestions, autocorrect, layout and accents. Words typed without their accents get them back (`zolw` becomes `żółw`, `konnen` becomes `können`), and suggestions ignore missing accents. Polish also restores the accents of common words such as `juz` → `już`, and German capitalizes nouns typed in lowercase (`zeit` → `Zeit`).
 
@@ -28,7 +30,7 @@ The app interface is currently in English. Keyboard language and voice language 
 
 ## Choose layouts and type accents
 
-Enable layouts under **Settings → Languages & layouts → Keyboard layouts**. Each language on your phone is listed with its own layout first. Languages written in the Latin alphabet also offer QWERTY, AZERTY, QWERTZ, Dvorak and Colemak. With the language-switch key enabled, tap it to cycle through Lowkey layouts. Hold Space to open Android's picker for keyboard apps.
+Enable layouts under **Settings → Languages & layouts → Keyboard layouts**, then choose **Keyboard in use** on that page to select the one you want. Each language on your phone is listed with its own layout first. Languages written in the Latin alphabet also offer QWERTY, AZERTY, QWERTZ, Dvorak and Colemak. With the language-switch key enabled, tap it to cycle through Lowkey layouts. Hold Space to open Android's picker for keyboard apps.
 
 The selected keyboard supplies the primary language for suggestions and autocorrect. Changing the letter layout does not change that language.
 
