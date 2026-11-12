@@ -1,11 +1,5 @@
 package com.rheerkens.androidkeyboard.companion.screens
 
-import android.app.Activity
-import android.content.Context
-import android.content.Intent
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -26,21 +20,16 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rheerkens.androidkeyboard.AppGraph
 import com.rheerkens.androidkeyboard.clipboard.PhotoAccess
-import com.rheerkens.androidkeyboard.clipboard.RecentScreenshots
 import com.rheerkens.androidkeyboard.models.resolveLanguage
 import com.rheerkens.androidkeyboard.models.speechLanguageCode
 import com.rheerkens.androidkeyboard.dictionary.LanguagePackState
@@ -73,30 +62,7 @@ fun SettingsScreen(modifier: Modifier, focus: SettingsFocus, navigate: (Destinat
     val packs by AppGraph.languagePacks.state.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     fun update(t: (Settings) -> Settings) = AppGraph.settings.update(t)
-    val context = LocalContext.current
-    val screenshots = remember(context) { RecentScreenshots(context) }
-    var photoAccess by remember { mutableStateOf(screenshots.access()) }
-    /** Android won't show the photos dialog again: the switch opens app settings instead. */
-    var photosDeniedForever by remember { mutableStateOf(screenshots.deniedForever(context as? Activity)) }
-    fun refreshPhotoAccess() {
-        photoAccess = screenshots.access()
-        photosDeniedForever = screenshots.deniedForever(context as? Activity)
-    }
-    // Photo access can change in system settings while this screen is in the background.
-    LifecycleResumeEffect(Unit) {
-        refreshPhotoAccess()
-        onPauseOrDispose { }
-    }
-    val photosLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-        refreshPhotoAccess()
-        // Limited access keeps the setting on: the note under the switch asks for all photos,
-        // and screenshots appear as soon as all photos are allowed.
-        update { s -> s.copy(recentScreenshots = photoAccess != PhotoAccess.NONE) }
-    }
-    fun requestPhotos() {
-        screenshots.markRequested()
-        photosLauncher.launch(RecentScreenshots.REQUEST)
-    }
+    val photos = rememberPhotoAccess()
 
     LaunchedEffect(focus) {
         focus.index?.let { listState.scrollToItem(it) }
@@ -131,19 +97,16 @@ fun SettingsScreen(modifier: Modifier, focus: SettingsFocus, navigate: (Destinat
         item {
             Column {
                 SwitchRow(
-                    "Recent screenshots", s.recentScreenshots && photoAccess == PhotoAccess.ALL,
+                    "Recent screenshots", s.recentScreenshots && photos.access == PhotoAccess.ALL,
                     { v ->
-                        when {
-                            !v || photoAccess == PhotoAccess.ALL -> update { it.copy(recentScreenshots = v) }
-                            photosDeniedForever -> openAppSettings(context)
-                            else -> requestPhotos()
-                        }
+                        if (!v || photos.access == PhotoAccess.ALL) update { it.copy(recentScreenshots = v) }
+                        else photos.request()
                     },
                     subtitle = "Show screenshots from the last day next to copied clips in the minimized bar. Needs access to all photos.",
                 )
-                if (s.recentScreenshots && photoAccess == PhotoAccess.LIMITED) {
+                if (s.recentScreenshots && photos.access == PhotoAccess.LIMITED) {
                     LimitedPhotosNote(
-                        onAllowAll = { requestPhotos() },
+                        onAllowAll = photos::request,
                         onTurnOff = { update { it.copy(recentScreenshots = false) } },
                     )
                 }
@@ -377,10 +340,4 @@ private fun LimitedPhotosNote(onAllowAll: () -> Unit, onTurnOff: () -> Unit) {
             TextButton(onClick = onTurnOff) { Text("Turn off") }
         }
     }
-}
-
-private fun openAppSettings(context: Context) {
-    context.startActivity(
-        Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
-    )
 }

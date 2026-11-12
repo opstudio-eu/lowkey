@@ -37,10 +37,17 @@ class RecentScreenshots(private val context: Context) {
     /**
      * True when Android won't show the photos dialog again: asked before, still no access, and no
      * rationale to show (which is also the state before the first request, hence [markRequested]).
+     * Any grant forgets the request, since a later revoke or Android's reset of an unused app's
+     * permissions can show the dialog again.
      */
-    fun deniedForever(activity: Activity?): Boolean =
-        activity != null && access() == PhotoAccess.NONE && prefs.getBoolean(K_REQUESTED, false) &&
+    fun deniedForever(activity: Activity?): Boolean {
+        if (access() != PhotoAccess.NONE) {
+            if (prefs.contains(K_REQUESTED)) prefs.edit { remove(K_REQUESTED) }
+            return false
+        }
+        return activity != null && prefs.getBoolean(K_REQUESTED, false) &&
             !ActivityCompat.shouldShowRequestPermissionRationale(activity, PERMISSION)
+    }
 
     private val prefs get() = context.getSharedPreferences("permissions", Context.MODE_PRIVATE)
 
