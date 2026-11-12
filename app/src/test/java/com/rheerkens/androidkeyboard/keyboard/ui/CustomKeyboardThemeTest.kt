@@ -73,6 +73,21 @@ class CustomKeyboardThemeTest {
     }
 
     @Test
+    fun emojiTextUsesTextContrastOnSolidAndImageBackgrounds() {
+        val background = hex("888888")
+        val colors = DarkKeyboardColors.copy(background = background, keyText = Color.White)
+        val imageLuminance = relativeLuminance(background)
+        for (image in listOf(null, LuminanceRange(imageLuminance, imageLuminance))) {
+            val checks = keyboardContrastChecks(colors, image)
+            assertTrue(checks.single { it.foreground == "Strip icons" }.passes)
+            val labels = checks.single { it.foreground == "Emoji labels" }
+            assertEquals(AA_TEXT, labels.minimum, 0.0)
+            assertFalse(labels.passes)
+            assertEquals(image != null, labels.overImage)
+        }
+    }
+
+    @Test
     fun resetReturnsARoleToItsDerivedColour() {
         val custom = CustomKeyboardTheme(forest).with(ColorRole.MUTED, hex("FF0000")).with(ColorRole.AMBER, hex("00FF00"))
         val reset = custom.with(ColorRole.MUTED, null)

@@ -107,6 +107,8 @@ fun keyboardContrastChecks(c: KeyboardColors, image: LuminanceRange? = null): Li
     pair("Delete-all label", ColorRole.DANGER_INK, "the delete-all zone", ColorRole.DANGER)
     // Icons and indicators: strip icons, the level meter, the model dot, the danger zone and the accent.
     pair("Strip icons", ColorRole.KEY_TEXT, "the background", ColorRole.BACKGROUND, AA_NON_TEXT)
+    // The emoji panel also draws small text (ABC and Skin tones) directly on this background.
+    pair("Emoji labels", ColorRole.KEY_TEXT, "the background", ColorRole.BACKGROUND)
     pair("Level meter", ColorRole.GREEN, "the background", ColorRole.BACKGROUND, AA_NON_TEXT)
     pair("Model dot", ColorRole.GREEN, "the model button", ColorRole.PILL, AA_NON_TEXT)
     pair("Delete-all color", ColorRole.DANGER, "popups", ColorRole.POPUP, AA_NON_TEXT)

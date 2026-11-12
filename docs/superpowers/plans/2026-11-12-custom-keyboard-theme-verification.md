@@ -142,3 +142,8 @@ with a dark wine background and three advanced colours):
 
 After the merge: `./gradlew testDebugUnitTest` (459 tests, none failing or skipped), `assembleDebug`
 and `lintDebug` (no new warnings) pass.
+
+The integration review also found that the emoji panel's small ABC and Skin tones labels need
+the 4.5:1 text threshold, rather than the 3:1 icon threshold. A separate Emoji labels check now
+covers both solid and image backgrounds; its regression test failed before the check was added.
+With this correction, the complete unit suite has 460 passing tests, none skipped.
