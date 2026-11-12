@@ -144,6 +144,11 @@ private fun KeyView(
                 }
             }
         }
+        is Key.Emoji -> PressTarget(
+            "Emoji", modifier, gestureKey = key, onDown = actions::onKeyDown, onTap = { actions.onKey(key) },
+        ) { pressed ->
+            KeyCap(if (pressed) c.keyPressed else c.keyMod) { KeyIcon(SlimIcons.Emoji) }
+        }
         is Key.Globe -> PressTarget(
             "Next keyboard. Long-press to switch to another keyboard app",
             // Announce the keyboard a tap switched to, whichever key has focus.
@@ -212,6 +217,7 @@ private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardAction
         else -> "Accent: ${cased(choices[i])}"
     }
     val description = when {
+        key.opensEmojiOnHold -> "Comma. Hold for emoji"
         choices.isEmpty() -> label
         open -> "$label. ${choiceDescription(selected)}. Release to type"
         key.longPressOutput == null -> "$label. Long-press for accents"
@@ -235,7 +241,11 @@ private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardAction
             },
         gestureKey = key, onDown = actions::onKeyDown,
         onTap = { actions.onKey(key) },
-        onLongPress = if (choices.isEmpty()) null else { { selected = 0 } },
+        onLongPress = when {
+            key.opensEmojiOnHold -> ({ actions.onKey(Key.Emoji()) })
+            choices.isEmpty() -> null
+            else -> ({ selected = 0 })
+        },
         onLongPressRelease = if (choices.isEmpty()) null else { { selected?.let { actions.onKey(Key.Char(choices[it])) } } },
         onLongPressState = { open = it },
         onLongPressMove = popup?.let { p -> { at: Offset -> selected = p.select(at.x, at.y) } },

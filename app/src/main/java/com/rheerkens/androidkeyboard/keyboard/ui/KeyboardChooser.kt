@@ -89,7 +89,7 @@ fun KeyboardChooser(choices: KeyboardChoices, height: Dp, actions: KeyboardActio
         ) {
             Row(Modifier.fillMaxWidth().height(HEADER_DP.dp).padding(start = 14.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "Keyboard", color = c.muted, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                    "Languages & layouts", color = c.muted, fontSize = 12.sp, fontWeight = FontWeight.Medium,
                     modifier = Modifier.weight(1f).semantics { heading() },
                 )
                 PressTarget("Close keyboard chooser", Modifier.size(48.dp), onTap = actions::onCloseKeyboardChooser) { pressed ->

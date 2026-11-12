@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
 import com.rheerkens.androidkeyboard.keyboard.PlacementPreferences
+import com.rheerkens.androidkeyboard.keyboard.EmojiHistory
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -48,6 +49,8 @@ class SettingsStore(context: Context) {
             ),
             keyboardHeight = enumOr(prefs.getString(K_HEIGHT, null), d.keyboardHeight),
             numberRow = prefs.getBoolean(K_NUMBER_ROW, d.numberRow),
+            bottomKey = enumOr(prefs.getString("bottom_key", null), d.bottomKey),
+            recentEmoji = EmojiHistory.decode(prefs.getString("recent_emoji", null)),
             vibrateOnKeyPress = prefs.getBoolean(K_VIBRATE, d.vibrateOnKeyPress),
             autoCapitalize = prefs.getBoolean(K_AUTOCAP, d.autoCapitalize),
             autocorrect = prefs.getBoolean(K_AUTOCORRECT, d.autocorrect),
@@ -80,6 +83,8 @@ class SettingsStore(context: Context) {
         putString("keyboard_placement", s.placement.encode())
         putString(K_HEIGHT, s.keyboardHeight.name)
         putBoolean(K_NUMBER_ROW, s.numberRow)
+        putString("bottom_key", s.bottomKey.name)
+        putString("recent_emoji", EmojiHistory.encode(s.recentEmoji))
         putBoolean(K_VIBRATE, s.vibrateOnKeyPress)
         putBoolean(K_AUTOCAP, s.autoCapitalize)
         putBoolean(K_AUTOCORRECT, s.autocorrect)

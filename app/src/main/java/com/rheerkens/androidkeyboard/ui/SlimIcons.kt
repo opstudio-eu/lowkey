@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
  * Tinted by `Icon` like any other vector.
  */
 object SlimIcons {
+    val Emoji by lazy { stroke("emoji", circle(12f, 12f, 9f), "M8 9h.1M16 9h.1M7.5 14a5 5 0 0 0 9 0") }
     val Tools by lazy { stroke("tools", "M4 7h16M4 17h16M8 4v6M16 14v6") }
     val Resize by lazy { stroke("resize", "M8 4H4v4M16 20h4v-4M4 4l6 6M20 20l-6 -6") }
     val Move by lazy { stroke("move", "M12 3v18M3 12h18M9 6l3 -3 3 3M9 18l3 3 3 -3M6 9l-3 3 3 3M18 9l3 3 -3 3") }

@@ -46,6 +46,8 @@ val LocalWordAim = androidx.compose.runtime.compositionLocalOf<WordAim?> { null 
 
 /** Callbacks from the keyboard UI into the input method. */
 interface KeyboardActions {
+    fun onCloseEmoji() {}
+    fun onChooseEmoji(value: String) {}
     fun onOpenTools() {}
     fun onResizeKeyboard() {}
     fun onSelectPlacementMode(mode: com.rheerkens.androidkeyboard.keyboard.PlacementMode) {}

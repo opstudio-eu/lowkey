@@ -38,13 +38,19 @@ Turn **Settings → Keyboard → Number row** on for a dedicated 1–0 row above
 
 ## Resize, move and split the keyboard
 
-Tap **Keyboard tools** beside the minimize button. **Resize** outlines the keyboard: drag the top edge to change height, the bottom edge to leave more or less space underneath, or the centre move handle to reposition it. **Reset** restores the current mode's default size and position; the checkmark finishes. Completed drags are remembered, including when you press Android's Back button.
+Tap **Keyboard tools** beside the minimize button. **Resize** outlines the keyboard: drag the top edge to change height, the bottom edge to leave more or less space underneath, or the centre move handle to reposition it. In Normal and Floating modes, the left and right handles change width independently of height. A narrower Normal keyboard can also move horizontally while remaining docked. **Reset** restores the current mode's default size and position; the checkmark finishes. Completed drags are remembered, including when you press Android's Back button.
 
 The same menu offers **One-handed**, **Floating** and **Split**. Tap an active mode again to return to the normal keyboard. One-handed has side buttons to move it left/right or restore full width. Floating has a drag bar beneath it and leaves the surrounding app usable. Split is available in wide windows, shares the middle keys between both thumbs (G and V on QWERTY), and keeps one broad spacebar across the bottom.
 
 Lowkey remembers size, position and mode separately for small/large screens and portrait/landscape. **Settings → Keyboard → Automatically split on large screens** chooses Split as the large-screen default; your manual choices are remembered. Turning it off does not cancel a manually chosen Split mode. **Size and position** opens the controls in the keyboard lab. **Reset size and position** resets all saved dimensions without changing the selected modes.
 
 When floating, the Backspace gesture can aim at text above the panel; it does not aim through or below it.
+
+## Emoji and keyboard switching
+
+The smiley beside Space opens an offline emoji panel. Choose a category, scroll its grid, and tap an emoji to insert it. Hold an emoji with skin-tone variants to choose one. Recent shows up to 40 distinct choices, stored locally; sensitive fields do not show or update that history. Unsupported emoji are filtered using the device's font. **ABC** returns to letters, and Back closes the panel. Backspace removes a complete known emoji sequence.
+
+Hold Space to open **Languages & layouts**. Choose an enabled Lowkey layout, or **Other keyboards** for Android's keyboard-app picker. **Settings → Keyboard → Key beside Space** can replace the smiley with the language-switch key; holding Space works with either choice. Holding the comma also opens emoji, including when the language-switch key is selected.
 
 ## Minimize the keyboard
 

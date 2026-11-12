@@ -42,6 +42,7 @@ import androidx.compose.ui.semantics.Role
 import com.rheerkens.androidkeyboard.companion.Destination
 import com.rheerkens.androidkeyboard.models.resolveLanguage
 import com.rheerkens.androidkeyboard.settings.AutoStop
+import com.rheerkens.androidkeyboard.settings.BottomKey
 import com.rheerkens.androidkeyboard.settings.KeyArrangement
 import com.rheerkens.androidkeyboard.settings.LoupeCorners
 import com.rheerkens.androidkeyboard.settings.ModelRetention
@@ -89,6 +90,8 @@ fun SettingsScreen(modifier: Modifier, focus: SettingsFocus, navigate: (Destinat
                     "Use split by default on large screens; remember manual choices")
                 SwitchRow("Number row", s.numberRow, { enabled -> update { it.copy(numberRow = enabled) } },
                     "Show a dedicated 1–0 row above the letters")
+                ChoiceRow("Key beside Space", BottomKey.entries, s.bottomKey, { it.label },
+                    { value -> update { it.copy(bottomKey = value) } })
             }
         }
         item { SwitchRow("Key-press vibration", s.vibrateOnKeyPress, { v -> update { it.copy(vibrateOnKeyPress = v) } }) }

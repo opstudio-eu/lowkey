@@ -63,6 +63,9 @@ data class KeyboardUiState(
     val splitGapDp: Float = 0f,
     val contentWidthDp: Float = 360f,
     val numberRow: Boolean = false,
+    val emojiOpen: Boolean = false,
+    val emojiCatalog: com.rheerkens.androidkeyboard.keyboard.EmojiCatalog? = null,
+    val recentEmoji: List<String> = emptyList(),
 ) {
     /** Keep panel height stable when switching to the existing four-row symbol layouts. */
     val keyRows: Int get() = if (numberRow) 5 else 4
@@ -99,6 +102,9 @@ internal fun KeyboardContent(state: KeyboardUiState, clock: () -> Long, actions:
                     val choices = state.keyboardChoices
                     if (state.toolsOpen) {
                         KeyboardTools(state, actions)
+                    } else if (state.emojiOpen) {
+                        EmojiPanel(state.emojiCatalog, state.recentEmoji,
+                            (state.keyRows * state.rowHeightDp + 4).dp, actions)
                     } else if (choices != null) {
                         // Grow upward to show every enabled keyboard, up to about half the screen.
                         val keysHeight = state.keyRows * state.rowHeightDp + 4

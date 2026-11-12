@@ -55,6 +55,8 @@ enum class AudioInput(val label: String) {
 
 enum class InputMode { KEYS, VOICE }
 
+enum class BottomKey(val label: String) { EMOJI("Emoji"), LANGUAGE("Language switch") }
+
 /**
  * Which two canvas corners the image editor's loupe may dock in (indices as in
  * `LoupePlacement.corners`): the top ones stay clear of either hand, the left ones of a right hand
@@ -72,6 +74,8 @@ data class Settings(
     // Keyboard
     val keyboardHeight: KeyboardHeight = KeyboardHeight.NORMAL,
     val numberRow: Boolean = false,
+    val bottomKey: BottomKey = BottomKey.EMOJI,
+    val recentEmoji: List<String> = emptyList(),
     val vibrateOnKeyPress: Boolean = true,
     val autoCapitalize: Boolean = true,
     val autocorrect: Boolean = true,

@@ -4,6 +4,37 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class KeyboardPlacementTest {
+    @Test fun dockedKeyboardResizesFromEitherEdgeWithoutChangingHeight() {
+        val p = KeyboardPlacement(dockedWidth = .75f, dockedX = .3f)
+        val before = p.frame(720f, 1000f)
+        val right = p.resizeWidth(720f, 1000f, -80f).frame(720f, 1000f)
+        assertEquals(before.left, right.left, .01f)
+        assertEquals(before.width - 80f, right.width, .01f)
+        assertEquals(before.height, right.height, .01f)
+        val left = p.resizeWidth(720f, 1000f, 80f, fromLeft = true).frame(720f, 1000f)
+        assertEquals(before.left + before.width, left.left + left.width, .01f)
+        assertEquals(right.width, left.width, .01f)
+    }
+
+    @Test fun narrowDockedKeyboardMovesInBothDirectionsAndClamps() {
+        val p = KeyboardPlacement(dockedWidth = .75f, dockedX = .5f)
+        val before = p.frame(720f, 1000f)
+        val after = p.move(720f, 1000f, 30f, -50f).frame(720f, 1000f)
+        assertEquals(before.left + 30f, after.left, .01f)
+        assertEquals(before.top - 50f, after.top, .01f)
+        assertEquals(before.width, after.width, .01f)
+        assertEquals(720f, p.move(720f, 1000f, 9999f, 0f).frame(720f, 1000f).let { it.left + it.width }, .01f)
+    }
+
+    @Test fun dockedWidthRoundTripsAndOldProfilesRemainFullWidth() {
+        val p = PlacementPreferences().update(PlacementProfile.COMPACT_PORTRAIT) {
+            it.copy(dockedWidth = .8f, dockedX = .2f)
+        }
+        assertEquals(p, PlacementPreferences.decode(p.encode(), 48f))
+        val old = "1|false|48\nCOMPACT_PORTRAIT|NORMAL|false|48|0|0.8|true|-1|320|48|0.5|0.7\n"
+        assertEquals(720f, PlacementPreferences.decode(old, 48f).get(PlacementProfile.COMPACT_PORTRAIT).frame(720f, 1000f).width, 0f)
+    }
+
     @Test fun rotationDoesNotTurnAPhoneIntoATablet() {
         assertEquals(PlacementProfile.COMPACT_LANDSCAPE, PlacementProfile.forSize(840f, 400f))
         assertEquals(PlacementProfile.LARGE_PORTRAIT, PlacementProfile.forSize(700f, 900f))

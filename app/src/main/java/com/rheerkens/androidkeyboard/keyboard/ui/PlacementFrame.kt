@@ -101,7 +101,7 @@ fun KeyboardRoot(state: KeyboardUiState, clock: () -> Long, actions: KeyboardAct
                         }
                         if (floating) {
                             PlacementDragTarget("Move floating keyboard", Modifier.fillMaxWidth().height(24.dp).background(colors.background),
-                                placement, { base, delta -> movePlacement(base, frame, width, height, state.keyRows, delta) }, { draft = it }, ::save,
+                                placement, { base, delta -> base.move(width, height, delta.x, delta.y, state.keyRows) }, { draft = it }, ::save,
                                 movements = moveActions)
                         }
                     }
@@ -111,12 +111,6 @@ fun KeyboardRoot(state: KeyboardUiState, clock: () -> Long, actions: KeyboardAct
         }
     }
 }
-
-private fun movePlacement(base: KeyboardPlacement, frame: PlacementFrame, width: Float, height: Float, rows: Int, delta: Offset): KeyboardPlacement =
-    if (frame.mode == PlacementMode.FLOATING) base.copy(
-        floatingX = (base.floatingX + delta.x / (width - frame.width).coerceAtLeast(1f)).coerceIn(0f, 1f),
-        floatingY = (base.floatingY + delta.y / (height - base.frame(width, height, rows = rows).height).coerceAtLeast(1f)).coerceIn(0f, 1f),
-    ) else base.copy(bottomSpace = (base.bottomSpace - delta.y).coerceIn(0f, (height - frame.height).coerceAtLeast(0f)))
 
 @Composable
 private fun ResizeOverlay(placement: KeyboardPlacement, frame: PlacementFrame, width: Float, height: Float, rows: Int,
@@ -130,7 +124,14 @@ private fun ResizeOverlay(placement: KeyboardPlacement, frame: PlacementFrame, w
         PlacementDragTarget("Resize bottom edge", Modifier.align(Alignment.BottomCenter).size(48.dp, 28.dp), placement,
             { base, delta -> base.resizeVertical(width, height, delta.y, true, rows) }, preview, save,
             movements = listOf("Increase" to Offset(0f, 8f), "Decrease" to Offset(0f, -8f)))
-        if (floating || frame.mode == PlacementMode.ONE_HANDED) {
+        if (frame.mode == PlacementMode.NORMAL || floating) {
+            for (left in listOf(true, false)) {
+                PlacementDragTarget(if (left) "Resize left edge" else "Resize right edge",
+                    Modifier.align(if (left) Alignment.CenterStart else Alignment.CenterEnd).size(28.dp, 48.dp), placement,
+                    { base, delta -> base.resizeWidth(width, height, delta.x, fromLeft = left) }, preview, save,
+                    movements = listOf("Increase" to Offset(if (left) -8f else 8f, 0f), "Decrease" to Offset(if (left) 8f else -8f, 0f)))
+            }
+        } else if (frame.mode == PlacementMode.ONE_HANDED) {
             val right = floating || !placement.rightHand
             PlacementDragTarget("Resize keyboard width", Modifier.align(if (right) Alignment.CenterEnd else Alignment.CenterStart).size(28.dp, 48.dp), placement,
                 { base, delta -> base.resizeWidth(width, height, delta.x) }, preview, save,
@@ -146,7 +147,8 @@ private fun ResizeOverlay(placement: KeyboardPlacement, frame: PlacementFrame, w
                 save(KeyboardPlacement(mode = placement.mode, automatic = placement.automatic, rightHand = placement.rightHand))
             }
             PlacementDragTarget("Move keyboard", Modifier.size(60.dp), placement,
-                { base, delta -> movePlacement(base, frame, width, height, rows, delta) }, preview, save, icon = true, movements = moveActions)
+                { base, delta -> base.move(width, height, delta.x, delta.y, rows) }, preview, save, icon = true,
+                movements = if (floating || frame.mode == PlacementMode.NORMAL) moveActions else moveActions.take(2))
             StripIconButton(SlimIcons.Check, "Finish changing keyboard size and position", onTap = done)
         }
     }
