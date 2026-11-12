@@ -28,6 +28,8 @@ If Dutch was enabled in an earlier version, where it was built in, it downloads 
 
 The app interface is currently in English. Keyboard language and voice language are separate choices; changing either does not change the app interface.
 
+Android's input-method menu shows one **Lowkey Keyboard** entry. It opens the language and layout selected in Lowkey; it does not list a separate fixed English or Dutch keyboard. Language entries under another keyboard app, such as Gboard, are controlled by that app.
+
 ## Choose layouts and type accents
 
 Enable layouts under **Settings → Languages & layouts → Keyboard layouts**, then choose **Keyboard in use** on that page to select the one you want. Each language on your phone is listed with its own layout first. Languages written in the Latin alphabet also offer QWERTY, AZERTY, QWERTZ, Dvorak and Colemak. With the language-switch key enabled, tap it to cycle through Lowkey layouts. Hold Space to open Android's picker for keyboard apps.
