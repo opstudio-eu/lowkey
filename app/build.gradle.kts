@@ -124,6 +124,16 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        resValues = true
+    }
+
+    // Opt-in local UI test APK. Release identity and version are unchanged.
+    buildTypes.getByName("debug") {
+        if (providers.gradleProperty("uiPreview").orNull == "true") {
+            applicationIdSuffix = ".uipreview"
+            resValue("string", "app_name", "Lowkey UI Preview")
+            resValue("string", "ime_name", "Lowkey UI Preview")
+        }
     }
 
     compileOptions {

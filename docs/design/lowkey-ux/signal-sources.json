@@ -1,0 +1,15 @@
+{
+  "repository": "opstudio-eu/opstudio-signal",
+  "read_date": "2026-11-12",
+  "head": "e59879e9a49b4e9e0cce6b00bb5ec5121f38fb53",
+  "source": "working files including existing uncommitted changes",
+  "files": {
+    "src/app/globals.css": "d7629d9f64df63d99555cd7bf9f4db926d954b8570fa696dc66c3393c27bfb6f",
+    "src/components/Brand.tsx": "8b1812d3a75d94ec01e40036a043df78faabc9a783c1fc24bc9b87d154405cf7",
+    "src/components/AppShell.tsx": "837461406aa9b766dde844f344842eb7141448a093e8c6246f243efaa4eaf597",
+    "src/components/overview/today.module.css": "8d4ea3b8da9044de1e9f1f58825d735715de340169cc46f740c7e4bca518927f",
+    "docs/branding/new-opstudio/README.md": "b1342981ec2100f895e4f84fde6b86082dba59fd52a22b62bf41166eeeebf59b",
+    "docs/branding/new-opstudio/implementation.md": "bc444f17a16f51a5ed1d9fe7a89ca4683508813906cedee013f20e38b20dc9ee",
+    "docs/superpowers/plans/2026-11-11-signal-brand-rollout.md": "02e5284c8a46d5aa8ac6f190c33841d55849231cd95b30d416f4186fce2ae8ca"
+  }
+}

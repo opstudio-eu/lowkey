@@ -11,6 +11,11 @@ versions should remove the logo.
 
 The APK contains these third-party components. Their notices are in this folder.
 
+Bricolage Grotesque (SIL Open Font License 1.1)               fonts/Bricolage-Grotesque-OFL.txt
+  https://github.com/ateliertriay/bricolage
+  Static semibold instance of the existing OpStudio headline font, used only for app headings.
+  Body text, language names and user content retain the platform font and its script coverage.
+
 Java and Kotlin libraries (Apache-2.0, Apache-2.0.txt)
   AndroidX, Jetpack Compose, Material 3, Kotlin standard library, kotlinx.coroutines and their
   dependencies: the exact versions are in dependencies/manifest.txt, and the NOTICE files they carry

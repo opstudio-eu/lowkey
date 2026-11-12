@@ -12,12 +12,13 @@ import androidx.core.graphics.drawable.toDrawable
  * only the system one: the window background otherwise follows the system night mode
  * (values-night), so Light or Dark would show the other theme behind the content.
  */
-fun ComponentActivity.applyThemeToWindow(dark: Boolean) {
-    val style = if (dark) {
+fun ComponentActivity.applyThemeToWindow(dark: Boolean, brandSurround: Boolean = false) {
+    val style = if (dark || brandSurround) {
         SystemBarStyle.dark(Color.TRANSPARENT)
     } else {
         SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
     }
     enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
-    window.setBackgroundDrawable((if (dark) DarkScheme else LightScheme).background.toArgb().toDrawable())
+    val background = if (brandSurround && !dark) Brand.Blue else (if (dark) DarkScheme else LightScheme).background
+    window.setBackgroundDrawable(background.toArgb().toDrawable())
 }
