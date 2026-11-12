@@ -93,6 +93,7 @@ fun <T> ChoiceRow(
     label: (T) -> String,
     onSelect: (T) -> Unit,
     subtitle: String? = null,
+    enabled: Boolean = true,
 ) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
         Text(title, style = MaterialTheme.typography.bodyLarge)
@@ -105,6 +106,7 @@ fun <T> ChoiceRow(
                 SegmentedButton(
                     selected = option == selected,
                     onClick = { onSelect(option) },
+                    enabled = enabled,
                     shape = SegmentedButtonDefaults.itemShape(i, options.size),
                 ) { Text(label(option), maxLines = 1) }
             }

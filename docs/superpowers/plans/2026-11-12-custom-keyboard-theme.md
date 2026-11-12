@@ -52,3 +52,30 @@ removing an image (portrait, landscape, rotated EXIF, PNG with transparency, an 
 dimming, a deleted image file falling back to the colour, relaunch and process recreation with a
 draft image, and the keyboard in keys, voice, model picker, minimized and chooser modes with
 pressed keys, popups, suggestions, clipboard and the navigation bar. Android 14 is also pending.
+
+### Review fixes: storage failures and image cleanup
+
+Review found four problems, now fixed with regression tests:
+
+- A cleanup used the saved image as it was when requested, so a cleanup still queued during a save
+  could delete the newly saved image, and cleanup could delete a fresh import before the editor took
+  it. `BackgroundImages` now holds the saved image, the draft image and fresh imports, and checks
+  those holds per file at deletion time under the lock that changes them.
+- The theme was published before the preferences commit, whose result was ignored. The store now
+  commits on an IO thread through a `ThemePersistence` seam, checks the result and publishes only
+  after success; a failure keeps the draft, shows an error and deletes nothing.
+- Standard/Custom stayed active during an import. It is now disabled while an import or write runs;
+  an import that finishes after the custom theme was turned off is discarded.
+- Decoding a stored image caught only out of memory; other decode errors now fall back to no image
+  without swallowing cancellation. Import also maps unexpected bitmap errors to "unsupported".
+
+`KeyboardThemeStoreTest` (fake persistence, temporary folder, test dispatcher) covers commit-before-
+publish order, failed save and switch, a stale cleanup during save, fresh and stale imports, draft
+replacement, the saved image while custom is off, and startup cleanup; `BackgroundImagesDecodeTest`
+covers decode failures and cancellation. Mutating the store to ignore the commit result, or the
+cleanup to ignore fresh imports, makes these tests fail. `testDebugUnitTest` (373 tests, none skipped
+or failing), `assembleDebug` and `lintDebug` pass.
+
+Device verification is still pending (the emulator was held by another session). Also verify the
+disabled controls during an import, the save error (hard to force on a device), and rotation during
+an import.

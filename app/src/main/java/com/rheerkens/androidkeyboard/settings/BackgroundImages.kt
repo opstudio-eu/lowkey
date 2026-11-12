@@ -16,6 +16,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.scale
 import com.rheerkens.androidkeyboard.keyboard.ui.ImageSample
 import com.rheerkens.androidkeyboard.keyboard.ui.isBackgroundFileName
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -36,18 +38,50 @@ sealed interface BackgroundImport {
 
 /**
  * Background images in app-private storage. Each import writes a new immutable file (`bg-<random>`),
- * first under a temporary name, so a saved theme only ever names a complete file. Files are deleted
- * only when nothing references them. Decoded images are cached (two entries: the saved image and an
- * editor draft), so drawing never reads the disk.
+ * first under a temporary name, so a saved theme only ever names a complete file. Decoded images are
+ * cached (two entries: the saved image and an editor draft), so drawing never reads the disk.
+ *
+ * Files are deleted only when nothing holds them: the saved theme's image, the editor draft's image,
+ * and each fresh import until the editor takes or discards it (or, if it never does because its
+ * request was cancelled, for [PENDING_AGE_MS]). Holds are checked at each deletion under one lock,
+ * so a cleanup requested earlier cannot delete a file that became saved or a draft since.
  */
-class BackgroundImages(private val dir: File) {
+class BackgroundImages(
+    private val dir: File,
+    private val io: CoroutineDispatcher = Dispatchers.IO,
+    private val now: () -> Long = System::currentTimeMillis,
+) {
     private val mutex = Mutex()
     private val cache = LinkedHashMap<String, LoadedBackground>(4, 0.75f, true)
+
+    private val holds = Any()
+    private var saved: String? = null
+    private var draft: String? = null
+    private val pending = HashMap<String, Long>()
+
+    /** The image the stored theme names; set only after the preferences were written. */
+    fun holdSaved(name: String?) = synchronized(holds) { saved = name }
+
+    /** The image the editor's draft shows; taking a fresh import ends its pending hold. */
+    fun holdDraft(name: String?) = synchronized(holds) {
+        draft = name
+        if (name != null) pending.remove(name)
+    }
+
+    /** Ends the pending hold of an import nobody will use. */
+    fun release(name: String) = synchronized(holds) { pending.remove(name) }
+
+    /** Holds a just-imported file until the editor takes or discards it. */
+    internal fun registerImported(name: String) = synchronized(holds) { pending[name] = now() }
+
+    private fun isHeld(name: String, at: Long): Boolean = synchronized(holds) {
+        name == saved || name == draft || pending[name]?.let { at - it < PENDING_AGE_MS } == true
+    }
 
     fun file(name: String): File = File(dir, name)
 
     /** Copies the image at [uri] into a new bounded, upright file without any of its metadata. */
-    suspend fun import(resolver: ContentResolver, uri: Uri): BackgroundImport = withContext(Dispatchers.IO) {
+    suspend fun import(resolver: ContentResolver, uri: Uri): BackgroundImport = withContext(io) {
         mutex.withLock {
             try {
                 importLocked(resolver, uri)
@@ -57,7 +91,10 @@ class BackgroundImages(private val dir: File) {
                 BackgroundImport.Failed(BackgroundImageError.UNREADABLE)
             } catch (e: SecurityException) {
                 BackgroundImport.Failed(BackgroundImageError.UNREADABLE)
-            } catch (e: IllegalArgumentException) {
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: RuntimeException) {
+                // Bitmap decoding and transforming report bad input as IllegalArgument or IllegalState.
                 BackgroundImport.Failed(BackgroundImageError.UNSUPPORTED)
             }
         }
@@ -102,6 +139,8 @@ class BackgroundImages(private val dir: File) {
                 temp.delete()
                 throw IOException("rename failed")
             }
+            // Held before the lock is released, so no cleanup can run before the editor takes it.
+            registerImported(name)
             return BackgroundImport.Imported(name)
         } finally {
             stored.recycle()
@@ -118,7 +157,7 @@ class BackgroundImages(private val dir: File) {
     }
 
     /** The decoded image [name], from the cache or the disk; null when missing or unreadable. */
-    suspend fun load(name: String): LoadedBackground? = withContext(Dispatchers.IO) {
+    suspend fun load(name: String): LoadedBackground? = withContext(io) {
         mutex.withLock {
             cache[name]?.let { return@withLock it }
             val loaded = decodeStored(name) ?: return@withLock null
@@ -132,53 +171,73 @@ class BackgroundImages(private val dir: File) {
         if (!isBackgroundFileName(name)) return null
         val f = file(name)
         if (!f.isFile) return null
-        return try {
+        // A corrupt, truncated or unreadable file falls back to the background colour.
+        return decodeOrNull {
             // The file was written by import, but check its bounds anyway before decoding it fully.
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeFile(f.path, bounds)
-            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@decodeOrNull null
             val options = BitmapFactory.Options().apply {
                 inSampleSize = sampleSizeFor(bounds.outWidth, bounds.outHeight)
                 inPreferredConfig = Bitmap.Config.ARGB_8888
             }
-            val bitmap = BitmapFactory.decodeFile(f.path, options) ?: return null
-            val (sw, sh) = sampleSize(bitmap.width, bitmap.height)
-            val small = bitmap.scale(sw, sh)
-            val pixels = IntArray(sw * sh)
-            small.getPixels(pixels, 0, sw, 0, 0, sw, sh)
-            if (small !== bitmap) small.recycle()
-            LoadedBackground(name, bitmap.asImageBitmap(), ImageSample(pixels))
-        } catch (e: OutOfMemoryError) {
-            Log.w(TAG, "background image too large to load")
-            null
+            val bitmap = BitmapFactory.decodeFile(f.path, options) ?: return@decodeOrNull null
+            try {
+                val (sw, sh) = sampleSize(bitmap.width, bitmap.height)
+                val small = bitmap.scale(sw, sh)
+                val pixels = IntArray(sw * sh)
+                small.getPixels(pixels, 0, sw, 0, 0, sw, sh)
+                if (small !== bitmap) small.recycle()
+                LoadedBackground(name, bitmap.asImageBitmap(), ImageSample(pixels))
+            } catch (e: Throwable) {
+                bitmap.recycle()
+                throw e
+            }
         }
     }
 
     /**
-     * Deletes image files not in [keep]: all of them at once, and unfinished temporary files after
-     * ten minutes. [minAgeMs] keeps recent unreferenced files too (used at start, so a draft survives
+     * Deletes image files nothing holds: all of them at once, and unfinished temporary files after
+     * ten minutes. [minAgeMs] keeps recent unheld files too (used at start, so a draft survives
      * process recreation).
      */
-    suspend fun cleanup(keep: Set<String?>, minAgeMs: Long = 0) = withContext(Dispatchers.IO) {
+    suspend fun cleanup(minAgeMs: Long = 0) = withContext(io) {
         mutex.withLock {
-            val now = System.currentTimeMillis()
             for (f in dir.listFiles().orEmpty()) {
-                val age = now - f.lastModified()
-                val delete = when {
-                    f.name.startsWith(".tmp-") -> age > TEMP_AGE_MS
-                    isBackgroundFileName(f.name) -> f.name !in keep && age >= minAgeMs
-                    else -> false
-                }
-                if (delete) {
-                    cache.remove(f.name)
-                    f.delete()
+                val at = now()
+                val age = at - f.lastModified()
+                when {
+                    f.name.startsWith(".tmp-") -> if (age > TEMP_AGE_MS) f.delete()
+                    isBackgroundFileName(f.name) -> synchronized(holds) {
+                        // Checked and deleted under the hold lock: nothing can take the file in between.
+                        if (age >= minAgeMs && !isHeld(f.name, at)) {
+                            cache.remove(f.name)
+                            f.delete()
+                        }
+                    }
                 }
             }
         }
     }
 
     private companion object {
-        const val TAG = "BackgroundImages"
         const val TEMP_AGE_MS = 10 * 60 * 1000L
+        const val PENDING_AGE_MS = 10 * 60 * 1000L
     }
+}
+
+/**
+ * Runs a decode, turning a failure on a bad file into null. Out of memory counts as one; a
+ * coroutine cancellation is passed on, never swallowed.
+ */
+internal inline fun <T> decodeOrNull(block: () -> T?): T? = try {
+    block()
+} catch (e: CancellationException) {
+    throw e
+} catch (e: RuntimeException) {
+    Log.w("BackgroundImages", "background image unreadable: ${e.javaClass.simpleName}")
+    null
+} catch (e: OutOfMemoryError) {
+    Log.w("BackgroundImages", "background image too large to load")
+    null
 }

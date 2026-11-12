@@ -151,14 +151,33 @@ fun KeyboardThemeScreen(modifier: Modifier) {
     var selectedName by rememberSaveable { mutableStateOf(ColorRole.BACKGROUND.name) }
     val selected = ColorRole.valueOf(selectedName)
     var advancedOpen by rememberSaveable { mutableStateOf(false) }
+    // An import or a write in flight; both end with this screen (rotation cancels them).
     var importing by remember { mutableStateOf(false) }
+    var saving by remember { mutableStateOf(false) }
+    val busy = importing || saving
     var imageError by rememberSaveable { mutableStateOf<String?>(null) }
+    var saveError by rememberSaveable { mutableStateOf<String?>(null) }
     val shown = draft ?: saved
     val dirty = draft != null && draft != saved
     fun edit(t: CustomKeyboardTheme) { draft = t }
 
-    // Image files left by an earlier draft that was never saved; the saved one and this draft's stay.
-    LaunchedEffect(Unit) { store.releaseUnused(draft?.image) }
+    // Holds this draft's image (restored after rotation or process recreation) and deletes image
+    // files left by an earlier draft that was never saved; the saved one and this draft's stay.
+    LaunchedEffect(Unit) { store.setDraftImage(draft?.image) }
+
+    /** Runs a write; the draft and its image stay when it fails, so Save can be tried again. */
+    fun write(block: suspend () -> Boolean, onStored: () -> Unit) {
+        if (busy) return
+        scope.launch {
+            saving = true
+            saveError = null
+            try {
+                if (block()) onStored() else saveError = "Couldn't save the keyboard theme. Your changes are kept; try again."
+            } finally {
+                saving = false
+            }
+        }
+    }
 
     val imageState by produceState<ImageState>(ImageState.None, shown.image) {
         val name = shown.image
@@ -169,18 +188,29 @@ fun KeyboardThemeScreen(modifier: Modifier) {
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
+        if (busy) return@rememberLauncherForActivityResult
         scope.launch {
             importing = true
             imageError = null
-            when (val result = store.images.import(resolver, uri)) {
-                is BackgroundImport.Imported -> {
-                    draft = (draft ?: saved).copy(image = result.name)
-                    // A replaced draft image is deleted; the saved one never is.
-                    store.releaseUnused(result.name)
+            try {
+                // The new file is held until taken below. If this screen goes first (rotation,
+                // Back), the result is never delivered and the hold lapses, so cleanup removes it.
+                when (val result = store.images.import(resolver, uri)) {
+                    is BackgroundImport.Imported -> {
+                        val current = store.theme.value
+                        if (current.enabled) {
+                            draft = (draft ?: current.custom ?: CustomKeyboardTheme(standardSeed)).copy(image = result.name)
+                            // A replaced draft image is deleted; the saved one never is.
+                            store.setDraftImage(result.name)
+                        } else {
+                            store.discardImport(result.name)
+                        }
+                    }
+                    is BackgroundImport.Failed -> imageError = result.error.message
                 }
-                is BackgroundImport.Failed -> imageError = result.error.message
+            } finally {
+                importing = false
             }
-            importing = false
         }
     }
 
@@ -190,11 +220,12 @@ fun KeyboardThemeScreen(modifier: Modifier) {
                 "Keyboard colors", listOf(false, true), theme.enabled,
                 { if (it) "Custom" else "Standard" },
                 { custom ->
-                    if (!custom) {
-                        draft = null
-                        store.releaseUnused()
+                    write({ store.setEnabled(custom, initial = standardSeed) }) {
+                        if (!custom) {
+                            draft = null
+                            store.setDraftImage(null)
+                        }
                     }
-                    store.setEnabled(custom, initial = standardSeed)
                 },
                 subtitle = if (theme.enabled) {
                     "Your colors and image. Switching to Standard keeps them for later."
@@ -202,8 +233,11 @@ fun KeyboardThemeScreen(modifier: Modifier) {
                     "OpStudio colors, light or dark with the app theme." +
                         if (theme.custom != null) " Your custom theme is kept." else ""
                 },
+                // Not while an image is imported into the draft or a change is being stored.
+                enabled = !busy,
             )
         }
+        saveError?.let { error -> item { ErrorNote(error) } }
         if (!theme.enabled) return@LazyColumn
 
         item {
@@ -230,12 +264,12 @@ fun KeyboardThemeScreen(modifier: Modifier) {
         item { SectionTitle("Background image") }
         item {
             ImageSection(
-                shown, imageState, importing, imageError,
+                shown, imageState, importing, busy, imageError,
                 onChoose = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                 onRemove = {
                     imageError = null
                     edit(shown.copy(image = null))
-                    store.releaseUnused(null)
+                    store.setDraftImage(null)
                 },
                 onDim = { edit(shown.copy(dim = it)) },
             )
@@ -281,23 +315,31 @@ fun KeyboardThemeScreen(modifier: Modifier) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 val restored = shown.copy(seed = standardSeed, overrides = emptyMap())
-                TextButton(onClick = { draft = restored }, enabled = shown != restored && !importing) { Text("Restore default") }
+                TextButton(onClick = { draft = restored }, enabled = shown != restored && !busy) { Text("Restore default") }
                 Spacer(Modifier.weight(1f))
                 OutlinedButton(
                     onClick = {
                         draft = null
                         imageError = null
-                        store.releaseUnused()
+                        saveError = null
+                        store.setDraftImage(null)
                     },
-                    enabled = dirty && !importing,
+                    enabled = dirty && !busy,
                 ) { Text("Cancel") }
                 Button(
                     onClick = {
-                        draft?.let(store::save)
-                        draft = null
+                        val d = draft ?: return@Button
+                        write({ store.save(d) }) {
+                            if (draft == d) {
+                                draft = null
+                            } else {
+                                // Edited while it was stored: keep holding what the draft shows now.
+                                store.setDraftImage(draft?.image)
+                            }
+                        }
                     },
-                    enabled = dirty && !importing,
-                ) { Text("Save") }
+                    enabled = dirty && !busy,
+                ) { Text(if (saving) "Saving…" else "Save") }
             }
         }
         item {
@@ -353,6 +395,7 @@ private fun ImageSection(
     theme: CustomKeyboardTheme,
     state: ImageState,
     importing: Boolean,
+    busy: Boolean,
     error: String?,
     onChoose: () -> Unit,
     onRemove: () -> Unit,
@@ -371,11 +414,11 @@ private fun ImageSection(
             Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = onChoose, enabled = !importing) {
+            OutlinedButton(onClick = onChoose, enabled = !busy) {
                 Text(if (theme.image == null) "Choose image" else "Replace image")
             }
             if (theme.image != null) {
-                TextButton(onClick = onRemove, enabled = !importing) { Text("Remove image") }
+                TextButton(onClick = onRemove, enabled = !busy) { Text("Remove image") }
             }
         }
         if (theme.image != null) {
@@ -405,6 +448,16 @@ private fun ImageSection(
             )
         }
     }
+}
+
+@Composable
+private fun ErrorNote(text: String) {
+    Text(
+        text,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.error,
+    )
 }
 
 @Composable

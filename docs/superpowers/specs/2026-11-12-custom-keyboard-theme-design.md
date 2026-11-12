@@ -54,7 +54,7 @@ All palette roles are opaque; contrast functions reject transparent colours.
 - Files are immutable and versioned (`bg-<random>.jpg`), written to a temporary name and renamed when complete. Preferences only ever point at a complete file.
 - Unreadable files, unsupported formats and images over 100 megapixels show an error in the editor; the draft and the saved theme stay as they were.
 - Drawn behind the whole keyboard, centre-cropped to its current size, in keys, voice and minimized mode, then covered by the background colour at the chosen dimming (0 to 90 %, default 50 %). Keys, popups and buttons stay opaque. The preview uses the same drawing code.
-- A missing or corrupt file falls back to the background colour.
+- A missing, corrupt or unreadable file falls back to the background colour: decode errors and out of memory become "no image"; coroutine cancellation is passed on.
 - Decoding happens once per file on an IO thread into a one-entry cache shared by the keyboard and the editor; recomposition never touches the disk.
 
 ## Contrast checks
@@ -81,11 +81,22 @@ exists, as a separate, named change.
 `custom_colors` (five seeds, unchanged format), and new keys `custom_overrides`
 (`role=RRGGBB` pairs; unknown roles and invalid colours are dropped), `background_image` (a file
 name in the store's directory, validated) and `background_dim`. Older saved themes load with no
-overrides and no image. Turning custom off keeps everything. Saving writes all keys in one commit.
+overrides and no image. Turning custom off keeps everything.
 
-Cleanup deletes only files that the saved theme and the open draft do not reference: after Save,
-Cancel or replacing a draft image, and at start for unreferenced files older than a day (so a draft
-survives process recreation).
+Saving and switching write all keys in one commit on an IO thread, serialized, and check its result.
+The store's `theme` is published only after the commit succeeded, so it always matches the disk.
+When the commit fails nothing changes: the call returns false, the editor keeps the draft and shows
+an error, and no image file is released.
+
+Image files are protected by holds kept in `BackgroundImages`: the saved theme's image (moved only
+after a successful commit), the editor draft's image, and each fresh import from the moment its file
+is complete until the editor takes or discards it. An import whose result is never delivered (the
+editor went away mid-import) is held for ten minutes. Cleanup checks the holds per file at the
+moment it deletes, under the same lock that changes them, so a cleanup requested earlier can never
+delete a file that became saved, a draft or an import since. It runs after Save, Cancel, Remove or
+replacing a draft image, when the editor opens (holding a draft restored after rotation or process
+recreation), and at start for unheld files older than a day. The saved image is kept while the
+custom theme is off.
 
 ## Settings
 
@@ -99,6 +110,8 @@ Settings → Appearance → Keyboard theme:
 - Everything is a draft until Save: seeds, overrides and image. Cancel, Back or leaving the page
   discards it; the saved image is never deleted by a draft action. The draft survives rotation and
   process recreation (`rememberSaveable`); a draft image file that has gone missing shows as no image.
+- While an image is imported or a change is stored, Standard/Custom, image, Restore default, Cancel
+  and Save are disabled. Rotation cancels an import in progress; its file is cleaned up later.
 - Restore default resets the draft's seeds to the standard palette and clears overrides; the image
   stays until removed.
 - The hex field accepts exactly six hex digits; anything else stays visible as an error and changes nothing.
