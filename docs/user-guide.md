@@ -28,7 +28,7 @@ The app interface is currently in English. Keyboard language and voice language 
 
 ## Choose layouts and type accents
 
-Enable layouts under **Settings → Languages & layouts → Keyboard layouts**. Each language on your phone is listed with its own layout first. Languages written in the Latin alphabet also offer QWERTY, AZERTY, QWERTZ, Dvorak and Colemak. Tap the globe key to cycle through the layouts that are on, or hold the space bar to choose one. Holding the globe opens Android's picker for other keyboard apps.
+Enable layouts under **Settings → Languages & layouts → Keyboard layouts**. Each language on your phone is listed with its own layout first. Languages written in the Latin alphabet also offer QWERTY, AZERTY, QWERTZ, Dvorak and Colemak. With the language-switch key enabled, tap it to cycle through Lowkey layouts. Hold Space to open Android's picker for keyboard apps.
 
 The selected language controls suggestions and autocorrect. Changing the letter layout does not change that language.
 
@@ -40,9 +40,30 @@ Space and punctuation apply autocorrections. Press Backspace immediately after a
 
 Open **Dictionary → My words** to add, search, edit or delete saved terms. **Match the spelling of my words** controls whether dictation restores their spelling. Under **Speech rules**, add phrases to replace after dictation. The main switch is off by default; each rule keeps its own on/off choice while the main switch is off. Import and export are not available.
 
+Turn **Settings → Keyboard → Number row** on for a dedicated 1–0 row above the letters. It is off by default and works with every language and keyboard mode. In Split mode the digits divide between the two halves. Symbol layouts keep their existing characters and fill the same panel height, so switching layers does not move the keyboard.
+
+## Resize, move and split the keyboard
+
+Tap **Keyboard tools** beside the minimize button. **Resize** outlines the keyboard: drag the top edge to change height, the bottom edge to leave more or less space underneath, or the centre move handle to reposition it. In Normal and Floating modes, the left and right handles change width independently of height. A narrower Normal keyboard can also move horizontally while remaining docked. **Reset** restores the current mode's default size and position; the checkmark finishes. Completed drags are remembered, including when you press Android's Back button.
+
+The same menu offers **One-handed**, **Floating** and **Split**. Tap an active mode again to return to the normal keyboard. One-handed has side buttons to move it left/right or restore full width. Floating has a drag bar beneath it and leaves the surrounding app usable. Split is available in wide windows, shares the middle keys between both thumbs (G and V on QWERTY), and keeps one broad spacebar across the bottom.
+
+Lowkey remembers size, position and mode separately for small/large screens and portrait/landscape. **Settings → Keyboard → Automatically split on large screens** chooses Split as the large-screen default; your manual choices are remembered. Turning it off does not cancel a manually chosen Split mode. **Size and position** opens the controls in the keyboard lab. **Reset size and position** resets all saved dimensions without changing the selected modes.
+
+When floating, the Backspace gesture can aim at text above the panel; it does not aim through or below it.
+
+## Emoji and keyboard switching
+
+The smiley beside Space opens an offline emoji panel. Choose a category, scroll its grid, and tap an emoji to insert it. Hold an emoji with skin-tone variants to choose one. Recent shows up to 40 distinct choices, stored locally; sensitive fields do not show or update that history. Unsupported emoji are filtered using the device's font. **ABC** returns to letters, and Back closes the panel. Backspace removes a complete known emoji sequence.
+
+Hold Space to open Android's keyboard-app picker directly. **Settings → Keyboard → Key beside Space** can replace the smiley with the language-switch key; holding Space works with either choice. Tap the language key to cycle through enabled Lowkey layouts, or hold it to open the same Android picker. Manage Lowkey's languages and layouts in Settings. Holding the comma also opens emoji, including when the language-switch key is selected.
+
+
 ## Minimize the keyboard
 
 Tap the chevron at the left of the suggestion strip to minimize the keyboard. Tap the keyboard button on the minimized bar to expand it.
+
+The minimized bar sits at the bottom, above Android's navigation area, even if you moved the full keyboard upward. Expanding restores the keyboard's saved size and position.
 
 With a physical keyboard connected, Lowkey opens minimized by default. **Settings → Keyboard → Show with physical keyboard** controls whether it stays visible. Lowkey remembers your expanded or minimized choice separately for use with and without a physical keyboard.
 
@@ -69,7 +90,8 @@ The minimized bar shows up to ten recent clips. The full keyboard shows them whe
 
 Clips are captured while Lowkey is the selected keyboard, even when hidden. History lasts until the app process ends. Copied images are cached privately and removed when they leave history or the app restarts. Clips marked sensitive are not saved in history, and history is hidden in password fields.
 
-To include recent screenshots, enable **Settings → Clipboard & images → Recent screenshots** and grant photo access. This setting is off by default. It adds up to five screenshots from the last day; tapping one copies it into history and pastes it.
+Recent screenshots are on by default. They appear once Lowkey may read all your photos: use the optional card on Home, or **Settings → Clipboard & images → Recent screenshots**, and choose **Allow all**. Use that switch to turn them off. Up to five screenshots from the last day appear beside your clips. With limited photo access, new screenshots stay hidden; Home and Settings explain how to allow all photos. Choosing **Not now** turns this optional feature off.
+
 
 ## Edit an image before pasting
 

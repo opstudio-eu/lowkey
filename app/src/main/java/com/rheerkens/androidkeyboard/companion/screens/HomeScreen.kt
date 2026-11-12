@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rheerkens.androidkeyboard.AppGraph
+import com.rheerkens.androidkeyboard.clipboard.PhotoAccess
 import com.rheerkens.androidkeyboard.companion.Destination
 import com.rheerkens.androidkeyboard.companion.KeyboardSetupState
 import com.rheerkens.androidkeyboard.companion.SystemImeStatus
@@ -50,6 +51,7 @@ fun HomeScreen(
     var ime by androidx.compose.runtime.remember { mutableStateOf(SystemImeStatus.read(context)) }
     val models by AppGraph.models.state.collectAsStateWithLifecycle()
     val settings by AppGraph.settings.settings.collectAsStateWithLifecycle()
+    val photos = rememberPhotoAccess()
     val setup = keyboardSetupState(ime.enabled, ime.selected)
     val onboarding = setup != KeyboardSetupState.READY && !skipped
     LifecycleResumeEffect(Unit) { ime = SystemImeStatus.read(context); onPauseOrDispose { } }
@@ -121,6 +123,10 @@ fun HomeScreen(
             LinkRow("Languages & layouts", "${AppGraph.currentKeyboard(settings).fullLabel} · opens in Settings") { navigate(Destination.LANGUAGES) }
             LinkRow("Voice", models.activeModel?.name ?: "Not set up · optional") { navigate(Destination.MODELS) }
             Note("Typing and speech are processed on your device. Models, keyboard languages and updates use an internet connection.", Modifier.padding(top = 20.dp))
+        }
+        if (settings.recentScreenshots && photos.access != PhotoAccess.ALL) {
+            PhotoAccessCard(photos, { AppGraph.settings.update { it.copy(recentScreenshots = false) } },
+                Modifier.padding(horizontal = 20.dp, vertical = 16.dp))
         }
     }
 }

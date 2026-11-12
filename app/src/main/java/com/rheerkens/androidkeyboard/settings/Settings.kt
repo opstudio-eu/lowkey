@@ -1,5 +1,7 @@
 package com.rheerkens.androidkeyboard.settings
 
+import com.rheerkens.androidkeyboard.keyboard.PlacementPreferences
+
 /** Keyboard key-row height preset. */
 enum class KeyboardHeight(val label: String, val rowHeightDp: Int) {
     COMPACT("Compact", 42),
@@ -53,6 +55,8 @@ enum class AudioInput(val label: String) {
 
 enum class InputMode { KEYS, VOICE }
 
+enum class BottomKey(val label: String) { EMOJI("Emoji"), LANGUAGE("Language switch") }
+
 /**
  * Which two canvas corners the image editor's loupe may dock in (indices as in
  * `LoupePlacement.corners`): the top ones stay clear of either hand, the left ones of a right hand
@@ -66,8 +70,12 @@ enum class LoupeCorners(val label: String, val corners: List<Int>) {
 
 /** Every user-visible setting. Immutable snapshot; see [SettingsStore]. */
 data class Settings(
+    val placement: PlacementPreferences = PlacementPreferences(),
     // Keyboard
     val keyboardHeight: KeyboardHeight = KeyboardHeight.NORMAL,
+    val numberRow: Boolean = false,
+    val bottomKey: BottomKey = BottomKey.EMOJI,
+    val recentEmoji: List<String> = emptyList(),
     val vibrateOnKeyPress: Boolean = true,
     val autoCapitalize: Boolean = true,
     val autocorrect: Boolean = true,
@@ -81,8 +89,11 @@ data class Settings(
     val currentKeyboard: String = DEFAULT_KEYBOARD,
     /** Keep the keyboard on screen with a physical keyboard connected (Android hides it otherwise). */
     val showWithPhysicalKeyboard: Boolean = true,
-    /** Show recent screenshots next to clipboard history in the minimized bar (photos permission). */
-    val recentScreenshots: Boolean = false,
+    /**
+     * Show recent screenshots next to clipboard history in the minimized bar. On by default; they
+     * appear once all photos are allowed (Home's setup step 5 or the Settings switch asks).
+     */
+    val recentScreenshots: Boolean = true,
     // Voice
     val keyboardFirstDictation: Boolean = true,
     val autoStartVoice: Boolean = true,

@@ -189,12 +189,15 @@ class EditorBridge(private val connection: () -> InputConnection?) {
      */
     fun editorKey(): String? = editorInfo?.let(::keyOf)
 
-    /** Deletes the selection, or one code point before the cursor. */
-    fun deleteBackward() {
+    /** Deletes the selection, a matching complete emoji sequence, or one code point. */
+    fun deleteBackward(sequence: String? = null) {
         val c = ic ?: return
         val selected = c.getSelectedText(0)
         when {
             !selected.isNullOrEmpty() -> c.commitText("", 1)
+            sequence != null && sequence.isNotEmpty() &&
+                c.getTextBeforeCursor(sequence.length, 0)?.toString()?.endsWith(sequence) == true ->
+                c.deleteSurroundingText(sequence.length, 0)
             c.getTextBeforeCursor(1, 0).isNullOrEmpty() -> sendKey(KeyEvent.KEYCODE_DEL)
             else -> c.deleteSurroundingTextInCodePoints(1, 0)
         }

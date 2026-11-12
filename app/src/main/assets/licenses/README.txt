@@ -16,6 +16,11 @@ Bricolage Grotesque (SIL Open Font License 1.1)               fonts/Bricolage-Gr
   Static semibold instance of the existing OpStudio headline font, used only for app headings.
   Body text, language names and user content retain the platform font and its script coverage.
 
+Unicode Emoji 17.0 data (Unicode License V3)                   UNICODE-LICENSE.txt
+  ../emoji/emoji-test.txt from https://www.unicode.org/Public/17.0.0/emoji/emoji-test.txt
+  SHA-256: 1d8a944f88d7952f7ef7c5167fef3c67995bcae24543949710231b03a201acda
+  Copyright 2025 Unicode, Inc. The device supplies emoji glyphs; no font or image assets are bundled.
+
 Java and Kotlin libraries (Apache-2.0, Apache-2.0.txt)
   AndroidX, Jetpack Compose, Material 3, Kotlin standard library, kotlinx.coroutines and their
   dependencies: the exact versions are in dependencies/manifest.txt, and the NOTICE files they carry

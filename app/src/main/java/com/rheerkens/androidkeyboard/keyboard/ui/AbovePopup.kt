@@ -42,6 +42,9 @@ private class AboveAnchor(private val gap: Int, private val endInset: Int?, priv
         val preferred = if (endInset != null) anchorBounds.right - endInset - popupContentSize.width
             else anchorBounds.center.x - popupContentSize.width / 2
         val maxX = (windowSize.width - popupContentSize.width - margin).coerceAtLeast(margin)
-        return IntOffset(preferred.coerceIn(margin, maxX), anchorBounds.top - popupContentSize.height - gap)
+        val above = anchorBounds.top - popupContentSize.height - gap
+        val preferredY = if (above >= margin) above else anchorBounds.bottom + gap
+        val maxY = (windowSize.height - popupContentSize.height - margin).coerceAtLeast(margin)
+        return IntOffset(preferred.coerceIn(margin, maxX), preferredY.coerceIn(margin, maxY))
     }
 }

@@ -2,8 +2,6 @@ package com.rheerkens.androidkeyboard.companion.screens
 
 import android.os.StatFs
 import android.text.format.Formatter
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -21,9 +19,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -32,11 +28,10 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rheerkens.androidkeyboard.AppGraph
 import com.rheerkens.androidkeyboard.BuildConfig
-import com.rheerkens.androidkeyboard.clipboard.RecentScreenshots
+import com.rheerkens.androidkeyboard.clipboard.PhotoAccess
 import com.rheerkens.androidkeyboard.companion.Destination
 import com.rheerkens.androidkeyboard.dictionary.LanguagePackState
 import com.rheerkens.androidkeyboard.models.ModelStoreState
@@ -45,7 +40,7 @@ import com.rheerkens.androidkeyboard.models.resolveLanguage
 import com.rheerkens.androidkeyboard.models.speechLanguageCode
 import com.rheerkens.androidkeyboard.settings.AutoStop
 import com.rheerkens.androidkeyboard.settings.KeyArrangement
-import com.rheerkens.androidkeyboard.settings.KeyboardHeight
+import com.rheerkens.androidkeyboard.settings.BottomKey
 import com.rheerkens.androidkeyboard.settings.LoupeCorners
 import com.rheerkens.androidkeyboard.settings.ModelRetention
 import com.rheerkens.androidkeyboard.settings.Settings
@@ -59,25 +54,19 @@ enum class SettingsFocus { TOP, KEYBOARDS, VOICE, KEYBOARD, TYPING, CUSTOMIZE, C
 private typealias Update = ((Settings) -> Settings) -> Unit
 
 @Composable
-fun SettingsScreen(modifier: Modifier, focus: SettingsFocus, navigate: (Destination) -> Unit) {
+fun SettingsScreen(modifier: Modifier, focus: SettingsFocus, navigate: (Destination) -> Unit, resizeKeyboard: () -> Unit = {}) {
     val s by AppGraph.settings.settings.collectAsStateWithLifecycle()
     val models by AppGraph.models.state.collectAsStateWithLifecycle()
     // Recomposes the layout grid and language summary when a download finishes or a word list is deleted.
     val packs by AppGraph.languagePacks.state.collectAsStateWithLifecycle()
     val update: Update = { t -> AppGraph.settings.update(t) }
-    val context = LocalContext.current
-    var photosGranted by remember { mutableStateOf(RecentScreenshots(context).hasPermission()) }
-    // Photos access can be withdrawn in Android settings while the app is in the background.
-    LifecycleResumeEffect(Unit) { photosGranted = RecentScreenshots(context).hasPermission(); onPauseOrDispose { } }
-    val photosLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        photosGranted = granted
-        update { it.copy(recentScreenshots = granted) }
-    }
+    val photos = rememberPhotoAccess()
+    val photosGranted = photos.access == PhotoAccess.ALL
 
     LazyColumn(modifier.fillMaxWidth()) {
         when (focus) {
             SettingsFocus.TOP -> topPage(s, models, photosGranted, navigate)
-            SettingsFocus.KEYBOARD -> keyboardPage(s, update, navigate)
+            SettingsFocus.KEYBOARD -> keyboardPage(s, update, navigate, resizeKeyboard)
             SettingsFocus.TYPING -> typingPage(s, update, navigate)
             SettingsFocus.CUSTOMIZE -> customizePage(s, update)
             SettingsFocus.KEYBOARDS -> item { KeyboardsSetting(s, packs, update, navigate) }
@@ -88,12 +77,15 @@ fun SettingsScreen(modifier: Modifier, focus: SettingsFocus, navigate: (Destinat
                     SwitchRow(
                         "Recent screenshots", s.recentScreenshots && photosGranted,
                         { v ->
-                            if (v && !photosGranted) photosLauncher.launch(RecentScreenshots.PERMISSION)
+                            if (v && !photosGranted) photos.request()
                             else update { it.copy(recentScreenshots = v) }
                         },
                         subtitle = "Show screenshots from the last day next to copied clips in the minimized bar. " +
-                            if (photosGranted) "Photos access is allowed." else "Needs access to photos; Android asks when you turn this on.",
+                            if (photosGranted) "Access to all photos is allowed." else "New screenshots need access to all photos.",
                     )
+                }
+                if (s.recentScreenshots && !photosGranted) item {
+                    PhotoAccessCard(photos, { update { it.copy(recentScreenshots = false) } }, Modifier.padding(horizontal = 16.dp))
                 }
                 item { SectionTitle("Image editor") }
                 item {
@@ -117,7 +109,7 @@ fun SettingsScreen(modifier: Modifier, focus: SettingsFocus, navigate: (Destinat
 
 private fun LazyListScope.topPage(s: Settings, models: ModelStoreState, photosGranted: Boolean, navigate: (Destination) -> Unit) {
     item(key = "keyboard") {
-        LinkRow("Keyboard", "${s.keyboardHeight.label} height · typing and key feedback") { navigate(Destination.SETTINGS_KEYBOARD) }
+        LinkRow("Keyboard", "Size, position, typing and key feedback") { navigate(Destination.SETTINGS_KEYBOARD) }
     }
     item(key = "languages") {
         LinkRow("Languages & layouts", AppGraph.currentKeyboard(s).fullLabel) { navigate(Destination.LANGUAGES) }
@@ -141,12 +133,27 @@ private fun LazyListScope.topPage(s: Settings, models: ModelStoreState, photosGr
     item(key = "credit") { OpStudioCredit(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) }
 }
 
-private fun LazyListScope.keyboardPage(s: Settings, update: Update, navigate: (Destination) -> Unit) {
+private fun LazyListScope.keyboardPage(s: Settings, update: Update, navigate: (Destination) -> Unit, resizeKeyboard: () -> Unit) {
     item {
-        ChoiceRow(
-            "Keyboard height", KeyboardHeight.entries, s.keyboardHeight, { it.label }, { v -> update { it.copy(keyboardHeight = v) } },
-            subtitle = "Taller keys are easier to hit; compact keys leave more of the app visible.",
-        )
+        LinkRow("Size and position", "Resize and move the keyboard directly", resizeKeyboard)
+    }
+    item {
+        LinkRow("Reset size and position", "Restore default sizes and positions; keep your keyboard modes") {
+            update { it.copy(placement = it.placement.resetGeometry()) }
+        }
+    }
+    item {
+        SwitchRow("Automatically split on large screens", s.placement.automaticSplit,
+            { value -> update { it.copy(placement = it.placement.withAutomaticSplit(value)) } },
+            "Use split by default on large screens; remember manual choices")
+    }
+    item {
+        SwitchRow("Number row", s.numberRow, { value -> update { it.copy(numberRow = value) } },
+            "Show a dedicated 1–0 row above the letters")
+    }
+    item {
+        ChoiceRow("Key beside Space", BottomKey.entries, s.bottomKey, { it.label },
+            { value -> update { it.copy(bottomKey = value) } })
     }
     item {
         LinkRow("Typing", "Capitals ${onOff(s.autoCapitalize)} · autocorrect ${onOff(s.autocorrect)} · suggestions ${onOff(s.suggestionStrip)}") {

@@ -59,6 +59,7 @@ fun SlimApp(pendingDestination: Destination?, onDestinationConsumed: () -> Unit)
     val stack = stackNames.map { Destination.valueOf(it) }
     val current = stack.last()
     var testOpen by rememberSaveable { mutableStateOf(false) }
+    var resizeKeyboard by rememberSaveable { mutableStateOf(false) }
     var testDraft by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue()) }
     var onboarding by remember { mutableStateOf(false) }
     var setupSkipped by rememberSaveable { mutableStateOf(false) }
@@ -82,7 +83,8 @@ fun SlimApp(pendingDestination: Destination?, onDestinationConsumed: () -> Unit)
         keyboard?.hide()
         testOpen = false
     }
-    fun openTest() { focus.clearFocus(force = true); testOpen = true }
+    fun openTest() { focus.clearFocus(force = true); resizeKeyboard = false; testOpen = true }
+    fun openResize() { focus.clearFocus(force = true); resizeKeyboard = true; testOpen = true }
     fun navigate(destination: Destination) {
         if (testOpen) closeTest()
         stackNames = destinationPath(destination).map { it.name }
@@ -171,10 +173,10 @@ fun SlimApp(pendingDestination: Destination?, onDestinationConsumed: () -> Unit)
                     Destination.HOME -> HomeScreen(modifier, ::navigate, ::openTest, setupSkipped, { setupSkipped = true }) { onboarding = it }
                     Destination.MODELS -> ModelsScreen(modifier, ::navigate)
                     Destination.DICTIONARY -> DictionaryScreen(modifier)
-                    Destination.SETTINGS -> SettingsScreen(modifier, SettingsFocus.TOP, ::navigate)
-                    Destination.SETTINGS_VOICE -> SettingsScreen(modifier, SettingsFocus.VOICE, ::navigate)
-                    Destination.SETTINGS_KEYBOARDS -> SettingsScreen(modifier, SettingsFocus.KEYBOARDS, ::navigate)
-                    Destination.SETTINGS_KEYBOARD -> SettingsScreen(modifier, SettingsFocus.KEYBOARD, ::navigate)
+                    Destination.SETTINGS -> SettingsScreen(modifier, SettingsFocus.TOP, ::navigate, ::openResize)
+                    Destination.SETTINGS_VOICE -> SettingsScreen(modifier, SettingsFocus.VOICE, ::navigate, ::openResize)
+                    Destination.SETTINGS_KEYBOARDS -> SettingsScreen(modifier, SettingsFocus.KEYBOARDS, ::navigate, ::openResize)
+                    Destination.SETTINGS_KEYBOARD -> SettingsScreen(modifier, SettingsFocus.KEYBOARD, ::navigate, ::openResize)
                     Destination.SETTINGS_TYPING -> SettingsScreen(modifier, SettingsFocus.TYPING, ::navigate)
                     Destination.SETTINGS_CUSTOMIZE -> SettingsScreen(modifier, SettingsFocus.CUSTOMIZE, ::navigate)
                     Destination.SETTINGS_CLIPBOARD -> SettingsScreen(modifier, SettingsFocus.CLIPBOARD, ::navigate)
@@ -189,5 +191,5 @@ fun SlimApp(pendingDestination: Destination?, onDestinationConsumed: () -> Unit)
             }
         }
     }
-    if (testOpen) KeyboardTestSheet(current.title, testDraft, { testDraft = it }, ::closeTest)
+    if (testOpen) KeyboardTestSheet(current.title, testDraft, { testDraft = it }, ::closeTest, resizeKeyboard)
 }
