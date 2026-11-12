@@ -122,7 +122,7 @@ With phrase rules on, number 2 becomes `refactor the ViewModel so the repository
 
 ## Acceptance flows
 
-1. Setup: complete all four steps; the checklist shows all ticks.
+1. Setup: complete all five steps; the checklist shows all ticks.
 2. Type `t3` in Try it; `T3 Code` appears as a suggestion; tap inserts it.
 3. Add the personal term `Gradle wrapper`; it appears in suggestions on an empty word.
 4. Open voice mode: listening starts, live text grows in the editor, Stop finalizes, and the text is committed once.
