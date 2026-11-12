@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="nl">
+<head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width,initial-scale=1">
+ <title>Lowkey — interactief ontwerp</title>
+ <style>
+ @font-face{font-family:Bricolage;src:url(data:font/woff2;base64,__BRICOLAGE__) format('woff2');font-weight:100 900}
+ __STYLES__
+ __STARTUP_STYLES__
+ </style>
+</head>
+<body>
+<div class="demo">
+ <div class="demo-tools" aria-label="Bediening van het ontwerpvoorbeeld">
+  <p>Interactief ontwerp · geen Android-app</p>
+  <label>Situatie
+   <select id="scenario">
+    <option value="ready">Klaar om te typen</option>
+    <option value="fresh">Eerste start · nog niets ingesteld</option>
+    <option value="enabled">Geactiveerd · nog niet gekozen</option>
+    <option value="recovery">Ander toetsenbord actief</option>
+    <option value="noVoice">Typen zonder spraak</option>
+    <option value="setup">Onboarding</option>
+    <option value="downloading">Model wordt gedownload</option>
+    <option value="downloadError">Download mislukt</option>
+    <option value="downloaded">Model gereed voor gebruik</option>
+   </select>
+  </label>
+  <div class="demo-options">
+   <label><input id="dark" type="checkbox"> Donker</label>
+   <label><input id="largeText" type="checkbox"> Tekst 200%</label>
+   <label><input id="reduceMotion" type="checkbox"> Minder beweging</label>
+  </div>
+  <button id="replay" type="button">Opening opnieuw</button>
+ </div>
+ <div class="app" id="app">
+  <header class="brand">__LOGO__<div><div class="wordmark">OpStudio</div><div class="product">LOWKEY</div></div></header>
+  <div class="surface">
+   <main class="page" id="page" tabindex="-1"></main>
+   <div class="notice" id="notice" role="status" hidden></div>
+   <nav class="nav" aria-label="Hoofdnavigatie" id="nav"></nav>
+  </div>
+ </div>
+ <p class="demo-foot">Alle handelingen blijven in dit voorbeeld. Er is geen netwerkverkeer of blijvende opslag.</p>
+</div>
+<dialog id="dialog" aria-labelledby="dialogTitle">
+ <form id="dialogForm"><h2 id="dialogTitle"></h2><div id="dialogBody"></div><div class="dialog-actions" id="dialogActions"></div></form>
+</dialog>
+<script>const ICONS=__ICONS__;</script>
+<script>__STARTUP_SCRIPT__</script>
+<script>__SCRIPT__</script>
+</body>
+</html>
