@@ -1,5 +1,4 @@
 <resources>
     <string name="app_name">Lowkey</string>
     <string name="ime_name">Lowkey Keyboard</string>
-    <string name="subtype_label">%s</string>
 </resources>
