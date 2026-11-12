@@ -65,16 +65,64 @@ data class KeyboardSeed(
     }
 }
 
-/** Whether the custom palette is on, and the custom colours (kept while it is off). */
-data class KeyboardTheme(val enabled: Boolean = false, val seed: KeyboardSeed? = null)
+/**
+ * The custom theme: five [seed] colours, optional [overrides] for every other role, and an optional
+ * background [image] (a file name in the theme store's folder) dimmed by [dim] percent.
+ */
+@Immutable
+data class CustomKeyboardTheme(
+    val seed: KeyboardSeed,
+    val overrides: Map<ColorRole, Color> = emptyMap(),
+    val image: String? = null,
+    val dim: Int = DEFAULT_DIM,
+) {
+    init {
+        require(overrides.keys.all { it.seed == null }) { "seed roles are changed through the seed" }
+        require(overrides.values.all { it.alpha == 1f }) { "keyboard colours must be opaque" }
+        require(dim in MIN_DIM..MAX_DIM) { "dimming out of range: $dim" }
+        require(image == null || isBackgroundFileName(image)) { "not a background file name" }
+    }
+
+    /** The palette the keyboard draws: derived from the seeds, then each override in place of its role. */
+    fun effectiveColors(): KeyboardColors = deriveKeyboardColors(seed).withOverrides(overrides)
+
+    /** This theme with [role] set to [color], or back to automatic when [color] is null. */
+    fun with(role: ColorRole, color: Color?): CustomKeyboardTheme {
+        val s = role.seed
+        return when {
+            s != null -> copy(seed = seed.with(s, color ?: seed[s]))
+            color == null -> copy(overrides = overrides - role)
+            else -> copy(overrides = overrides + (role to color))
+        }
+    }
+
+    /** The luminance range of the dimmed image as drawn, or null without an image or its [sample]. */
+    fun imageRange(sample: ImageSample?): LuminanceRange? =
+        if (image != null && sample != null) sample.range(seed.background, dim) else null
+
+    /** Contrast failures of the effective palette, with text on the background judged over the image. */
+    fun contrastFailures(sample: ImageSample?): List<ContrastCheck> =
+        keyboardContrastFailures(effectiveColors(), imageRange(sample))
+}
+
+/** Whether the custom theme is on, and the custom theme itself (kept while it is off). */
+data class KeyboardTheme(val enabled: Boolean = false, val custom: CustomKeyboardTheme? = null) {
+    /** The custom seed colours, if any were saved. */
+    val seed: KeyboardSeed? get() = custom?.seed
+}
+
+/** File names the theme store writes for background images: `bg-` and 32 hex digits. */
+fun isBackgroundFileName(name: String): Boolean = BACKGROUND_FILE.matches(name)
+
+private val BACKGROUND_FILE = Regex("bg-[0-9a-f]{32}\\.(jpg|png)")
 
 /** The standard palette for the app's theme. */
 fun standardKeyboardColors(appDark: Boolean): KeyboardColors = if (appDark) DarkKeyboardColors else LightKeyboardColors
 
 /** The palette the keyboard draws with: the custom one while it is on, else the standard one. */
 fun resolveKeyboardColors(theme: KeyboardTheme, appDark: Boolean): KeyboardColors {
-    val seed = theme.seed
-    return if (theme.enabled && seed != null) deriveKeyboardColors(seed) else standardKeyboardColors(appDark)
+    val custom = theme.custom
+    return if (theme.enabled && custom != null) custom.effectiveColors() else standardKeyboardColors(appDark)
 }
 
 /** Six hex digits, optionally after `#`. Alpha is not accepted: keyboard colours are opaque. */
@@ -181,7 +229,7 @@ fun deriveKeyboardColors(seed: KeyboardSeed): KeyboardColors {
         keyText = text,
         spaceText = faded(text, key, 0.3f, listOf(key, keyPressed)),
         muted = muted,
-        chipText = faded(text, bg, 0.12f, listOf(bg, popup, keyPressed)),
+        chipText = faded(text, bg, 0.12f, listOf(bg, popup, keyPressed, mod)),
         chipSaved = text,
         chipDivider = mix(bg, text, 0.15f),
         enter = accent,
@@ -191,15 +239,10 @@ fun deriveKeyboardColors(seed: KeyboardSeed): KeyboardColors {
         amber = status.amber,
         toggleVoiceBg = pill,
         toggleVoiceRing = mix(bg, text, 0.3f),
-        tagBorder = mix(bg, text, 0.3f),
-        tagText = faded(text, bg, 0.2f, listOf(bg)),
         stop = text,
         stopPressed = stopPressed,
         stopInk = stopInk,
         busy = busy,
-        noteBg = mod,
-        noteText = text,
-        keyShadow = status.keyShadow,
         pill = pill,
         popup = popup,
         popupBorder = mix(popup, text, 0.22f),
@@ -225,31 +268,39 @@ private fun statusColors(bg: Color, pill: Color, popup: Color): KeyboardColors {
     return if (score(other) > score(preferred) + 1e-9) other else preferred
 }
 
-/** The result of [fixContrast]: the adjusted seed and the pairs it still fails. */
-data class ContrastFix(val seed: KeyboardSeed, val remaining: List<ContrastCheck>) {
+/** The result of [fixContrast]: the adjusted theme and the pairs it still fails. */
+data class ContrastFix(val theme: CustomKeyboardTheme, val remaining: List<ContrastCheck>) {
+    val seed: KeyboardSeed get() = theme.seed
     val resolvesAll: Boolean get() = remaining.isEmpty()
 }
 
+/** [fixContrast] for seeds alone: no overrides, no image. */
+fun fixContrast(seed: KeyboardSeed): ContrastFix = fixContrast(CustomKeyboardTheme(seed), null)
+
 /**
- * Moves seed colours toward black or white, text first, until every pair in
- * [keyboardContrastChecks] passes or nothing improves further. Each step takes the smallest move
- * that gives the best result, so colours that are fine stay as they are. Conflicting seeds (two
- * surfaces no single text colour reads on) may keep failures; [ContrastFix.remaining] lists them.
+ * Moves seed colours toward black or white, text first, until every pair of the effective theme
+ * passes (overrides and, with [sample], text over the image included) or nothing improves further.
+ * Each step takes the smallest move that gives the best result, so colours that are fine stay as
+ * they are. Overrides and the image are never changed, so failures that involve them, or conflicting
+ * seeds, may remain; [ContrastFix.remaining] lists them.
  */
-fun fixContrast(seed: KeyboardSeed): ContrastFix {
-    fun failures(s: KeyboardSeed) = keyboardContrastFailures(deriveKeyboardColors(s))
+fun fixContrast(theme: CustomKeyboardTheme, sample: ImageSample?): ContrastFix {
+    // Only the background seed changes the dimmed image's range, so remember it per background.
+    val ranges = HashMap<Color, LuminanceRange?>()
+    fun failures(t: CustomKeyboardTheme) =
+        keyboardContrastFailures(t.effectiveColors(), ranges.getOrPut(t.seed.background) { t.imageRange(sample) })
     fun score(f: List<ContrastCheck>) = f.size * 100.0 + f.sumOf { it.deficit }
 
-    var current = seed
-    var currentFailures = failures(seed)
+    var current = theme
+    var currentFailures = failures(theme)
     val order = listOf(SeedRole.TEXT, SeedRole.ACCENT, SeedRole.FUNCTION_KEYS, SeedRole.KEYS, SeedRole.BACKGROUND)
     repeat(8) {
         if (currentFailures.isEmpty()) return ContrastFix(current, currentFailures)
-        var best: Pair<KeyboardSeed, List<ContrastCheck>>? = null
+        var best: Pair<CustomKeyboardTheme, List<ContrastCheck>>? = null
         var bestScore = score(currentFailures)
         for (role in order) for (target in listOf(Color.White, Color.Black)) {
             for (step in 1..25) {
-                val candidate = current.with(role, mix(current[role], target, step / 25f))
+                val candidate = current.copy(seed = current.seed.with(role, mix(current.seed[role], target, step / 25f)))
                 val f = failures(candidate)
                 val s = score(f)
                 if (s < bestScore - 1e-6) {
@@ -264,4 +315,17 @@ fun fixContrast(seed: KeyboardSeed): ContrastFix {
         currentFailures = next.second
     }
     return ContrastFix(current, currentFailures)
+}
+
+/**
+ * The smallest dimming above the theme's own that makes every pair over the image pass, or null when
+ * none fails over the image or even [MAX_DIM] is not enough.
+ */
+fun dimmingForImage(theme: CustomKeyboardTheme, sample: ImageSample?): Int? {
+    if (theme.image == null || sample == null) return null
+    val colors = theme.effectiveColors()
+    fun overImageFails(dim: Int) =
+        keyboardContrastFailures(colors, sample.range(theme.seed.background, dim)).any { it.overImage }
+    if (!overImageFails(theme.dim)) return null
+    return (theme.dim + 1..MAX_DIM).firstOrNull { !overImageFails(it) }
 }

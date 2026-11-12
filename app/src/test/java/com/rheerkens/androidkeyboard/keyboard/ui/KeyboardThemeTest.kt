@@ -154,12 +154,12 @@ class KeyboardThemeTest {
 
     @Test
     fun customThemeWinsOnlyWhileEnabled() {
-        val saved = KeyboardTheme(enabled = true, seed = forest)
+        val saved = KeyboardTheme(enabled = true, custom = CustomKeyboardTheme(forest))
         assertEquals(deriveKeyboardColors(forest), resolveKeyboardColors(saved, appDark = false))
         val off = saved.copy(enabled = false)
         assertEquals(LightKeyboardColors, resolveKeyboardColors(off, appDark = false))
         assertEquals(DarkKeyboardColors, resolveKeyboardColors(off, appDark = true))
         assertEquals(forest, off.seed)
-        assertEquals(DarkKeyboardColors, resolveKeyboardColors(KeyboardTheme(enabled = true, seed = null), appDark = true))
+        assertEquals(DarkKeyboardColors, resolveKeyboardColors(KeyboardTheme(enabled = true, custom = null), appDark = true))
     }
 }

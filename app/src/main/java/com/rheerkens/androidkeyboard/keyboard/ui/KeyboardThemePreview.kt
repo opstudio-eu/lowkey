@@ -18,6 +18,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.contentDescription
@@ -29,16 +30,18 @@ import com.rheerkens.androidkeyboard.ui.SlimIcons
 
 /**
  * A small static keyboard in [c]'s colours for the theme editor: the suggestion strip, letter and
- * function keys (one pressed, Shift on), Enter, an accent popup and the voice row's model button.
+ * function keys (one pressed, Shift on), Enter, an accent popup and the voice row's model button,
+ * over the same background (colour or dimmed [image]) the keyboard draws.
  * It draws only; the real keyboard is tried with Test keyboard.
  */
 @Composable
-fun KeyboardThemePreview(c: KeyboardColors, modifier: Modifier = Modifier) {
+fun KeyboardThemePreview(c: KeyboardColors, modifier: Modifier = Modifier, image: KeyboardBackgroundImage? = null) {
     val shape = RoundedCornerShape(12.dp)
     Column(
         modifier
             .fillMaxWidth()
-            .background(c.background, shape)
+            .clip(shape)
+            .keyboardBackground(c, image)
             .border(1.dp, c.divider, shape)
             .padding(horizontal = 6.dp, vertical = 6.dp)
             .clearAndSetSemantics { contentDescription = "Keyboard preview" },

@@ -49,6 +49,8 @@ data class KeyboardUiState(
     val rowHeightDp: Int,
     /** The palette to draw with: the standard one for the app theme, or the custom one. */
     val colors: KeyboardColors,
+    /** The custom theme's background image, decoded; null for none or when it could not be loaded. */
+    val background: KeyboardBackgroundImage? = null,
     /** Show only the slim bar (keys mode, minimized by the user). */
     val minimized: Boolean = false,
     /** Recent clips and screenshots, newest first: the slim bar, and the strip when no word is typed. */
@@ -79,7 +81,7 @@ fun KeyboardRoot(state: KeyboardUiState, clock: () -> Long, actions: KeyboardAct
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .background(colors.background)
+                    .keyboardBackground(colors, state.background)
                     // Stay clear of the gesture handle and, where the system still draws one, the IME
                     // navigation bar (back / keyboard-switcher buttons, reported as a caption bar).
                     .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.captionBar)),

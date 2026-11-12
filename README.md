@@ -22,7 +22,7 @@ The app checks for updates automatically. Use **Settings → Updates → Check n
 - A minimized keyboard for voice input or use with a physical keyboard, and gestures for deleting words.
 - Clipboard history for text and images, with previews and an image editor for cropping, annotation, and blur.
 - A built-in test field to try the keyboard without leaving settings.
-- Light and dark themes in OpStudio's colours, following the system by default, plus optional custom keyboard colours with a live preview and contrast checks.
+- Light and dark themes in OpStudio's colours, following the system by default, plus an optional custom keyboard theme: your own colours for every part of the keyboard and an optional background photo, with a live preview and contrast checks.
 
 ## Documentation
 

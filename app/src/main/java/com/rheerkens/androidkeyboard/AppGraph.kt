@@ -108,7 +108,7 @@ object AppGraph {
         val app = context.applicationContext
         assets = app.assets
         settings = SettingsStore(app)
-        keyboardTheme = KeyboardThemeStore(app)
+        keyboardTheme = KeyboardThemeStore(app, appScope)
         dictionary = DictionaryStore(app)
         models = DiskModelStore(app, appScope)
         sessionLog = SessionLog(app)
