@@ -206,8 +206,8 @@ private fun EmojiKey(key: Key.Emoji, state: KeyboardState, actions: KeyboardActi
     val menu = menus.languages
     val choices = remember(menus.keyboards, state.keyboard) { LanguageMenu.choices(menus.keyboards, state.keyboard) }
     val switches = menu != null && choices.size > 1
-    val holder = remember { EmojiKeyHolder() }
     val touchSlop = LocalViewConfiguration.current.touchSlop
+    val holder = remember(touchSlop) { EmojiKeyHolder(LanguageMenu.Hold(touchSlop)) }
     // Read at the moment of the long-press: the gesture callbacks below can outlive this composition.
     val latestChoices = rememberUpdatedState(choices)
     fun open() {
@@ -231,14 +231,14 @@ private fun EmojiKey(key: Key.Emoji, state: KeyboardState, actions: KeyboardActi
             keyHeight = coords.size.height.toFloat(), windowWidth = windowWidth,
             cellWidth = cellWidth, cellHeight = cellHeight, slop = with(density) { 12.dp.toPx() },
         )
-        holder.moved = false
-        holder.origin = null
+        holder.hold.start(holder.startAt?.x, holder.startAt?.y)
+        holder.startAt = null
         menu.open = OpenLanguageMenu(shown, popup, at.x, at.y, selected = 0, sticky = false, more = more)
     }
     fun release() {
         val menu = menu ?: return
         val open = menu.open?.takeIf { !it.sticky } ?: return
-        when (LanguageMenu.release(open.selected, holder.moved)) {
+        when (LanguageMenu.release(open.selected, holder.hold.moved)) {
             LanguageMenu.Release.KEEP_OPEN -> menu.open = open.copy(sticky = true)
             LanguageMenu.Release.CLOSE -> menu.close()
             LanguageMenu.Release.CHOOSE -> {
@@ -255,17 +255,16 @@ private fun EmojiKey(key: Key.Emoji, state: KeyboardState, actions: KeyboardActi
         gestureKey = key to switches,
         onDown = actions::onKeyDown,
         onTap = { actions.onKey(key) },
+        onLongPressAt = { holder.startAt = it },
         onLongPress = if (switches) ({ open() }) else null,
         onLongPressRelease = if (switches) ({ release() }) else null,
         // A held menu whose press was cancelled (not released) closes; a released one stays.
         onLongPressState = { held -> if (!held) menu?.let { if (it.open?.sticky == false) it.close() } },
         onLongPressMove = if (switches && menu != null) { at: Offset ->
             menu.open?.takeIf { !it.sticky }?.let { open ->
-                // The first position after the menu opens is where the finger rests; a release
-                // there keeps the menu open even if that spot lies over a neighbouring cell.
-                val origin = holder.origin ?: at.also { holder.origin = it }
-                if (holder.moved || LanguageMenu.hasMoved(origin.x, origin.y, at.x, at.y, touchSlop)) {
-                    holder.moved = true
+                // Until the finger slides from where it rested when the menu opened, the current
+                // keyboard stays selected, even if that spot lies over a neighbouring cell.
+                if (holder.hold.update(at.x, at.y)) {
                     val selected = open.popup.select(at.x, at.y)
                     if (selected != open.selected) menu.open = open.copy(selected = selected)
                 }
@@ -288,11 +287,10 @@ private fun EmojiKey(key: Key.Emoji, state: KeyboardState, actions: KeyboardActi
 }
 
 /** The emoji key's layout and gesture memory; not state, so updating it doesn't recompose. */
-private class EmojiKeyHolder {
+private class EmojiKeyHolder(val hold: LanguageMenu.Hold) {
     var coords: LayoutCoordinates? = null
-    var moved = false
-    /** Where the finger was when the held menu first reported it. */
-    var origin: Offset? = null
+    /** Where the finger was when the long-press fired, until the menu opens with it. */
+    var startAt: Offset? = null
 }
 
 /** Key size and left edge in the window, in pixels. */

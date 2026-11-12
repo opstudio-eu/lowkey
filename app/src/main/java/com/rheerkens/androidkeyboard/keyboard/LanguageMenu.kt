@@ -53,6 +53,33 @@ object LanguageMenu {
     fun hasMoved(fromX: Float, fromY: Float, x: Float, y: Float, slop: Float): Boolean =
         hypot(x - fromX, y - fromY) > slop
 
+    /** Tracks one hold of the menu: where the finger rested when it opened, and whether it slid since. */
+    class Hold(private val slop: Float) {
+        private var originX = Float.NaN
+        private var originY = Float.NaN
+
+        /** Set once the finger has slid; it stays set even if the finger returns to the start. */
+        var moved = false
+            private set
+
+        /**
+         * The menu opened with the finger at ([x], [y]); null when that's unknown (an accessibility
+         * long-click), in which case the first reported position counts as the start.
+         */
+        fun start(x: Float?, y: Float?) {
+            originX = x ?: Float.NaN
+            originY = y ?: Float.NaN
+            moved = false
+        }
+
+        /** The finger is at ([x], [y]); returns whether the selection should follow it. */
+        fun update(x: Float, y: Float): Boolean {
+            if (originX.isNaN()) { originX = x; originY = y }
+            if (!moved && hasMoved(originX, originY, x, y, slop)) moved = true
+            return moved
+        }
+    }
+
     /** What letting go of the held menu does. */
     enum class Release {
         /** The finger never left the current keyboard's cell: keep the menu open to tap a choice. */

@@ -32,7 +32,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CoroutineStart
 
-private class KeyTouch(var active: Boolean = true, var long: Boolean = false, var job: Job? = null)
+private class KeyTouch(var active: Boolean = true, var long: Boolean = false, var job: Job? = null, var at: Offset = Offset.Zero)
 
 /**
  * A touch target with press feedback. Supports tap, long-press, and auto-repeat while held.
@@ -53,6 +53,8 @@ fun PressTarget(
     onLongPressRelease: (() -> Unit)? = null,
     onLongPressState: (Boolean) -> Unit = {},
     onLongPressMove: ((Offset) -> Unit)? = null,
+    /** Called just before [onLongPress] with where the finger is at that moment (key coordinates). */
+    onLongPressAt: (Offset) -> Unit = {},
     content: @Composable BoxScope.(pressed: Boolean) -> Unit,
 ) {
     var pressed by remember { mutableStateOf(false) }
@@ -63,6 +65,7 @@ fun PressTarget(
     val longRelease by rememberUpdatedState(onLongPressRelease)
     val longState by rememberUpdatedState(onLongPressState)
     val longMove by rememberUpdatedState(onLongPressMove)
+    val longAt by rememberUpdatedState(onLongPressAt)
     val hasTap = onTap != null
     val hasLong = onLongPress != null
     Box(
@@ -92,7 +95,7 @@ fun PressTarget(
                                     var touch = touches[change.id]
                                     if (touch == null && change.pressed && !change.previousPressed && !change.isConsumed &&
                                         inside(change.position.x, change.position.y)) {
-                                        touch = KeyTouch()
+                                        touch = KeyTouch(at = change.position)
                                         touches[change.id] = touch
                                         change.consume()
                                         down()
@@ -110,6 +113,7 @@ fun PressTarget(
                                                     if (owned.active) {
                                                         owned.long = true
                                                         feedback()
+                                                        longAt(owned.at)
                                                         longPress?.invoke()
                                                     }
                                                 }
@@ -118,6 +122,7 @@ fun PressTarget(
                                         continue
                                     }
                                     if (touch == null) continue
+                                    touch.at = change.position
                                     val tracking = touch.long && touch.active && !change.isConsumed && longMove != null
                                     if (tracking) {
                                         longMove?.invoke(change.position)

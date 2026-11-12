@@ -82,4 +82,33 @@ class LanguageMenuTest {
         assertEquals(true, LanguageMenu.hasMoved(60f, 30f, 70f, 30f, 8f))
         assertEquals(LanguageMenu.Release.KEEP_OPEN, LanguageMenu.release(selected = 0, moved = false))
     }
+
+    @Test fun aFastSlideCountsFromWhereTheMenuOpened() {
+        val hold = LanguageMenu.Hold(slop = 8f)
+        // The menu opens with the finger at A; the first reported position is already far away at B.
+        hold.start(60f, 30f)
+        assertEquals(true, hold.update(140f, 30f))
+        assertEquals(true, hold.moved)
+        // Returning to the start stays a slide: releasing there closes without switching.
+        assertEquals(true, hold.update(60f, 30f))
+        assertEquals(LanguageMenu.Release.CLOSE, LanguageMenu.release(selected = 0, moved = hold.moved))
+    }
+
+    @Test fun aHoldThatOpensInPlaceStaysOpenOnRelease() {
+        val hold = LanguageMenu.Hold(slop = 8f)
+        hold.start(60f, 30f)
+        assertEquals(false, hold.update(62f, 31f))
+        assertEquals(LanguageMenu.Release.KEEP_OPEN, LanguageMenu.release(selected = 0, moved = hold.moved))
+        // A new hold starts fresh.
+        hold.start(10f, 10f)
+        assertEquals(false, hold.moved)
+    }
+
+    @Test fun withoutAStartPositionTheFirstReportCountsAsTheStart() {
+        // An accessibility long-click opens the menu without a finger position.
+        val hold = LanguageMenu.Hold(slop = 8f)
+        hold.start(null, null)
+        assertEquals(false, hold.update(140f, 30f))
+        assertEquals(true, hold.update(160f, 30f))
+    }
 }
