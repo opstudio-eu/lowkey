@@ -7,6 +7,7 @@ import com.rheerkens.androidkeyboard.clipboard.ClipboardContent
 import com.rheerkens.androidkeyboard.keyboard.BackspaceScrub
 import com.rheerkens.androidkeyboard.keyboard.FanCommand
 import com.rheerkens.androidkeyboard.keyboard.Key
+import com.rheerkens.androidkeyboard.keyboard.TypingKeyboard
 
 /** What the Enter key does in the current editor. */
 enum class EnterKind(val label: String?) {
@@ -58,6 +59,8 @@ interface KeyboardActions {
     fun onSavePlacement(profile: com.rheerkens.androidkeyboard.keyboard.PlacementProfile, placement: com.rheerkens.androidkeyboard.keyboard.KeyboardPlacement) {}
     fun onPlacementBounds(left: Int, top: Int, right: Int, bottom: Int, floating: Boolean) {}
     fun onLayoutBackHandler(handler: (() -> Boolean)?) {}
+    /** Back for an open menu above the keys (the emoji key's languages), ahead of the layout's handler. */
+    fun onMenuBackHandler(handler: (() -> Boolean)?) {}
     fun onPrepareResize() {}
     fun onKeyDown()
     fun onKey(key: Key)
@@ -82,6 +85,8 @@ interface KeyboardActions {
     /** A command picked from the minimized bar's Backspace fan (never [FanCommand.WORDS]). */
     fun onFanCommand(command: FanCommand)
     fun onGlobeLongPress()
+    /** A keyboard (language and layout) chosen from the emoji key's hold menu, by [TypingKeyboard.id]. */
+    fun onSelectKeyboard(id: String) {}
     /** Long-press on Space opens Android's input-method picker directly. */
     fun onSpaceLongPress()
     /** Settings, scrolled to the keyboard layouts. */

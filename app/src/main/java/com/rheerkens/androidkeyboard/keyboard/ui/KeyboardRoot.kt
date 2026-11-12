@@ -13,9 +13,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import com.rheerkens.androidkeyboard.keyboard.KeyboardLayout
 import com.rheerkens.androidkeyboard.keyboard.KeyboardState
@@ -67,6 +71,8 @@ data class KeyboardUiState(
     val emojiOpen: Boolean = false,
     val emojiCatalog: com.rheerkens.androidkeyboard.keyboard.EmojiCatalog? = null,
     val recentEmoji: List<String> = emptyList(),
+    /** The enabled, installed keyboards in globe order, offered by holding the emoji key. */
+    val keyboards: List<com.rheerkens.androidkeyboard.keyboard.TypingKeyboard> = emptyList(),
 ) {
     /** Keep panel height stable when switching to the existing four-row symbol layouts. */
     val keyRows: Int get() = if (numberRow) 5 else 4
@@ -89,12 +95,18 @@ internal fun KeyboardContent(
     drawBackground: Boolean = true,
 ) {
     val colors = state.colors
+    val languageMenu = remember { LanguageMenuState() }
+    // A new editor, another panel or a changed keyboard closes the emoji key's language menu.
+    LaunchedEffect(state.inputSession, state.mode, state.minimized, state.toolsOpen, state.emojiOpen,
+        state.keyboard.keyboard, state.keyboard.layer, state.keyboards) { languageMenu.close() }
     CompositionLocalProvider(LocalKeyboardColors provides colors, LocalWordAim provides state.wordAim) {
-        Box {
+        Box(Modifier.onGloballyPositioned { languageMenu.host = it }) {
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .then(if (drawBackground) Modifier.keyboardBackground(colors, state.background) else Modifier),
+                    .then(if (drawBackground) Modifier.keyboardBackground(colors, state.background) else Modifier)
+                    // While the language menu waits for a tap, only the menu is reachable with TalkBack.
+                    .then(if (languageMenu.open?.sticky == true) Modifier.clearAndSetSemantics {} else Modifier),
             ) {
                 Box(Modifier.fillMaxWidth().height(1.dp).background(colors.divider))
                 if (state.minimized) {
@@ -112,7 +124,8 @@ internal fun KeyboardContent(
                         EmojiPanel(state.emojiCatalog, state.recentEmoji,
                             (state.keyRows * state.rowHeightDp + 4).dp, actions)
                     } else {
-                        KeysPanel(state.layout, state.keyboard, state.rowHeightDp, state.enterKind, actions, state.splitGapDp, state.keyRows)
+                        KeysPanel(state.layout, state.keyboard, state.rowHeightDp, state.enterKind, actions, state.splitGapDp, state.keyRows,
+                            state.keyboards, languageMenu)
                     }
                 } else {
                     if (state.pickerOpen) {
@@ -125,6 +138,7 @@ internal fun KeyboardContent(
                     }
                 }
             }
+            LanguageMenuOverlay(languageMenu, actions)
         }
     }
 }

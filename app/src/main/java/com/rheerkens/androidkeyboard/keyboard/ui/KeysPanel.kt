@@ -14,8 +14,14 @@ import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.unit.Constraints
 import com.rheerkens.androidkeyboard.keyboard.AlternatesPopup
+import com.rheerkens.androidkeyboard.keyboard.LanguageMenu
+import com.rheerkens.androidkeyboard.keyboard.TypingKeyboard
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.layout.LayoutCoordinates
 import com.rheerkens.androidkeyboard.keyboard.shiftCase
 import kotlin.math.roundToInt
 import androidx.compose.ui.semantics.contentDescription
@@ -26,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -66,7 +73,10 @@ fun KeysPanel(
     actions: KeyboardActions,
     splitGapDp: Float = 0f,
     keyRows: Int = layout.rows.size,
+    keyboards: List<TypingKeyboard> = emptyList(),
+    languageMenu: LanguageMenuState? = null,
 ) {
+    val menu = KeyMenus(keyboards, languageMenu)
     val rowHeight = (rowHeightDp * keyRows.toFloat() / layout.rows.size).dp
     if (splitGapDp > 0f) {
         val rows = remember(layout, state.keyboard, state.layer) { splitRows(layout, state.keyboard, state.layer) }
@@ -79,12 +89,12 @@ fun KeysPanel(
                         if (row.fullWidth) {
                             row.left.forEach { key ->
                                 val width = if (key is Key.Space) Modifier.weight(1f) else Modifier.width(unit * key.weight)
-                                KeyView(key, state, enterKind, actions, width.fillMaxHeight())
+                                KeyView(key, state, enterKind, actions, menu, width.fillMaxHeight())
                             }
                         } else {
-                            row.left.forEach { key -> KeyView(key, state, enterKind, actions, Modifier.width(unit * key.weight).fillMaxHeight()) }
+                            row.left.forEach { key -> KeyView(key, state, enterKind, actions, menu, Modifier.width(unit * key.weight).fillMaxHeight()) }
                             Spacer(Modifier.weight(1f))
-                            row.right.forEach { key -> KeyView(key, state, enterKind, actions, Modifier.width(unit * key.weight).fillMaxHeight()) }
+                            row.right.forEach { key -> KeyView(key, state, enterKind, actions, menu, Modifier.width(unit * key.weight).fillMaxHeight()) }
                         }
                     }
                 }
@@ -95,7 +105,7 @@ fun KeysPanel(
     Column(Modifier.fillMaxWidth().padding(start = 3.dp, end = 3.dp, bottom = 4.dp)) {
         layout.rows.forEach { row ->
             Row(Modifier.fillMaxWidth().height(rowHeight)) {
-                row.forEach { key -> KeyView(key, state, enterKind, actions, Modifier.weight(key.weight).fillMaxHeight()) }
+                row.forEach { key -> KeyView(key, state, enterKind, actions, menu, Modifier.weight(key.weight).fillMaxHeight()) }
             }
         }
     }
@@ -107,6 +117,7 @@ private fun KeyView(
     state: KeyboardState,
     enterKind: EnterKind,
     actions: KeyboardActions,
+    menu: KeyMenus,
     modifier: Modifier,
 ) {
     val c = LocalKeyboardColors.current
@@ -145,11 +156,7 @@ private fun KeyView(
                 }
             }
         }
-        is Key.Emoji -> PressTarget(
-            "Emoji", modifier, gestureKey = key, onDown = actions::onKeyDown, onTap = { actions.onKey(key) },
-        ) { pressed ->
-            KeyCap(if (pressed) c.keyPressed else c.keyMod) { KeyIcon(SlimIcons.Emoji) }
-        }
+        is Key.Emoji -> EmojiKey(key, state, actions, menu, modifier)
         is Key.Globe -> PressTarget(
             "Next keyboard. Long-press to switch to another keyboard app",
             // Announce the keyboard a tap switched to, whichever key has focus.
@@ -183,6 +190,107 @@ private fun KeyView(
             }
         }
     }
+}
+
+/** What the emoji key's hold menu offers, and where it draws. */
+private data class KeyMenus(val keyboards: List<TypingKeyboard>, val languages: LanguageMenuState?)
+
+/**
+ * The emoji key: tap for emoji. With two or more keyboards, hold for a popup of keyboard languages
+ * (like accents: slide to one and let go). Letting go without sliding keeps it open to tap one.
+ */
+@Composable
+private fun EmojiKey(key: Key.Emoji, state: KeyboardState, actions: KeyboardActions, menus: KeyMenus, modifier: Modifier) {
+    val c = LocalKeyboardColors.current
+    val density = LocalDensity.current
+    val menu = menus.languages
+    val choices = remember(menus.keyboards, state.keyboard) { LanguageMenu.choices(menus.keyboards, state.keyboard) }
+    val switches = menu != null && choices.size > 1
+    val touchSlop = LocalViewConfiguration.current.touchSlop
+    val holder = remember(touchSlop) { EmojiKeyHolder(LanguageMenu.Hold(touchSlop)) }
+    // Read at the moment of the long-press: the gesture callbacks below can outlive this composition.
+    val latestChoices = rememberUpdatedState(choices)
+    fun open() {
+        val menu = menu ?: return
+        val choices = latestChoices.value
+        val host = menu.host ?: return
+        val coords = holder.coords?.takeIf { it.isAttached && host.isAttached } ?: return
+        val at = host.localPositionOf(coords, Offset.Zero)
+        val windowWidth = host.size.width.toFloat()
+        val (cellWidth, minCell, fullCell) = with(density) {
+            Triple(maxOf(coords.size.width.toFloat(), 64.dp.toPx()).coerceAtMost(windowWidth), 44.dp.toPx(), 52.dp.toPx())
+        }
+        // Rows above the key shrink to fit inside the keyboard, but not below a readable height:
+        // keyboards beyond that are reached through a last "More" cell.
+        val (shown, more) = LanguageMenu.fit(choices, LanguageMenu.capacity(windowWidth, cellWidth, at.y, minCell))
+        val count = shown.size + if (more) 1 else 0
+        val rows = LanguageMenu.rows(count, windowWidth, cellWidth)
+        val cellHeight = if (rows > 1) minOf(fullCell, at.y / (rows - 1)).coerceAtLeast(1f) else fullCell
+        val popup = AlternatesPopup(
+            count = count, keyLeft = at.x, keyWidth = coords.size.width.toFloat(),
+            keyHeight = coords.size.height.toFloat(), windowWidth = windowWidth,
+            cellWidth = cellWidth, cellHeight = cellHeight, slop = with(density) { 12.dp.toPx() },
+        )
+        holder.hold.start(holder.startAt?.x, holder.startAt?.y)
+        holder.startAt = null
+        menu.open = OpenLanguageMenu(shown, popup, at.x, at.y, selected = 0, sticky = false, more = more)
+    }
+    fun release() {
+        val menu = menu ?: return
+        val open = menu.open?.takeIf { !it.sticky } ?: return
+        when (LanguageMenu.release(open.selected, holder.hold.moved)) {
+            LanguageMenu.Release.KEEP_OPEN -> menu.open = open.copy(sticky = true)
+            LanguageMenu.Release.CLOSE -> menu.close()
+            LanguageMenu.Release.CHOOSE -> {
+                menu.close()
+                val keyboard = open.choices.getOrNull(open.selected ?: 0)
+                if (keyboard != null) actions.onSelectKeyboard(keyboard.id) else actions.onOpenKeyboardSettings()
+            }
+        }
+    }
+    PressTarget(
+        if (switches) "Emoji. Long-press for keyboard languages" else "Emoji",
+        modifier.onGloballyPositioned { holder.coords = it }
+            .then(if (switches) Modifier.semantics { stateDescription = state.keyboard.fullLabel } else Modifier),
+        gestureKey = key to switches,
+        onDown = actions::onKeyDown,
+        onTap = { actions.onKey(key) },
+        onLongPressAt = { holder.startAt = it },
+        onLongPress = if (switches) ({ open() }) else null,
+        onLongPressRelease = if (switches) ({ release() }) else null,
+        // A held menu whose press was cancelled (not released) closes; a released one stays.
+        onLongPressState = { held -> if (!held) menu?.let { if (it.open?.sticky == false) it.close() } },
+        onLongPressMove = if (switches && menu != null) { at: Offset ->
+            menu.open?.takeIf { !it.sticky }?.let { open ->
+                // Until the finger slides from where it rested when the menu opened, the current
+                // keyboard stays selected, even if that spot lies over a neighbouring cell.
+                if (holder.hold.update(at.x, at.y)) {
+                    val selected = open.popup.select(at.x, at.y)
+                    if (selected != open.selected) menu.open = open.copy(selected = selected)
+                }
+            }
+        } else null,
+    ) { pressed ->
+        KeyCap(if (pressed) c.keyPressed else c.keyMod) {
+            KeyIcon(SlimIcons.Emoji)
+            // A small corner mark, like a key with long-press choices.
+            if (switches) {
+                val mark = c.muted.copy(alpha = 0.6f)
+                Box(
+                    Modifier.align(Alignment.BottomEnd).padding(end = 4.dp, bottom = 4.dp).size(5.dp).drawBehind {
+                        drawPath(Path().apply { moveTo(size.width, 0f); lineTo(size.width, size.height); lineTo(0f, size.height); close() }, mark)
+                    },
+                )
+            }
+        }
+    }
+}
+
+/** The emoji key's layout and gesture memory; not state, so updating it doesn't recompose. */
+private class EmojiKeyHolder(val hold: LanguageMenu.Hold) {
+    var coords: LayoutCoordinates? = null
+    /** Where the finger was when the long-press fired, until the menu opens with it. */
+    var startAt: Offset? = null
 }
 
 /** Key size and left edge in the window, in pixels. */

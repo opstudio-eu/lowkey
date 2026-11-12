@@ -152,6 +152,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     private var placementBounds: Rect? = null
     private var floatingPlacement = false
     private var layoutBackHandler: (() -> Boolean)? = null
+    /** The emoji key's language menu while it stays open; Back closes it first. */
+    private var menuBackHandler: (() -> Boolean)? = null
     private var layoutBackCallback: Any? = null
     private var resizeOnOpen = false
     private var lastOwnEditAt = 0L
@@ -313,6 +315,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                 val session by inputSession.collectAsState()
                 val once by keyboardOnce.collectAsState()
                 val fan by fanSpec.collectAsState()
+                val packs by AppGraph.languagePacks.state.collectAsState()
+                val keyboards = remember(s.enabledKeyboards, packs.installed) { AppGraph.usableKeyboards(s) }
                 val keyboardTheme by AppGraph.keyboardTheme.theme.collectAsState()
                 val appDark = resolveDark(s.theme, isSystemInDarkTheme())
                 val colors = remember(keyboardTheme, appDark) { resolveKeyboardColors(keyboardTheme, appDark) }
@@ -369,6 +373,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                         inputSession = session,
                         fan = fan,
                         wordAim = aim,
+                        keyboards = keyboards,
                     ),
                     clock = System::currentTimeMillis,
                     actions = this,
@@ -433,6 +438,17 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
 
     override fun onLayoutBackHandler(handler: (() -> Boolean)?) {
         layoutBackHandler = handler
+        updateLayoutBack()
+    }
+
+    override fun onMenuBackHandler(handler: (() -> Boolean)?) {
+        menuBackHandler = handler
+        updateLayoutBack()
+    }
+
+    /** An open menu takes Back before the layout's own handler; each owner keeps its own slot. */
+    private fun updateLayoutBack() {
+        val handler = menuBackHandler ?: layoutBackHandler
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val dispatcher = window.onBackInvokedDispatcher
             (layoutBackCallback as? OnBackInvokedCallback)?.let(dispatcher::unregisterOnBackInvokedCallback)
@@ -603,6 +619,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
+        menuBackHandler = null
         onLayoutBackHandler(null)
         inputViewActive = false
         clipboardJob?.cancel()
@@ -673,12 +690,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                 keyboard.setLayer(key.target)
                 updateShift()
             }
-            is Key.Globe -> {
-                val next = keyboard.cycleKeyboard(AppGraph.usableKeyboards())
-                settings.update { it.copy(currentKeyboard = next.id) }
-                preloadLanguages()
-                refreshStrip()
-            }
+            is Key.Globe -> useKeyboard(keyboard.cycleKeyboard(AppGraph.usableKeyboards()))
             is Key.Emoji -> {
                 pickerOpen.value = false
                 emojiOpen.value = true
@@ -968,6 +980,24 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         refreshClipChips()
         refreshClipboard()
         showNote("Clipboard history restored")
+    }
+
+    override fun onSelectKeyboard(id: String) {
+        if (!inputViewActive) return
+        val next = AppGraph.usableKeyboards().firstOrNull { it.id == id } ?: return
+        clearPrompt()
+        clearNote()
+        lastCorrection = null
+        if (next == keyboard.state.value.keyboard) return
+        keyboard.setKeyboard(next)
+        useKeyboard(next)
+    }
+
+    /** The globe key or the emoji key's menu switched to [next]: remember it and reload its words. */
+    private fun useKeyboard(next: com.rheerkens.androidkeyboard.keyboard.TypingKeyboard) {
+        settings.update { it.copy(currentKeyboard = next.id) }
+        preloadLanguages()
+        refreshStrip()
     }
 
     override fun onGlobeLongPress() {
@@ -1278,7 +1308,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     /** Back closes our panels before it closes the keyboard; Android owns its keyboard picker. */
-    private fun backClosesPanel() = (pickerOpen.value || emojiOpen.value || layoutBackHandler != null) && isInputViewShown
+    private fun backClosesPanel() =
+        (pickerOpen.value || emojiOpen.value || layoutBackHandler != null || menuBackHandler != null) && isInputViewShown
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         if (keyCode == KeyEvent.KEYCODE_BACK && backClosesPanel()) {
@@ -1291,6 +1322,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
         if (keyCode == KeyEvent.KEYCODE_BACK && backClosesPanel()) {
             if (!event.isCanceled) {
+                menuBackHandler?.let { it(); return true }
                 layoutBackHandler?.invoke()
                 pickerOpen.value = false
                 emojiOpen.value = false
