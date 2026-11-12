@@ -1,0 +1,7 @@
+/* Lowkey startup motion: only the temporary ring and compositor hints.
+   No rule here hides content; startup.js animates with fill: backwards and then releases. */
+.brand[data-lk-ring]{position:relative}
+.lk-startup-ring{position:absolute;width:44px;height:44px;border-radius:50%;border:2px solid currentColor;pointer-events:none;opacity:0;transform:translate(-50%,-50%)}
+[data-lk-startup=playing] .brand svg,[data-lk-startup=playing] .surface{will-change:transform,opacity}
+@media (prefers-reduced-motion:reduce){.lk-startup-ring{display:none}}
+@media (forced-colors:active){.lk-startup-ring{display:none}}

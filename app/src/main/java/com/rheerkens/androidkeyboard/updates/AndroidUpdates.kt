@@ -78,7 +78,7 @@ object Updates {
      */
     fun schedule(context: Context, enabled: Boolean) {
         try {
-            scheduleOrThrow(context, enabled)
+            scheduleOrThrow(context, enabled && acceptsReleaseUpdates(context.packageName))
         } catch (e: RuntimeException) {
             Log.w(TAG, "Couldn't schedule the update check", e)
         }
@@ -221,6 +221,7 @@ private class AndroidUpdatePlatform(private val context: Context) : UpdatePlatfo
     override fun now(): Long = System.currentTimeMillis()
 
     override suspend fun fetchFeed(): String? = withContext(Dispatchers.IO) {
+        if (!acceptsReleaseUpdates(context.packageName)) return@withContext null
         val connection = URL(Updates.FEED_URL).openConnection() as HttpsURLConnection
         try {
             connection.connectTimeout = 15_000
@@ -241,6 +242,7 @@ private class AndroidUpdatePlatform(private val context: Context) : UpdatePlatfo
     }
 
     override suspend fun download(update: AvailableUpdate, target: File, onBytes: (Long) -> Unit) {
+        check(acceptsReleaseUpdates(context.packageName)) { "Install preview updates manually." }
         val dir = target.parentFile ?: throw IOException("No download directory")
         val needed = update.sizeBytes + SPACE_MARGIN_BYTES
         if (dir.usableSpace < needed) throw NotEnoughSpaceException(needed / (1024 * 1024))
@@ -266,6 +268,7 @@ private class AndroidUpdatePlatform(private val context: Context) : UpdatePlatfo
     }
 
     override fun install(apk: File, update: AvailableUpdate) {
+        check(acceptsReleaseUpdates(context.packageName)) { "Install preview updates manually." }
         val installer = context.packageManager.packageInstaller
         // An earlier session (Install again, or one left by a process that was killed while Android
         // waited for confirmation) still holds a staged copy of the APK: drop it.

@@ -4,35 +4,41 @@ For installation, see the [README](../README.md#install).
 
 ## Dictate text
 
-1. Download a speech model from **Models** and select it.
+1. Open **Voice**, allow microphone access and choose **Download & use** for a speech model. A completed download becomes active; choose **Use** to switch to another downloaded model.
 2. Open a text field and tap the keyboard's microphone button.
 3. Speak, then tap **Stop**. Lowkey transcribes on your phone and inserts the finished text.
 
-With **Settings → Voice → Keyboard-first dictation** enabled, keys return after transcription so you can make corrections. This is the default. Turn it off to use mode recall, auto-start, or continuous dictation settings.
+With **Voice → Dictation settings → Dictate from the keys** enabled, keys return after transcription so you can make corrections. This is the default. Turn it off to use mode recall, auto-start, or continuous dictation settings.
 
 Switching to keys, hiding the keyboard, changing editor, moving the cursor, or opening the model picker cancels capture.
 
-Under **Settings → Voice → Keep model loaded**, choose how long to keep an idle model in memory. The default is two minutes. Releasing it does not delete the downloaded files. Recording and transcription do not expire, but changing the model or language can release it, as can Android memory pressure.
+Under **Voice → Storage & performance → Keep model loaded**, choose how long to keep an idle model in memory. The default is two minutes. Releasing it does not delete the downloaded files. Recording and transcription do not expire, but changing the model or language can release it, as can Android memory pressure.
 
 ## Add keyboard languages
 
-English (US) is built in. Dutch, Polish, English (UK), German, French, Spanish, Italian, Portuguese (Brazil and Portugal), Swedish, Danish, Norwegian (Bokmål), Finnish, Czech, Croatian, Slovenian, Romanian, Lithuanian, Latvian and Russian download on request: open **Settings → Keyboard → More languages** and tap **Download**. Each word list is 0.4–5.2 MB. Lowkey downloads it from the Android Open Source Project at a fixed version, checks it against a known checksum, and converts it on your phone. A downloaded language is turned on at once; delete it on the same page.
+English (US) is built in. Dutch, Polish, English (UK), German, French, Spanish, Italian, Portuguese (Brazil and Portugal), Swedish, Danish, Norwegian (Bokmål), Finnish, Czech, Croatian, Slovenian, Romanian, Lithuanian, Latvian and Russian download on request: open **Settings → Languages & layouts** and tap **Download**. Each word list is 0.4–5.2 MB. Lowkey downloads it from the Android Open Source Project at a fixed version, checks it against a known checksum, and converts it on your phone. A downloaded language is turned on at once; delete it on the same page.
 
 Each language has its own suggestions, autocorrect, layout and accents. Words typed without their accents get them back (`zolw` becomes `żółw`, `konnen` becomes `können`), and suggestions ignore missing accents. Polish also restores the accents of common words such as `juz` → `już`, and German capitalizes nouns typed in lowercase (`zeit` → `Zeit`).
 
-To dictate in the language you type in, set **Settings → Voice → Voice language** to **Same as keyboard**. Switching languages then reloads the speech model in the new language.
+To dictate in the language you type in, set **Voice → Dictation settings → Voice language** to **Same as keyboard**. Switching languages then reloads the speech model in the new language.
 
 If Dutch was enabled in an earlier version, where it was built in, it downloads again by itself after the update.
 
+The app interface is currently in English. Keyboard language and voice language are separate choices; changing either does not change the app interface.
+
 ## Choose layouts and type accents
 
-Enable layouts under **Settings → Keyboard → Keyboard layouts**. Each language on your phone is listed with its own layout first. Languages written in the Latin alphabet also offer QWERTY, AZERTY, QWERTZ, Dvorak and Colemak. Tap the globe key to cycle through the layouts that are on, or hold the space bar to choose one. Holding the globe opens Android's picker for other keyboard apps.
+Enable layouts under **Settings → Languages & layouts → Keyboard layouts**. Each language on your phone is listed with its own layout first. Languages written in the Latin alphabet also offer QWERTY, AZERTY, QWERTZ, Dvorak and Colemak. With the language-switch key enabled, tap it to cycle through Lowkey layouts. Hold Space to open Android's picker for keyboard apps.
 
 The selected language controls suggestions and autocorrect. Changing the letter layout does not change that language.
 
 Hold a top-row letter to select a number. Hold a letter with accents, slide to the desired character, and release to type it. The language's own accents come first: on Polish, hold A for ą, L for ł or Z for ż. Slide off the choices and key to cancel. Shift and Caps Lock also apply to accented letters.
 
 Space and punctuation apply autocorrections. Press Backspace immediately after a correction to restore what you typed. Add terms to the personal dictionary to use them in suggestions and preserve their casing in dictated text. Spoken-phrase replacement rules are opt-in. Next-word prediction is not available.
+
+## Manage your words
+
+Open **Dictionary → My words** to add, search, edit or delete saved terms. **Match the spelling of my words** controls whether dictation restores their spelling. Under **Speech rules**, add phrases to replace after dictation. The main switch is off by default; each rule keeps its own on/off choice while the main switch is off. Import and export are not available.
 
 Turn **Settings → Keyboard → Number row** on for a dedicated 1–0 row above the letters. It is off by default and works with every language and keyboard mode. In Split mode the digits divide between the two halves. Symbol layouts keep their existing characters and fill the same panel height, so switching layers does not move the keyboard.
 
@@ -51,6 +57,7 @@ When floating, the Backspace gesture can aim at text above the panel; it does no
 The smiley beside Space opens an offline emoji panel. Choose a category, scroll its grid, and tap an emoji to insert it. Hold an emoji with skin-tone variants to choose one. Recent shows up to 40 distinct choices, stored locally; sensitive fields do not show or update that history. Unsupported emoji are filtered using the device's font. **ABC** returns to letters, and Back closes the panel. Backspace removes a complete known emoji sequence.
 
 Hold Space to open Android's keyboard-app picker directly. **Settings → Keyboard → Key beside Space** can replace the smiley with the language-switch key; holding Space works with either choice. Tap the language key to cycle through enabled Lowkey layouts, or hold it to open the same Android picker. Manage Lowkey's languages and layouts in Settings. Holding the comma also opens emoji, including when the language-switch key is selected.
+
 
 ## Minimize the keyboard
 
@@ -83,7 +90,8 @@ The minimized bar shows up to ten recent clips. The full keyboard shows them whe
 
 Clips are captured while Lowkey is the selected keyboard, even when hidden. History lasts until the app process ends. Copied images are cached privately and removed when they leave history or the app restarts. Clips marked sensitive are not saved in history, and history is hidden in password fields.
 
-Recent screenshots are on by default. They appear once Lowkey may read your photos: tap **Allow** in step 5 of the Home setup, or the **Settings → Keyboard → Recent screenshots** switch, and choose **Allow all**. To turn them off, use that switch. It adds up to five screenshots from the last day; tapping one copies it into history and pastes it. With **Allow limited access**, Android hides screenshots you take later, so the switch stays off and Settings asks for all photos instead. Step 5 on the Home checklist shows the same state and has a button to fix it.
+Recent screenshots are on by default. They appear once Lowkey may read all your photos: use the optional card on Home, or **Settings → Clipboard & images → Recent screenshots**, and choose **Allow all**. Use that switch to turn them off. Up to five screenshots from the last day appear beside your clips. With limited photo access, new screenshots stay hidden; Home and Settings explain how to allow all photos. Choosing **Not now** turns this optional feature off.
+
 
 ## Edit an image before pasting
 
@@ -101,6 +109,6 @@ Add an optional caption and tap **Attach** to return the edited image to the ori
 
 ## Try settings and manage updates
 
-Tap **Test keyboard** in the app's top bar to open a test field over the current page. Its draft stays available when you close and reopen it. The **Try it** page has additional editor types.
+Tap the keyboard icon on the keyboard, voice or language pages to open a test field over the current page. Home offers **Try your keyboard** once Lowkey is set up. The draft stays available when you close and reopen the test field. **Settings → Try it** has additional editor types.
 
-**Settings → Updates** lets you check now or turn automatic checks off. Downloads continue when you leave the app. If Android needs confirmation, tap the ready-to-install notification or **Install** on the Home card. Without notification permission, update notices appear in the app.
+**Settings → Updates** lets you check now or turn automatic checks off. Downloads continue when you leave the app. If Android needs confirmation, tap the ready-to-install notification or **Install** in the Home update banner. Without notification permission, update notices appear in the app.

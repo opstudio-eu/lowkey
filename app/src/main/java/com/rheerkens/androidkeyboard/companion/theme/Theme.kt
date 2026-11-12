@@ -4,11 +4,16 @@ import androidx.annotation.DrawableRes
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import com.rheerkens.androidkeyboard.R
 import com.rheerkens.androidkeyboard.settings.ThemeMode
 
@@ -121,7 +126,22 @@ internal val LightScheme: ColorScheme = lightColorScheme(
 
 @Composable
 fun SlimTheme(mode: ThemeMode, content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = if (isDarkTheme(mode)) DarkScheme else LightScheme, content = content)
+    val dark = isDarkTheme(mode)
+    val base = if (dark) DarkScheme else LightScheme
+    val headline = FontFamily(Font(R.font.bricolage_semibold, FontWeight.SemiBold))
+    val defaults = Typography()
+    MaterialTheme(
+        colorScheme = base.copy(
+            surface = if (dark) Brand.Dark else Brand.White,
+            surfaceTint = Color.Transparent,
+            surfaceContainer = if (dark) base.surfaceContainer else Color(0xFFF6F9FC),
+        ),
+        typography = defaults.copy(
+            headlineMedium = defaults.headlineMedium.copy(fontFamily = headline, fontWeight = FontWeight.SemiBold),
+            titleLarge = defaults.titleLarge.copy(fontFamily = headline, fontWeight = FontWeight.SemiBold, fontSize = 28.sp, lineHeight = 34.sp),
+        ),
+        content = content,
+    )
 }
 
 @Composable

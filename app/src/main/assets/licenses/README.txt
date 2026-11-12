@@ -11,6 +11,11 @@ versions should remove the logo.
 
 The APK contains these third-party components. Their notices are in this folder.
 
+Bricolage Grotesque (SIL Open Font License 1.1)               fonts/Bricolage-Grotesque-OFL.txt
+  https://github.com/ateliertriay/bricolage
+  Static semibold instance of the existing OpStudio headline font, used only for app headings.
+  Body text, language names and user content retain the platform font and its script coverage.
+
 Unicode Emoji 17.0 data (Unicode License V3)                   UNICODE-LICENSE.txt
   ../emoji/emoji-test.txt from https://www.unicode.org/Public/17.0.0/emoji/emoji-test.txt
   SHA-256: 1d8a944f88d7952f7ef7c5167fef3c67995bcae24543949710231b03a201acda

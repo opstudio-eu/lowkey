@@ -42,11 +42,13 @@ import com.rheerkens.androidkeyboard.updates.AvailableUpdate
 import com.rheerkens.androidkeyboard.updates.UpdateState
 import com.rheerkens.androidkeyboard.updates.UpdateStatus
 import com.rheerkens.androidkeyboard.updates.Updates
+import com.rheerkens.androidkeyboard.updates.acceptsReleaseUpdates
 import kotlinx.coroutines.launch
 
 /** Home: shown only while a newer release is known. */
 @Composable
 fun UpdateBanner(modifier: Modifier = Modifier) {
+    if (!acceptsReleaseUpdates(BuildConfig.APPLICATION_ID)) return
     val state by AppGraph.updates.state.collectAsStateWithLifecycle()
     if (state.update == null) return
     SlimCard(modifier) { UpdateActions(state) }
@@ -55,6 +57,13 @@ fun UpdateBanner(modifier: Modifier = Modifier) {
 /** Settings → Updates: the automatic-check switch, the current state, and the update itself. */
 @Composable
 fun UpdatesSection() {
+    if (!acceptsReleaseUpdates(BuildConfig.APPLICATION_ID)) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Version ${BuildConfig.VERSION_NAME} · UI Preview", style = MaterialTheme.typography.titleMedium)
+            Text("Install preview updates manually. Production updates belong to the regular Lowkey app.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        return
+    }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val settings by AppGraph.settings.settings.collectAsStateWithLifecycle()

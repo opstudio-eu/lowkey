@@ -7,8 +7,8 @@ Lowkey is a slim Android keyboard with on-device voice typing. Speech recognitio
 ## Install
 
 1. Download and open the APK. Allow your browser to install apps when Android asks.
-2. Open **Lowkey** and follow the setup steps to enable the keyboard and allow microphone access.
-3. Download a speech model in **Models** to use voice typing offline.
+2. Open **Lowkey** and follow the setup steps to enable and choose the keyboard. Voice setup is optional.
+3. Open **Voice**, allow microphone access and download a speech model to use voice typing offline.
 
 Lowkey is a personal project, available as source and signed APKs. It is not on the Play Store.
 
