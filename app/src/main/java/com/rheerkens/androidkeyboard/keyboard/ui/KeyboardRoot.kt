@@ -47,7 +47,8 @@ data class KeyboardUiState(
     val pickerOpen: Boolean,
     val enterKind: EnterKind,
     val rowHeightDp: Int,
-    val dark: Boolean,
+    /** The palette to draw with: the standard one for the app theme, or the custom one. */
+    val colors: KeyboardColors,
     /** Show only the slim bar (keys mode, minimized by the user). */
     val minimized: Boolean = false,
     /** Recent clips and screenshots, newest first: the slim bar, and the strip when no word is typed. */
@@ -72,7 +73,7 @@ data class KeyboardUiState(
  */
 @Composable
 fun KeyboardRoot(state: KeyboardUiState, clock: () -> Long, actions: KeyboardActions) {
-    val colors = if (state.dark) DarkKeyboardColors else LightKeyboardColors
+    val colors = state.colors
     CompositionLocalProvider(LocalKeyboardColors provides colors, LocalWordAim provides state.wordAim) {
         Box {
             Column(

@@ -17,6 +17,7 @@ enum class Destination(val title: String, val isTab: Boolean = false) {
     DIAGNOSTICS("Diagnostics"),
     ABOUT("About and licenses"),
     LANGUAGES("Keyboard languages"),
+    KEYBOARD_THEME("Keyboard theme"),
 }
 
 /** Intents the keyboard uses to open companion pages. */

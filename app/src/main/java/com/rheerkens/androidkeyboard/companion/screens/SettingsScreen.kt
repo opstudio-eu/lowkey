@@ -63,6 +63,7 @@ fun SettingsScreen(modifier: Modifier, focus: SettingsFocus, navigate: (Destinat
     val models by AppGraph.models.state.collectAsStateWithLifecycle()
     // Recomposes the language summary when a download finishes or a word list is deleted.
     val packs by AppGraph.languagePacks.state.collectAsStateWithLifecycle()
+    val keyboardTheme by AppGraph.keyboardTheme.theme.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     fun update(t: (Settings) -> Settings) = AppGraph.settings.update(t)
     val context = LocalContext.current
@@ -210,6 +211,12 @@ fun SettingsScreen(modifier: Modifier, focus: SettingsFocus, navigate: (Destinat
         // Appearance
         item { SectionTitle("Appearance") }
         item { ChoiceRow("Theme", ThemeMode.entries, s.theme, { it.label }, { v -> update { it.copy(theme = v) } }) }
+        item {
+            LinkRow(
+                "Keyboard theme",
+                if (keyboardTheme.enabled) "Custom colors" else "Standard colors, following the app theme",
+            ) { navigate(Destination.KEYBOARD_THEME) }
+        }
         item { SectionTitle("Image editor") }
         item {
             ChoiceRow(

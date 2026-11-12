@@ -79,6 +79,8 @@ Add an optional caption and tap **Attach** to return the edited image to the ori
 
 **Settings → Appearance → Theme** sets the look of the app and the keyboard together. **System**, the default, follows Android's dark mode and switches as soon as Android does. **Light** and **Dark** keep one look regardless of Android. Both use OpStudio's colours.
 
+To give the keyboard its own colours, open **Settings → Appearance → Keyboard theme** and choose **Custom**. Pick five colours (background, keys, function keys, text and accent) with the sliders or a six-digit hex code; Lowkey derives pressed keys, popups and the other shades from them. The preview shows your draft, and the keyboard changes only when you tap **Save**. **Cancel** or going back drops the draft, and **Restore default** sets the five colours to the standard ones for the app theme. Lowkey lists text that falls below the WCAG AA contrast minimum, with the ratio, and offers a fix when it can find one; you can still save low-contrast colours. Choose **Standard** to return to the standard keyboard; your custom colours are kept for later. The app's own theme does not change.
+
 ## Try settings and manage updates
 
 Tap **Test keyboard** in the app's top bar to open a test field over the current page. Its draft stays available when you close and reopen it. The **Try it** page has additional editor types.
