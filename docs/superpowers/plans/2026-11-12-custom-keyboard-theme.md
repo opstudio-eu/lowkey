@@ -10,3 +10,17 @@ Design: [2026-11-12-custom-keyboard-theme-design.md](../specs/2026-11-12-custom-
 6. **Keyboard.** Replace `KeyboardUiState.dark` with `colors`; the service collects the theme store and styles the navigation bar from the palette background.
 7. **Settings UI.** Link row under Appearance, new `Destination.KEYBOARD_THEME`, `KeyboardThemeScreen` with mode choice, preview, swatches, picker, warnings and actions. Draft is `rememberSaveable`.
 8. **Checks.** `./gradlew testDebugUnitTest assembleDebug lintDebug`; install the debug build on the UX Preview emulator and verify: switch to Custom, edit a colour via slider and hex, invalid hex, warnings and fix, Cancel, Save, Test keyboard shows the colours in keys, popup, strip, clipboard, voice row, model picker, chooser and minimized bar, Standard restores the standard palette and keeps the saved colours.
+
+## Verification status
+
+The editor was exercised on Android 15: custom selection, hex input, sliders, contrast correction,
+Cancel and Save. Review tightened hex validation so invalid or overlong pasted text cannot silently
+become a different valid colour; regression tests cover this.
+After that correction, all 326 unit tests passed with none skipped, and the debug APK built.
+
+Actual input-method verification is still pending. The shared emulator was held by another session;
+opening it and retrying with the tool's bounded wait both returned `DEVICE_IN_USE`. No other session
+was taken over or closed. Still verify typing, pressed keys, accent popups, suggestions, clipboard,
+voice and model panels, minimized mode, keyboard chooser, navigation bar, persistence after relaunch,
+and switching back to Standard while retaining saved colours. Android 14 coverage is also pending.
+The feature must not be considered fully verified until those interactions pass.

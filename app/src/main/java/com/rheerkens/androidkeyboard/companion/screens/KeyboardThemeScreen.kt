@@ -75,12 +75,11 @@ private val DraftSaver = Saver<KeyboardSeed?, String>(save = { it?.encode() ?: "
 private const val SHOWN_FAILURES = 6
 
 /**
- * What the hex field keeps of typed or pasted text: hex digits only, upper case, without `#`.
- * Up to eight are kept so a pasted colour with alpha shows as too long instead of being cut to a
- * different colour.
+ * Normalize case and an optional leading `#`, preserving invalid input so validation can explain
+ * it. Never filter or truncate a paste into a different, valid colour.
  */
 internal fun hexFieldInput(raw: String): String =
-    raw.trim().removePrefix("#").filter { it in '0'..'9' || it.lowercaseChar() in 'a'..'f' }.uppercase().take(8)
+    raw.trim().removePrefix("#").uppercase()
 
 /**
  * Keyboard theme: the standard palette (following the app theme) or one custom palette of five
