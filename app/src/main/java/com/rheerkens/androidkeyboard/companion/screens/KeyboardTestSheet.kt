@@ -29,6 +29,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.PlatformImeOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.rememberCoroutineScope
 import android.content.ClipData
@@ -44,12 +45,15 @@ fun KeyboardTestSheet(
     draft: TextFieldValue,
     onDraftChange: (TextFieldValue) -> Unit,
     onClose: () -> Unit,
+    resizeKeyboard: Boolean = false,
 ) {
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     val compact = LocalConfiguration.current.screenHeightDp < 480
+    val options = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences,
+        platformImeOptions = if (resizeKeyboard) PlatformImeOptions(privateImeOptions = "lowkey.resize") else null)
     ModalBottomSheet(
         onDismissRequest = onClose,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -65,7 +69,7 @@ fun KeyboardTestSheet(
                 OutlinedTextField(
                     value = draft, onValueChange = onDraftChange,
                     label = { Text("Test input") }, maxLines = 2,
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                    keyboardOptions = options,
                     trailingIcon = {
                         IconButton(onClick = { onDraftChange(TextFieldValue()) }) {
                             Icon(SlimIcons.Trash, "Clear test input")
@@ -96,7 +100,7 @@ fun KeyboardTestSheet(
                 label = { Text("Test input") },
                 placeholder = { Text("Try a word, a number, or a coding request") },
                 minLines = 2, maxLines = 4,
-                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                keyboardOptions = options,
                 modifier = Modifier.fillMaxWidth().focusRequester(focus).testTag("quick_test_input"),
             )
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

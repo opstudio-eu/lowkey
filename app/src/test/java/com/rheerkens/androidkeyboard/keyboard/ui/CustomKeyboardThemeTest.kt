@@ -258,6 +258,22 @@ class CustomKeyboardThemeTest {
     }
 
     @Test
+    fun floatingKeyboardLeavesTheNavigationBarToTheApp() {
+        val darkImage = LuminanceRange(0.0, 0.05)
+        val lightBg = hex("EFE6D8")
+        // Docked: the bar takes the keyboard colour, and from Android 15 the image under it decides.
+        assertEquals(NavigationBarStyle(lightIcons = true, color = lightBg),
+            keyboardNavigationBarStyle(lightBg, darkImage, floating = false, edgeToEdge = true))
+        assertEquals(NavigationBarStyle(lightIcons = false, color = lightBg),
+            keyboardNavigationBarStyle(lightBg, darkImage, floating = false, edgeToEdge = false))
+        // Floating: transparent, and the image is not under the bar, so only the colour guides the icons.
+        assertEquals(NavigationBarStyle(lightIcons = false, color = Color.Transparent),
+            keyboardNavigationBarStyle(lightBg, darkImage, floating = true, edgeToEdge = true))
+        assertEquals(NavigationBarStyle(lightIcons = true, color = Color.Transparent),
+            keyboardNavigationBarStyle(forest.background, null, floating = true, edgeToEdge = false))
+    }
+
+    @Test
     fun standardPalettesStillPassWithTheNewChecks() {
         for (c in listOf(DarkKeyboardColors, LightKeyboardColors)) {
             assertTrue(keyboardContrastChecks(c).isNotEmpty())

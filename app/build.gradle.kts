@@ -103,8 +103,8 @@ android {
         minSdk = 28
         targetSdk = 37
         testInstrumentationRunner = "com.rheerkens.androidkeyboard.test.KeyboardTouchProbe"
-        versionCode = 49
-        versionName = "0.5.8"
+        versionCode = 57
+        versionName = "0.9.0"
 
         // The release feed the in-app updater reads. -PupdateFeedUrl=https://… points a test build elsewhere.
         val updateFeedUrl = providers.gradleProperty("updateFeedUrl")
@@ -124,6 +124,16 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        resValues = true
+    }
+
+    // Opt-in local UI test APK. Release identity and version are unchanged.
+    buildTypes.getByName("debug") {
+        if (providers.gradleProperty("uiPreview").orNull == "true") {
+            applicationIdSuffix = ".uipreview"
+            resValue("string", "app_name", "Lowkey UI Preview")
+            resValue("string", "ime_name", "Lowkey UI Preview")
+        }
     }
 
     compileOptions {

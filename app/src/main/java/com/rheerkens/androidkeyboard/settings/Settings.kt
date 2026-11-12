@@ -1,5 +1,7 @@
 package com.rheerkens.androidkeyboard.settings
 
+import com.rheerkens.androidkeyboard.keyboard.PlacementPreferences
+
 /** Keyboard key-row height preset. */
 enum class KeyboardHeight(val label: String, val rowHeightDp: Int) {
     COMPACT("Compact", 42),
@@ -53,6 +55,8 @@ enum class AudioInput(val label: String) {
 
 enum class InputMode { KEYS, VOICE }
 
+enum class BottomKey(val label: String) { EMOJI("Emoji"), LANGUAGE("Language switch") }
+
 /**
  * Which two canvas corners the image editor's loupe may dock in (indices as in
  * `LoupePlacement.corners`): the top ones stay clear of either hand, the left ones of a right hand
@@ -66,8 +70,12 @@ enum class LoupeCorners(val label: String, val corners: List<Int>) {
 
 /** Every user-visible setting. Immutable snapshot; see [SettingsStore]. */
 data class Settings(
+    val placement: PlacementPreferences = PlacementPreferences(),
     // Keyboard
     val keyboardHeight: KeyboardHeight = KeyboardHeight.NORMAL,
+    val numberRow: Boolean = false,
+    val bottomKey: BottomKey = BottomKey.EMOJI,
+    val recentEmoji: List<String> = emptyList(),
     val vibrateOnKeyPress: Boolean = true,
     val autoCapitalize: Boolean = true,
     val autocorrect: Boolean = true,
@@ -81,8 +89,11 @@ data class Settings(
     val currentKeyboard: String = DEFAULT_KEYBOARD,
     /** Keep the keyboard on screen with a physical keyboard connected (Android hides it otherwise). */
     val showWithPhysicalKeyboard: Boolean = true,
-    /** Show recent screenshots next to clipboard history in the minimized bar (photos permission). */
-    val recentScreenshots: Boolean = false,
+    /**
+     * Show recent screenshots next to clipboard history in the minimized bar. On by default; they
+     * appear once all photos are allowed (Home's setup step 5 or the Settings switch asks).
+     */
+    val recentScreenshots: Boolean = true,
     // Voice
     val keyboardFirstDictation: Boolean = true,
     val autoStartVoice: Boolean = true,
@@ -113,6 +124,23 @@ data class Settings(
     val minimizedWithPhysicalKeyboard: Boolean = true,
     val minimizedWithoutPhysicalKeyboard: Boolean = false,
 ) {
+    /** Selects an installed layout and remembers it, enabling it if necessary. */
+    fun selectKeyboard(id: String, usable: List<String>): Settings =
+        if (id in usable) copy(enabledKeyboards = enabledKeyboards + id, currentKeyboard = id) else this
+
+    /** Turns a language's layouts on/off; even the built-in language is optional. */
+    fun setLanguageEnabled(languageId: String, enabled: Boolean, usable: List<String>): Settings {
+        val options = usable.filter { it.substringBefore(':') == languageId }
+        if (options.isEmpty()) return this
+        if (enabled && options.any { it in enabledKeyboards }) return this
+        val next = if (enabled) enabledKeyboards + options.first()
+            else enabledKeyboards.filterNot { it.substringBefore(':') == languageId }.toSet()
+        val remaining = usable.filter { it in next }
+        if (remaining.isEmpty()) return this
+        return copy(enabledKeyboards = next,
+            currentKeyboard = currentKeyboard.takeIf { it in remaining } ?: remaining.first())
+    }
+
     /**
      * Turns keyboard [id] on or off. [usable] lists, in globe order, the ids of every keyboard
      * whose word list is on the phone: the last usable one that is on stays on, and the current

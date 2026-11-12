@@ -3,6 +3,10 @@ package com.rheerkens.androidkeyboard.updates
 import java.io.StringReader
 import java.util.Properties
 
+/** The production feed must never offer a different application to a side-by-side test install. */
+internal fun acceptsReleaseUpdates(applicationId: String): Boolean =
+    applicationId == "com.rheerkens.androidkeyboard"
+
 /**
  * A release newer than the installed app, as described by the `update.properties` file that CI
  * attaches to every GitHub release:

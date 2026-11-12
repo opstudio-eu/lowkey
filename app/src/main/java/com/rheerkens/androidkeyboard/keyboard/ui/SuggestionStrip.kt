@@ -33,14 +33,25 @@ import com.rheerkens.androidkeyboard.clipboard.ClipboardContent
 import com.rheerkens.androidkeyboard.ui.SlimIcons
 
 /**
- * Clipboard history when idle (or the current clip alone if the history is empty or the clip is
- * sensitive), word suggestions while typing, or temporary prompts and notes.
+ * Clipboard history when idle (led by the masked current clip when it is sensitive, or the current
+ * clip alone if the history is empty), word suggestions while typing, or temporary prompts and
+ * notes. History also works with word suggestions disabled.
  */
 @Composable
 fun RowScope.SuggestionStrip(strip: StripState, clips: List<ClipChip>, session: Int, actions: KeyboardActions) {
     val c = LocalKeyboardColors.current
     Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
         when {
+            strip.showsClipHistory(clips.isNotEmpty()) -> Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                // Sensitive clips stay out of history, so keep the masked current clip pasteable in front of it.
+                val sensitive = strip.clipboard?.takeIf { it.sensitive }
+                if (sensitive != null) {
+                    Box(Modifier.width(148.dp).fillMaxHeight()) {
+                        ClipboardChip(sensitive, strip.imagePasteSupported, actions)
+                    }
+                }
+                ClipHistoryRow(clips, session, actions, Modifier.weight(1f).fillMaxHeight(), chipHeight = 34.dp)
+            }
             strip.note != null -> Text(
                 strip.note.text,
                 color = if (strip.note.warn) c.amber else c.muted,
@@ -71,9 +82,7 @@ fun RowScope.SuggestionStrip(strip: StripState, clips: List<ClipChip>, session: 
                 StripIconButton(SlimIcons.Close, "Dismiss", onTap = actions::onDismissStripPrompt)
             }
             !strip.enabled -> Spacer(Modifier.fillMaxSize())
-            !strip.typingWord && (clips.isEmpty() || strip.clipboard?.sensitive == true) ->
-                ClipboardChip(strip.clipboard, strip.imagePasteSupported, actions)
-            !strip.typingWord -> ClipHistoryRow(clips, session, actions, Modifier.fillMaxSize(), chipHeight = 34.dp)
+            !strip.typingWord -> ClipboardChip(strip.clipboard, strip.imagePasteSupported, actions)
             else -> Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
                 strip.slots.forEachIndexed { i, s ->
                     if (i > 0) Box(Modifier.width(1.dp).height(20.dp).background(c.chipDivider))
@@ -136,6 +145,7 @@ private fun SuggestionChip(s: Suggestion?, modifier: Modifier, center: Boolean, 
         return
     }
     val desc = when {
+        s.emojiName != null -> "Insert emoji: ${s.emojiName}"
         s.isLiteral -> "Typed word ${s.text}. Long-press to add to dictionary"
         s.isPersonal -> "Insert ${s.text}, saved term"
         else -> "Insert ${s.text}"
@@ -143,7 +153,7 @@ private fun SuggestionChip(s: Suggestion?, modifier: Modifier, center: Boolean, 
     PressTarget(
         desc, modifier, gestureKey = s,
         onTap = { actions.onSuggestion(s) },
-        onLongPress = { actions.onSuggestionLongPress(s) },
+        onLongPress = if (s.emojiName == null) ({ actions.onSuggestionLongPress(s) }) else null,
     ) { pressed ->
         Row(
             Modifier.fillMaxSize().background(if (pressed) c.keyMod else Color.Transparent).padding(horizontal = 4.dp),
@@ -157,7 +167,7 @@ private fun SuggestionChip(s: Suggestion?, modifier: Modifier, center: Boolean, 
             Text(
                 s.text,
                 color = if (s.isPersonal || center) c.chipSaved else c.chipText,
-                fontSize = 14.sp,
+                fontSize = if (s.emojiName != null) 22.sp else 14.sp,
                 fontWeight = if (center || s.isPersonal) FontWeight.Medium else FontWeight.Normal,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

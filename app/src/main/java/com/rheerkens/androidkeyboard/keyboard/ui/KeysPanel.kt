@@ -35,6 +35,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.BoxWithConstraints
+import com.rheerkens.androidkeyboard.keyboard.splitRows
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -45,6 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import com.rheerkens.androidkeyboard.keyboard.Key
 import com.rheerkens.androidkeyboard.keyboard.KeyboardLayout
 import com.rheerkens.androidkeyboard.keyboard.KeyboardState
@@ -60,10 +64,37 @@ fun KeysPanel(
     rowHeightDp: Int,
     enterKind: EnterKind,
     actions: KeyboardActions,
+    splitGapDp: Float = 0f,
+    keyRows: Int = layout.rows.size,
 ) {
+    val rowHeight = (rowHeightDp * keyRows.toFloat() / layout.rows.size).dp
+    if (splitGapDp > 0f) {
+        val rows = remember(layout, state.keyboard, state.layer) { splitRows(layout, state.keyboard, state.layer) }
+        val units = rows.filterNot { it.fullWidth }.maxOf { maxOf(it.left.sumOf { key -> key.weight.toDouble() }, it.right.sumOf { key -> key.weight.toDouble() }) }.toFloat()
+        BoxWithConstraints(Modifier.fillMaxWidth().padding(start = 3.dp, end = 3.dp, bottom = 4.dp)) {
+            val unit = ((maxWidth - splitGapDp.dp) / (2 * units)).coerceAtLeast(1.dp)
+            Column {
+                rows.forEach { row ->
+                    Row(Modifier.fillMaxWidth().height(rowHeight)) {
+                        if (row.fullWidth) {
+                            row.left.forEach { key ->
+                                val width = if (key is Key.Space) Modifier.weight(1f) else Modifier.width(unit * key.weight)
+                                KeyView(key, state, enterKind, actions, width.fillMaxHeight())
+                            }
+                        } else {
+                            row.left.forEach { key -> KeyView(key, state, enterKind, actions, Modifier.width(unit * key.weight).fillMaxHeight()) }
+                            Spacer(Modifier.weight(1f))
+                            row.right.forEach { key -> KeyView(key, state, enterKind, actions, Modifier.width(unit * key.weight).fillMaxHeight()) }
+                        }
+                    }
+                }
+            }
+        }
+        return
+    }
     Column(Modifier.fillMaxWidth().padding(start = 3.dp, end = 3.dp, bottom = 4.dp)) {
         layout.rows.forEach { row ->
-            Row(Modifier.fillMaxWidth().height(rowHeightDp.dp)) {
+            Row(Modifier.fillMaxWidth().height(rowHeight)) {
                 row.forEach { key -> KeyView(key, state, enterKind, actions, Modifier.weight(key.weight).fillMaxHeight()) }
             }
         }
@@ -114,6 +145,11 @@ private fun KeyView(
                 }
             }
         }
+        is Key.Emoji -> PressTarget(
+            "Emoji", modifier, gestureKey = key, onDown = actions::onKeyDown, onTap = { actions.onKey(key) },
+        ) { pressed ->
+            KeyCap(if (pressed) c.keyPressed else c.keyMod) { KeyIcon(SlimIcons.Emoji) }
+        }
         is Key.Globe -> PressTarget(
             "Next keyboard. Long-press to switch to another keyboard app",
             // Announce the keyboard a tap switched to, whichever key has focus.
@@ -127,7 +163,7 @@ private fun KeyView(
             KeyCap(if (pressed) c.keyPressed else c.keyMod) { KeyIcon(SlimIcons.Globe) }
         }
         is Key.Space -> PressTarget(
-            "Space, ${state.keyboard.fullLabel}. Long-press to choose a keyboard", modifier, gestureKey = key,
+            "Space, ${state.keyboard.fullLabel}. Long-press to switch keyboard app", modifier, gestureKey = key,
             onDown = actions::onKeyDown, onTap = { actions.onKey(key) }, onLongPress = actions::onSpaceLongPress,
         ) { pressed ->
             KeyCap(if (pressed) c.keyPressed else c.key) {
@@ -172,7 +208,7 @@ private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardAction
         if (p == null || choices.isEmpty()) null else with(density) {
             AlternatesPopup(
                 count = choices.size, keyLeft = p.left, keyWidth = p.width, keyHeight = p.height, windowWidth = p.window,
-                cellWidth = maxOf(p.width, 32.dp.toPx()), cellHeight = 43.dp.toPx(), slop = 12.dp.toPx(),
+                cellWidth = maxOf(p.width, 40.dp.toPx()), cellHeight = 44.dp.toPx(), slop = 12.dp.toPx(),
             )
         }
     }
@@ -182,6 +218,7 @@ private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardAction
         else -> "Accent: ${cased(choices[i])}"
     }
     val description = when {
+        key.opensEmojiOnHold -> "Comma. Hold for emoji"
         choices.isEmpty() -> label
         open -> "$label. ${choiceDescription(selected)}. Release to type"
         key.longPressOutput == null -> "$label. Long-press for accents"
@@ -191,6 +228,7 @@ private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardAction
     PressTarget(
         description,
         modifier
+            .zIndex(if (open) 1f else 0f)
             .onGloballyPositioned { coords ->
                 val root = coords.findRootCoordinates()
                 val left = root.localPositionOf(coords, Offset.Zero).x
@@ -205,13 +243,17 @@ private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardAction
             },
         gestureKey = key, onDown = actions::onKeyDown,
         onTap = { actions.onKey(key) },
-        onLongPress = if (choices.isEmpty()) null else { { selected = 0 } },
+        onLongPress = when {
+            key.opensEmojiOnHold -> ({ actions.onKey(Key.Emoji()) })
+            choices.isEmpty() -> null
+            else -> ({ selected = 0 })
+        },
         onLongPressRelease = if (choices.isEmpty()) null else { { selected?.let { actions.onKey(Key.Char(choices[it])) } } },
         onLongPressState = { open = it },
         onLongPressMove = popup?.let { p -> { at: Offset -> selected = p.select(at.x, at.y) } },
     ) { pressed ->
         KeyCap(if (pressed) c.keyPressed else c.key) {
-            val hint = key.longPressOutput
+            val hint = key.hint
             Text(
                 label, color = c.keyText, fontSize = 21.sp, maxLines = 1,
                 modifier = if (hint == null) Modifier else Modifier.offset(y = 3.dp),
@@ -225,29 +267,33 @@ private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardAction
         }
         if (pressed && open && popup != null) {
             val shape = RoundedCornerShape(10.dp)
-            Row(
+            Column(
                 Modifier
                     // Popup geometry is relative to the key's top-left corner, not its centre.
                     .align(Alignment.TopStart)
                     .layout { measurable, _ ->
-                        val box = measurable.measure(Constraints.fixed(popup.width.roundToInt(), popup.cellHeight.roundToInt()))
+                        val box = measurable.measure(Constraints.fixed(popup.width.roundToInt(), popup.height.roundToInt()))
                         layout(0, 0) { box.place(popup.left.roundToInt(), popup.top.roundToInt()) }
                     }
                     .shadow(3.dp, shape).background(c.popup, shape).border(1.dp, c.popupBorder, shape)
-                    .padding(3.dp)
                     .semantics { contentDescription = choiceDescription(selected) },
             ) {
-                for (cell in 0 until popup.count) {
-                    val choice = popup.choiceAt(cell)
-                    val on = choice == selected
-                    Box(
-                        Modifier.weight(1f).fillMaxHeight().background(if (on) c.enter else Color.Transparent, RoundedCornerShape(7.dp)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            cased(choices[choice]), color = if (on) c.enterInk else c.keyText, maxLines = 1,
-                            fontSize = if (popup.count == 1) 28.sp else 22.sp, fontWeight = FontWeight.Medium,
-                        )
+                for (row in 0 until popup.rows) {
+                    Row(Modifier.weight(1f).fillMaxWidth()) {
+                        for (column in 0 until popup.columns) {
+                            val choice = popup.choiceAt(column, row)
+                            val on = choice != null && choice == selected
+                            Box(
+                                Modifier.weight(1f).fillMaxHeight().padding(3.dp)
+                                    .background(if (on) c.enter else Color.Transparent, RoundedCornerShape(7.dp)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (choice != null) Text(
+                                    cased(choices[choice]), color = if (on) c.enterInk else c.keyText, maxLines = 1,
+                                    fontSize = if (popup.count == 1) 28.sp else 22.sp, fontWeight = FontWeight.Medium,
+                                )
+                            }
+                        }
                     }
                 }
             }

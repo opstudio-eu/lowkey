@@ -98,8 +98,6 @@ object AppGraph {
     /** Small built-in lists used while a language's full list loads. */
     private val fallbackLexicons = ConcurrentHashMap<String, Lexicon>()
     private lateinit var assets: AssetManager
-    /** One per keyboard id: suggestions in its language, with slips judged on its letter rows. */
-    private val suggesters = ConcurrentHashMap<String, Suggester>()
     private val nextClip = AtomicInteger(0)
     private var initialized = false
 
@@ -193,9 +191,17 @@ object AppGraph {
     /** The current keyboard's language. */
     fun currentLanguage(s: Settings = settings.current): KeyboardLanguage = currentKeyboard(s).language
 
-    /** Suggestions in [keyboard]'s language, with slips judged on its letter rows. */
-    fun suggester(keyboard: TypingKeyboard): Suggester =
-        suggesters.getOrPut(keyboard.id) { Suggester({ lexicon(keyboard.language) }, Layouts.keyGrid(keyboard)) }
+    fun suggestionLanguages(keyboard: TypingKeyboard, s: Settings = settings.current): List<KeyboardLanguage> =
+        com.rheerkens.androidkeyboard.dictionary.suggestionLanguages(keyboard, usableKeyboards(s))
+
+    /** Snapshot the participating lists; key distances always follow the physical keyboard. */
+    fun suggester(keyboard: TypingKeyboard): Suggester {
+        val languages = suggestionLanguages(keyboard)
+        val loaded = languages.map { lexicons.get(it.id) }
+        val lists = languages.mapIndexed { index, language -> loaded[index] ?: lexicon(language) }
+        return Suggester({ lists.firstOrNull() ?: Lexicon.EMPTY }, Layouts.keyGrid(keyboard),
+            { lists.drop(1) }, dictionariesReady = loaded.all { it != null })
+    }
 
     /** The speech language code to resolve against a model: [Settings.speechLanguage], or the keyboard's. */
     fun speechLanguage(s: Settings = settings.current): String = speechLanguageCode(s.speechLanguage, currentLanguage(s))
@@ -294,5 +300,5 @@ object AppGraph {
     /** Frequency given to built-in tech words: common enough to complete, not to dominate. */
     private const val EXTRA_WORD_FREQUENCY = 120
     /** Word lists kept in memory: the current language plus the two used before it. */
-    private const val MAX_LOADED_LEXICONS = 3
+    private const val MAX_LOADED_LEXICONS = com.rheerkens.androidkeyboard.dictionary.MAX_SUGGESTION_LANGUAGES
 }

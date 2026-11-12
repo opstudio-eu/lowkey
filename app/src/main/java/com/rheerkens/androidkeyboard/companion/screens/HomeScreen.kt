@@ -1,15 +1,6 @@
 package com.rheerkens.androidkeyboard.companion.screens
 
-import android.Manifest
-import android.app.Activity
-import android.content.Intent
-import android.net.Uri
-import android.provider.Settings
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,7 +9,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
@@ -26,211 +16,126 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalWindowInfo
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.core.app.ActivityCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rheerkens.androidkeyboard.AppGraph
+import com.rheerkens.androidkeyboard.clipboard.PhotoAccess
 import com.rheerkens.androidkeyboard.companion.Destination
+import com.rheerkens.androidkeyboard.companion.KeyboardSetupState
 import com.rheerkens.androidkeyboard.companion.SystemImeStatus
+import com.rheerkens.androidkeyboard.companion.keyboardSetupState
 import com.rheerkens.androidkeyboard.ui.SlimIcons
 import kotlinx.coroutines.delay
 
 @Composable
-fun HomeScreen(modifier: Modifier, navigate: (Destination) -> Unit) {
+fun HomeScreen(
+    modifier: Modifier,
+    navigate: (Destination) -> Unit,
+    openTest: () -> Unit,
+    skipped: Boolean,
+    onSkipSetup: () -> Unit,
+    onSetupVisibilityChanged: (Boolean) -> Unit,
+) {
     val context = LocalContext.current
-    var ime by remember { mutableStateOf(SystemImeStatus.read(context)) }
-    var mic by remember { mutableStateOf(AppGraph.hasMicPermission(context)) }
-    var micDeniedForever by remember { mutableStateOf(false) }
+    var ime by androidx.compose.runtime.remember { mutableStateOf(SystemImeStatus.read(context)) }
     val models by AppGraph.models.state.collectAsStateWithLifecycle()
-    val dict by AppGraph.dictionary.state.collectAsStateWithLifecycle()
     val settings by AppGraph.settings.settings.collectAsStateWithLifecycle()
-
-    fun refresh() {
-        ime = SystemImeStatus.read(context)
-        mic = AppGraph.hasMicPermission(context)
-    }
-    LifecycleResumeEffect(Unit) {
-        refresh()
-        onPauseOrDispose { }
-    }
-    // The input-method picker is a dialog over this activity (no onResume); refresh when
-    // window focus returns, and once shortly after in case the system applies it late.
+    val photos = rememberPhotoAccess()
+    val setup = keyboardSetupState(ime.enabled, ime.selected)
+    val onboarding = setup != KeyboardSetupState.READY && !skipped
+    LifecycleResumeEffect(Unit) { ime = SystemImeStatus.read(context); onPauseOrDispose { } }
     val windowFocused = LocalWindowInfo.current.isWindowFocused
     LaunchedEffect(windowFocused) {
-        refresh()
+        ime = SystemImeStatus.read(context)
         delay(600)
-        refresh()
+        ime = SystemImeStatus.read(context)
     }
-    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        mic = granted
-        val activity = context as? Activity
-        micDeniedForever = !granted && activity != null &&
-            !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.RECORD_AUDIO)
-    }
+    LaunchedEffect(onboarding) { onSetupVisibilityChanged(onboarding) }
 
-    val steps = listOf(ime.enabled, ime.selected, mic, models.activeModel != null)
-    val done = steps.count { it }
-
-    Column(modifier.verticalScroll(rememberScrollState()).padding(bottom = 16.dp)) {
-        UpdateBanner(Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
-        Text(
-            "A slim keyboard with local voice input. Speech runs on this device; nothing you type or say leaves it.",
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        SectionTitle("Setup · $done of 4 done")
-        SlimCard(Modifier.padding(horizontal = 16.dp)) {
-            StepRow(
-                number = 1, title = "Enable Lowkey Keyboard in system settings",
-                status = if (ime.enabled) "Enabled" else "Not enabled yet",
-                done = ime.enabled, action = "Open settings",
-            ) { SystemImeStatus.openInputMethodSettings(context) }
-            HorizontalDivider(Modifier.padding(vertical = 8.dp))
-            StepRow(
-                number = 2, title = "Choose it as the current keyboard",
-                status = if (ime.selected) "Current keyboard" else "Current: ${ime.currentLabel ?: "unknown"}",
-                done = ime.selected, action = "Choose keyboard", actionEnabled = ime.enabled,
-            ) { SystemImeStatus.showPicker(context) }
-            HorizontalDivider(Modifier.padding(vertical = 8.dp))
-            StepRow(
-                number = 3, title = "Allow the microphone",
-                status = when {
-                    mic -> "Allowed"
-                    micDeniedForever -> "Denied. Allow it in app settings."
-                    else -> "Needed for voice typing"
+    Column(modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
+        UpdateBanner(Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+        Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Text(if (onboarding) "WELCOME TO LOWKEY" else "YOUR KEYBOARD", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                when {
+                    onboarding -> "Your words.\nYour keyboard."
+                    setup == KeyboardSetupState.READY -> "Ready to type"
+                    setup == KeyboardSetupState.NOT_ENABLED -> "Set up Lowkey"
+                    else -> "Choose Lowkey"
                 },
-                done = mic, action = if (micDeniedForever) "App settings" else "Allow",
-            ) {
-                if (micDeniedForever) {
-                    context.startActivity(
-                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+                style = MaterialTheme.typography.headlineMedium,
+            )
+            Text(
+                if (onboarding) "Start with typing. Add voice whenever you want."
+                else if (setup == KeyboardSetupState.READY) "Type your way. Dictate on your device."
+                else "Your keyboard settings are here when you are ready.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (!onboarding) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(if (setup == KeyboardSetupState.READY) SlimIcons.Check else SlimIcons.Info, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                    Text(
+                        when (setup) {
+                            KeyboardSetupState.READY -> "Lowkey is your current keyboard"
+                            KeyboardSetupState.NOT_ENABLED -> "Not enabled yet"
+                            KeyboardSetupState.NOT_SELECTED -> "Enabled, but not the current keyboard"
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
                     )
-                } else {
-                    permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                 }
-            }
-            HorizontalDivider(Modifier.padding(vertical = 8.dp))
-            StepRow(
-                number = 4, title = "Download a speech model",
-                status = models.activeModel?.let { "${it.name} active" } ?: "No model installed",
-                done = models.activeModel != null, action = "Get a model",
-            ) { navigate(Destination.MODELS) }
-        }
-
-        SectionTitle("Overview")
-        Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            SlimCard {
-                Text("Try it", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "Type and dictate in a playground with multiline, search, and send fields.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(8.dp))
-                Button(onClick = { navigate(Destination.TRY_IT) }) { Text("Open Try it") }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                InfoCard(
-                    "Current model",
-                    models.activeModel?.name ?: "None",
-                    Modifier.weight(1f),
-                ) { navigate(Destination.MODELS) }
-                InfoCard(
-                    "Dictionary",
-                    "${dict.terms.size} terms · ${dict.rules.size} rules",
-                    Modifier.weight(1f),
-                ) { navigate(Destination.DICTIONARY) }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                InfoCard(
-                    "Last mode",
-                    settings.lastMode.name.lowercase().replaceFirstChar { it.uppercase() },
-                    Modifier.weight(1f),
-                ) { navigate(Destination.SETTINGS) }
-                InfoCard(
-                    "Voice sessions",
-                    "${AppGraph.sessionLog.entries.collectAsStateWithLifecycle().value.size} logged",
-                    Modifier.weight(1f),
-                ) { navigate(Destination.DIAGNOSTICS) }
+                Button(
+                    onClick = {
+                        when (setup) {
+                            KeyboardSetupState.READY -> openTest()
+                            KeyboardSetupState.NOT_ENABLED -> SystemImeStatus.openInputMethodSettings(context)
+                            KeyboardSetupState.NOT_SELECTED -> SystemImeStatus.showPicker(context)
+                        }
+                    }, modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (setup == KeyboardSetupState.READY) "Try your keyboard" else if (ime.enabled) "Choose keyboard" else "Enable Lowkey") }
             }
         }
-        Spacer(Modifier.height(8.dp))
-        LinkRow("Diagnostics", "Voice session log and audio input") { navigate(Destination.DIAGNOSTICS) }
-        LinkRow("About and licenses", "Privacy, references, and licenses") { navigate(Destination.ABOUT) }
-    }
-}
-
-@Composable
-private fun StepRow(
-    number: Int,
-    title: String,
-    status: String,
-    done: Boolean,
-    action: String,
-    actionEnabled: Boolean = true,
-    onAction: () -> Unit,
-) {
-    Row(
-        Modifier.fillMaxWidth().semantics(mergeDescendants = false) {
-            contentDescription = "Step $number, $title, ${if (done) "done" else "not done"}"
-        },
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            Modifier
-                .size(28.dp)
-                .background(
-                    if (done) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.surfaceVariant,
-                    CircleShape,
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (done) {
-                Icon(SlimIcons.Check, "Done", tint = MaterialTheme.colorScheme.onSecondary, modifier = Modifier.size(18.dp))
-            } else {
-                Text("$number", style = MaterialTheme.typography.labelLarge)
+        if (onboarding) {
+            Column(Modifier.padding(horizontal = 20.dp)) {
+                SetupStep("1", "Enable Lowkey", "Add Lowkey in Android's keyboard settings.", ime.enabled, "Open settings") {
+                    SystemImeStatus.openInputMethodSettings(context)
+                }
+                HorizontalDivider(Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                SetupStep("2", "Choose Lowkey", "Select it as your current keyboard.", ime.selected, "Choose keyboard", ime.enabled) {
+                    SystemImeStatus.showPicker(context)
+                }
+                Spacer(Modifier.height(12.dp))
+                TextButton(onClick = onSkipSetup) { Text("Set up later") }
+                Text("Android shows a warning for all keyboard apps. Lowkey processes typing on your device.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+        } else {
+            SectionTitle("Make it yours")
+            LinkRow("Languages & layouts", "${AppGraph.currentKeyboard(settings).fullLabel} · opens in Settings") { navigate(Destination.LANGUAGES) }
+            LinkRow("Voice", models.activeModel?.name ?: "Not set up · optional") { navigate(Destination.MODELS) }
+            Note("Typing and speech are processed on your device. Models, keyboard languages and updates use an internet connection.", Modifier.padding(top = 20.dp))
         }
-        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f, fill = false))
-            }
-            Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        if (!done) {
-            FilledTonalButton(onClick = onAction, enabled = actionEnabled) { Text(action) }
+        if (settings.recentScreenshots && photos.access != PhotoAccess.ALL) {
+            PhotoAccessCard(photos, { AppGraph.settings.update { it.copy(recentScreenshots = false) } },
+                Modifier.padding(horizontal = 20.dp, vertical = 16.dp))
         }
     }
 }
 
 @Composable
-private fun InfoCard(title: String, value: String, modifier: Modifier, onClick: () -> Unit) {
-    androidx.compose.material3.Card(
-        onClick = onClick,
-        modifier = modifier,
-        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-    ) {
-        Column(Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Spacer(Modifier.height(4.dp))
-            Text(value, style = MaterialTheme.typography.titleSmall, maxLines = 1)
-        }
+private fun SetupStep(number: String, title: String, text: String, done: Boolean, action: String, enabled: Boolean = true, onClick: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(if (done) "$title · Done" else "$number. $title", style = MaterialTheme.typography.titleMedium)
+        Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (!done) FilledTonalButton(onClick = onClick, enabled = enabled) { Text(action) }
     }
 }

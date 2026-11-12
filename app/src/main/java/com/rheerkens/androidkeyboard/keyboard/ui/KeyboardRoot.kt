@@ -5,15 +5,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.union
-import androidx.compose.foundation.layout.captionBar
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
@@ -21,7 +16,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import com.rheerkens.androidkeyboard.keyboard.KeyboardLayout
 import com.rheerkens.androidkeyboard.keyboard.KeyboardState
@@ -61,9 +55,22 @@ data class KeyboardUiState(
     val fan: FanSpec = FanSpec(action = null, newLine = false),
     /** What a Backspace slide into the editor points at; null when not aiming. */
     val wordAim: WordAim? = null,
-    /** The keyboard chooser (long-press Space), shown in place of the keys; null when closed. */
-    val keyboardChoices: KeyboardChoices? = null,
-)
+    val placement: com.rheerkens.androidkeyboard.keyboard.KeyboardPlacement = com.rheerkens.androidkeyboard.keyboard.KeyboardPlacement(rowHeight = rowHeightDp.toFloat()),
+    val profile: com.rheerkens.androidkeyboard.keyboard.PlacementProfile = com.rheerkens.androidkeyboard.keyboard.PlacementProfile.COMPACT_PORTRAIT,
+    val viewportWidthDp: Float = 360f,
+    val viewportHeightDp: Float = 700f,
+    val resizeOnOpen: Boolean = false,
+    val toolsOpen: Boolean = false,
+    val splitGapDp: Float = 0f,
+    val contentWidthDp: Float = 360f,
+    val numberRow: Boolean = false,
+    val emojiOpen: Boolean = false,
+    val emojiCatalog: com.rheerkens.androidkeyboard.keyboard.EmojiCatalog? = null,
+    val recentEmoji: List<String> = emptyList(),
+) {
+    /** Keep panel height stable when switching to the existing four-row symbol layouts. */
+    val keyRows: Int get() = if (numberRow) 5 else 4
+}
 
 /**
  * Concept 4 keyboard: a 44 dp top line (book, three suggestions, toggle) above four key rows,
@@ -74,17 +81,20 @@ data class KeyboardUiState(
  * the same spot.
  */
 @Composable
-fun KeyboardRoot(state: KeyboardUiState, clock: () -> Long, actions: KeyboardActions) {
+internal fun KeyboardContent(
+    state: KeyboardUiState,
+    clock: () -> Long,
+    actions: KeyboardActions,
+    /** False when the placement frame already paints the background (and any image) behind it. */
+    drawBackground: Boolean = true,
+) {
     val colors = state.colors
     CompositionLocalProvider(LocalKeyboardColors provides colors, LocalWordAim provides state.wordAim) {
         Box {
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .keyboardBackground(colors, state.background)
-                    // Stay clear of the gesture handle and, where the system still draws one, the IME
-                    // navigation bar (back / keyboard-switcher buttons, reported as a caption bar).
-                    .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.captionBar)),
+                    .then(if (drawBackground) Modifier.keyboardBackground(colors, state.background) else Modifier),
             ) {
                 Box(Modifier.fillMaxWidth().height(1.dp).background(colors.divider))
                 if (state.minimized) {
@@ -92,26 +102,25 @@ fun KeyboardRoot(state: KeyboardUiState, clock: () -> Long, actions: KeyboardAct
                 } else if (state.mode == InputMode.KEYS) {
                     Row(Modifier.fillMaxWidth().height(44.dp), verticalAlignment = Alignment.CenterVertically) {
                         StripIconButton(SlimIcons.ChevronDown, "Minimize keyboard") { actions.onSetMinimized(true) }
-                        StripIconButton(SlimIcons.Book, "Personal dictionary", onTap = actions::onOpenDictionary)
+                        StripIconButton(SlimIcons.Tools, "Keyboard tools", onTap = actions::onOpenTools)
                         SuggestionStrip(state.strip, state.clipHistory, state.inputSession, actions)
                         ModeToggle(state.mode, actions)
                     }
-                    val choices = state.keyboardChoices
-                    if (choices != null) {
-                        // Grow upward to show every enabled keyboard, up to about half the screen.
-                        val keysHeight = 4 * state.rowHeightDp + 4
-                        val cap = maxOf(keysHeight, (LocalConfiguration.current.screenHeightDp * 0.55f).toInt())
-                        KeyboardChooser(choices, chooserHeightDp(choices.keyboards.size).coerceIn(keysHeight, cap).dp, actions)
+                    if (state.toolsOpen) {
+                        KeyboardTools(state, actions)
+                    } else if (state.emojiOpen) {
+                        EmojiPanel(state.emojiCatalog, state.recentEmoji,
+                            (state.keyRows * state.rowHeightDp + 4).dp, actions)
                     } else {
-                        KeysPanel(state.layout, state.keyboard, state.rowHeightDp, state.enterKind, actions)
+                        KeysPanel(state.layout, state.keyboard, state.rowHeightDp, state.enterKind, actions, state.splitGapDp, state.keyRows)
                     }
                 } else {
                     if (state.pickerOpen) {
-                        val keysHeight = 44 + 4 * state.rowHeightDp + 4 // strip + rows + bottom padding
+                        val keysHeight = 44 + state.keyRows * state.rowHeightDp + 4 // strip + rows + bottom padding
                         ModelPicker(state.models, (keysHeight - VOICE_ROW_DP).dp, actions)
                     }
                     Row(Modifier.fillMaxWidth().height(VOICE_ROW_DP.dp), verticalAlignment = Alignment.CenterVertically) {
-                        VoiceRow(state.voice, state.models, state.pickerOpen, clock, actions)
+                        VoiceRow(state.voice, state.models, state.pickerOpen, clock, actions, (state.contentWidthDp - 160f).coerceIn(60f, 200f).dp)
                         ModeToggle(state.mode, actions)
                     }
                 }

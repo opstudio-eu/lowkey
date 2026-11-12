@@ -7,6 +7,8 @@ data class Suggestion(
     val isLiteral: Boolean = false,
     /** Characters before the cursor this replaces (a saved multi-word term); 0 = the current word. */
     val replaceChars: Int = 0,
+    /** Non-null only for a catalog-backed emoji that requires an explicit tap. */
+    val emojiName: String? = null,
 )
 
 /**
@@ -16,7 +18,9 @@ data class Suggestion(
  * [lexicon] is a provider so the word list can load in the background; [keys] are the letter
  * keys typed on, whose neighbours count as likely slips.
  */
-class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = KeyGrid.QWERTY) {
+class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = KeyGrid.QWERTY,
+    private val secondaryLexicons: () -> List<Lexicon> = { emptyList() },
+    private val dictionariesReady: Boolean = true) {
     /** A suggester over a fixed word list, most frequent first (tests and fallbacks). */
     constructor(words: List<String>) : this(constant(Lexicon.fromWords(words)))
 
@@ -44,17 +48,17 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
         newestFirst.filter { term ->
             term.text.split(' ').drop(1).any { it.lowercase().startsWith(lower) }
         }.forEach { add(Suggestion(it.text, isPersonal = true)) }
-        val lex = lexicon()
-        val completions = lex.completions(typed, limit * 2)
-        val corrections = if (Corrector.looksLikeAWord(typed) && !lex.contains(typed)) {
-            listOfNotNull(lex.whitelist[lower]) + Corrector.corrections(typed, lex, limit, keys).map { it.word }
-        } else {
-            emptyList()
-        }
+        val lexicons = listOf(lexicon()) + secondaryLexicons()
+        val completions = interleave(lexicons.map { lex -> lex.completions(typed, limit * 2).map { it.first } })
+        val corrections = if (Corrector.looksLikeAWord(typed) && lexicons.none { it.contains(typed) }) {
+            interleave(lexicons.map { lex ->
+                listOfNotNull(lex.whitelist[lower]) + Corrector.corrections(typed, lex, limit, keys).map { it.word }
+            })
+        } else emptyList()
         // 4. If the letters start real words, complete them first ("Kot" → "Kotlin"); otherwise
         //    it's likely a typo, so spelling corrections come first ("recieve" → "receive").
         if (completions.isNotEmpty()) {
-            completions.forEach { (word, _) -> add(Suggestion(matchCase(typed, word))) }
+            completions.forEach { word -> add(Suggestion(matchCase(typed, word))) }
             corrections.forEach { add(Suggestion(matchCase(typed, it))) }
         } else {
             corrections.forEach { add(Suggestion(matchCase(typed, it))) }
@@ -72,7 +76,12 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
     fun autocorrection(word: String, terms: List<PersonalTerm>, atSentenceStart: Boolean = true): String? {
         if (terms.any { it.text == word }) return null
         terms.firstOrNull { it.text.equals(word, ignoreCase = true) }?.let { return it.text }
+        // Missing words in a temporary fallback list must not look like foreign-language typos.
+        if (!dictionariesReady) return null
         val lex = lexicon()
+        val secondary = secondaryLexicons()
+        // A valid word in another participating language is not a typo in this one.
+        if (secondary.any { it.contains(word) }) return null
         if (Corrector.looksLikeAWord(word) && word.length >= 4 && !lex.contains(word)) {
             terms.filter { ' ' !in it.text }
                 .map { it.text to Corrector.distance(word.lowercase(), it.text.lowercase(), 1.0, keys, lex.folding) }
@@ -80,7 +89,13 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
                 .minByOrNull { it.second }
                 ?.let { return it.first }
         }
-        return Corrector.autocorrect(word, lex, atSentenceStart, keys)
+        val primaryFix = Corrector.autocorrect(word, lex, atSentenceStart, keys)
+        // Preserve language-specific casing/accent rules for known words in the active language.
+        if (lex.contains(word)) return primaryFix
+        val fixes = (listOfNotNull(primaryFix) + secondary.mapNotNull {
+            Corrector.autocorrect(word, it, atSentenceStart, keys)
+        }).distinct()
+        return fixes.singleOrNull()
     }
 
     /**
@@ -101,6 +116,13 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
     }
 
     companion object {
+        /** Compare rank within each dictionary; raw frequencies across languages aren't comparable. */
+        private fun interleave(lists: List<List<String>>): List<String> = buildList {
+            for (rank in 0 until (lists.maxOfOrNull { it.size } ?: 0)) {
+                lists.forEach { it.getOrNull(rank)?.let(::add) }
+            }
+        }
+
         private fun constant(lexicon: Lexicon): () -> Lexicon = { lexicon }
 
         /**
@@ -108,18 +130,22 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
          * Space will insert: the [autocorrect] replacement (typed word on the left), or else the
          * typed word itself (best candidate on the left, next on the right).
          */
-        fun arrangeForStrip(typed: String, ranked: List<Suggestion>, autocorrect: Suggestion? = null): List<Suggestion?> {
+        fun arrangeForStrip(typed: String, ranked: List<Suggestion>, autocorrect: Suggestion? = null,
+            emoji: Suggestion? = null): List<Suggestion?> {
             if (typed.isEmpty()) {
                 return listOf(ranked.getOrNull(1), ranked.getOrNull(0), ranked.getOrNull(2))
             }
             val literal = Suggestion(typed, isLiteral = true)
             val others = ranked.filterNot { it.text == typed }
-            if (autocorrect == null) {
+            val slots = if (autocorrect == null) {
                 // Space keeps the typed word, so it sits in the middle; candidates go left and right.
-                return listOf(others.getOrNull(0), literal, others.getOrNull(1))
+                listOf(others.getOrNull(0), literal, others.getOrNull(1))
+            } else {
+                val best = if (autocorrect.replaceChars > 0) autocorrect else others.firstOrNull { it.text == autocorrect.text } ?: autocorrect
+                listOf(literal, best, others.firstOrNull { it.text != best.text })
             }
-            val best = if (autocorrect.replaceChars > 0) autocorrect else others.firstOrNull { it.text == autocorrect.text } ?: autocorrect
-            return listOf(literal, best, others.firstOrNull { it.text != best.text })
+            // Preserve the Space slot and saved-term priority; emoji are optional side suggestions.
+            return if (emoji?.emojiName != null && slots[2]?.isPersonal != true) slots.take(2) + emoji else slots
         }
 
         fun matchCase(typed: String, word: String): String = when {

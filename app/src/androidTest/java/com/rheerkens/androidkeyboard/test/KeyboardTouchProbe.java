@@ -8,6 +8,9 @@ import android.os.Bundle;
 import android.os.SystemClock;
 import android.view.InputDevice;
 import android.view.MotionEvent;
+import android.view.inputmethod.InputMethodInfo;
+import android.view.inputmethod.InputMethodManager;
+import android.view.inputmethod.InputMethodSubtype;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
 import android.accessibilityservice.AccessibilityServiceInfo;
@@ -22,6 +25,7 @@ public final class KeyboardTouchProbe extends Instrumentation {
     @Override public void onStart() {
         Bundle result = new Bundle();
         try {
+            if (arguments.getString("probe", "burst").equals("registration")) { registration(result); return; }
             if (arguments.getString("probe", "burst").equals("correction")) { correctionBudget(result); return; }
             if (arguments.getString("probe", "burst").equals("blur")) { blur(result); return; }
             ui = getUiAutomation();
@@ -88,6 +92,25 @@ public final class KeyboardTouchProbe extends Instrumentation {
             result.putString("stream", "FAIL: "+e+"\n"); finish(1, result);
         }
     }
+    /** Query Android's parsed registration, not the XML source: disabled languages must not be advertised. */
+    @SuppressWarnings("deprecation")
+    private void registration(Bundle result) {
+        InputMethodManager manager = getTargetContext().getSystemService(InputMethodManager.class);
+        InputMethodInfo ours = manager.getInputMethodList().stream()
+            .filter(info -> info.getPackageName().equals(getTargetContext().getPackageName()))
+            .findFirst().orElseThrow(() -> new AssertionError("Lowkey is not registered as an input method"));
+        if (ours.getSubtypeCount() != 1) throw new AssertionError("Expected one unified Lowkey entry, found " + ours.getSubtypeCount());
+        InputMethodSubtype subtype = ours.getSubtypeAt(0);
+        if (!subtype.getLocale().isEmpty() || !subtype.getLanguageTag().isEmpty())
+            throw new AssertionError("Android must not advertise a fixed Lowkey language");
+        if (!"keyboard".equals(subtype.getMode())) throw new AssertionError("Lowkey must remain a keyboard input method");
+        List<InputMethodSubtype> enabled = manager.getEnabledInputMethodSubtypeList(ours, true);
+        if (enabled.size() != 1 || !enabled.get(0).equals(subtype))
+            throw new AssertionError("Android's enabled entries differ from the unified registration");
+        result.putString("stream", "probe=registration PASS: Android exposes one language-neutral Lowkey keyboard entry\n");
+        finish(0, result);
+    }
+
     private void clipboard(Bundle result) throws Exception {
         // Starting instrumentation force-stops the IME package. Its own activity clears that
         // stopped state before an editor in another app can bind the keyboard service again.
@@ -450,7 +473,7 @@ public final class KeyboardTouchProbe extends Instrumentation {
     private android.graphics.Bitmap blurred(android.graphics.Bitmap source, android.graphics.RectF box) {
         List<com.rheerkens.androidkeyboard.editor.Mark> marks = new ArrayList<>();
         marks.add(new com.rheerkens.androidkeyboard.editor.Mark.Shape(com.rheerkens.androidkeyboard.editor.ShapeKind.RECTANGLE,
-            box.left, box.top, box.right, box.bottom, com.rheerkens.androidkeyboard.editor.ImageMarkupKt.BLUR, 8f, true));
+            box.left, box.top, box.right, box.bottom, com.rheerkens.androidkeyboard.editor.ImageMarkupKt.BLUR, 8f, true, 0f));
         return com.rheerkens.androidkeyboard.editor.ImageMarkupKt.renderEdit(source, marks,
             new android.graphics.RectF(0, 0, source.getWidth(), source.getHeight()));
     }

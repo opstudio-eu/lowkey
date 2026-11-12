@@ -3,6 +3,11 @@
 Status of the custom theme, advanced colours and background image on real Android builds.
 Plan: [2026-11-12-custom-keyboard-theme.md](2026-11-12-custom-keyboard-theme.md).
 
+Everything except the addendum was verified on the branch **before** it was merged with the new
+placement, emoji and settings work from `main` (Lowkey 0.8.2). Those results do not cover the
+resizable, one-handed, split or floating keyboard, the emoji panel, the tools menu or the new settings
+pages; see [Addendum: after merging main](#addendum-after-merging-main).
+
 ## Setup
 
 - Debug build of this branch installed under a separate test application ID, so existing
@@ -100,5 +105,40 @@ then listed it (1.0:1).
 
 ## Checks
 
-`./gradlew testDebugUnitTest` (374 tests, none failing or skipped), `assembleDebug`, `lintDebug`
+Before the merge with `main`: `./gradlew testDebugUnitTest` (374 tests, none failing or skipped), `assembleDebug`, `lintDebug`
 and the leak check pass.
+
+## Addendum: after merging main
+
+The branch was merged with `main` at Lowkey 0.8.2 (resizable and floating placement, one-handed and
+split layouts, emoji panel, number row, tools menu, page-based settings). Integration choices:
+
+- The placement frame and the keyboard content both draw with the resolved palette from
+  `KeyboardUiState.colors`; nothing in the new wrappers picks the standard light or dark palette.
+- Docked, the frame paints the background colour and image once, across its full width and under
+  the navigation bar; the keyboard content then draws no background of its own, so the image is not
+  cropped twice or covered. Floating, only the floating panel (with its drag handle) is painted and
+  the area around it stays transparent.
+- Unselected emoji category tabs are transparent, like suggestion chips, so an image shows through.
+- The navigation bar style comes from `keyboardNavigationBarStyle`: docked, as before the merge;
+  floating, the bar is transparent and the icons follow the keyboard colour, since no image is under
+  the bar.
+- Keyboard theme opens from **Settings → Appearance**, and Back returns there.
+
+Device checks after the merge (Android 15 emulator, separate test application ID, saved custom theme
+with a dark wine background and three advanced colours):
+
+| Check | Result |
+| --- | --- |
+| Settings → Appearance summary and Keyboard theme link; Back from the theme page | Device: summary says custom keyboard colours, link opens the page, Back returns to Appearance |
+| Theme page with the new radio rows; edit, Save | Device: preview follows the draft; Save stores it and disables Save and Cancel |
+| Docked keyboard with the custom colours | Device: keys, strip and the area under the navigation bar use the custom colours; light navigation icons |
+| Emoji panel | Device: custom background, keys and selected tab; other tabs transparent |
+| Tools menu | Device: tiles use the custom key colours |
+| Floating keyboard, colour and with image | Device: panel and drag handle painted, one image across both; the app shows around it; transparent navigation bar |
+| One-handed docked keyboard with image | Device: one image across keys, side controls and navigation area; no opaque band |
+| Split layout | Not checked: offered only on wide screens |
+| Android 14 (navigation bar painted by the window) and Android 16 | Not checked after the merge; memory on the emulator host allowed one emulator. Covered by unit tests of the navigation bar style only |
+
+After the merge: `./gradlew testDebugUnitTest` (459 tests, none failing or skipped), `assembleDebug`
+and `lintDebug` (no new warnings) pass.

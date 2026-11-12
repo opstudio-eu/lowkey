@@ -61,3 +61,28 @@ fun navigationBarLightIcons(background: Color, image: LuminanceRange?, edgeToEdg
     }
     return worstContrast(Color.White, image) > worstContrast(Color.Black, image)
 }
+
+/** How the input method window styles the navigation bar under the keyboard. */
+data class NavigationBarStyle(
+    val lightIcons: Boolean,
+    /** Painted behind the bar before Android 15; transparent while the keyboard floats. */
+    val color: Color,
+)
+
+/**
+ * The navigation bar style for a keyboard drawn in [background], with an optional background image
+ * judged by [image]. A floating keyboard leaves the bar to the app behind it: the bar stays
+ * transparent and no image is under it, so only the keyboard colour guides the icons, as the
+ * standard theme does with its light or dark background.
+ */
+fun keyboardNavigationBarStyle(
+    background: Color,
+    image: LuminanceRange?,
+    floating: Boolean,
+    edgeToEdge: Boolean,
+): NavigationBarStyle =
+    if (floating) {
+        NavigationBarStyle(navigationBarLightIcons(background, null, edgeToEdge), Color.Transparent)
+    } else {
+        NavigationBarStyle(navigationBarLightIcons(background, image, edgeToEdge), background)
+    }

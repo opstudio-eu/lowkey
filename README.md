@@ -7,8 +7,8 @@ Lowkey is a slim Android keyboard with on-device voice typing. Speech recognitio
 ## Install
 
 1. Download and open the APK. Allow your browser to install apps when Android asks.
-2. Open **Lowkey** and follow the setup steps to enable the keyboard and allow microphone access.
-3. Download a speech model in **Models** to use voice typing offline.
+2. Open **Lowkey** and follow the setup steps to enable and choose the keyboard. Voice setup is optional.
+3. Open **Voice**, allow microphone access and download a speech model to use voice typing offline.
 
 Lowkey is a personal project, available as source and signed APKs. It is not on the Play Store.
 
@@ -17,9 +17,11 @@ The app checks for updates automatically. Use **Settings → Updates → Check n
 ## Features
 
 - Voice typing with downloadable English and multilingual speech models.
-- Suggestions and autocorrect in English, with Dutch, Polish and 18 more languages to download, plus a personal dictionary for saved terms and dictation casing.
+- Suggestions and autocorrect across up to three enabled, installed keyboard languages, with English bundled and Dutch, Polish and 18 more languages to download, plus a personal dictionary for saved terms and dictation casing.
 - Each language's own layout (such as German QWERTZ with Ü, Ö and Ä, or Russian ЙЦУКЕН), plus QWERTY, AZERTY, QWERTZ, Dvorak, and Colemak, with long-press numbers and accents.
 - A minimized keyboard for voice input or use with a physical keyboard, and gestures for deleting words.
+- Direct resizing and positioning, one-handed and floating modes, a split keyboard for wider screens, and an optional number row.
+- An offline emoji panel with categories, skin-tone variants, and recent choices, plus tap-to-insert emoji suggestions for English and Dutch words.
 - Clipboard history for text and images, with previews and an image editor for cropping, annotation, and blur.
 - A built-in test field to try the keyboard without leaving settings.
 - Light and dark themes in OpStudio's colours, following the system by default, plus an optional custom keyboard theme: your own colours for every part of the keyboard and an optional background photo, with a live preview and contrast checks.

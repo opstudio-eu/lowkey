@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import com.rheerkens.androidkeyboard.keyboard.ui.KeyboardActions
 import com.rheerkens.androidkeyboard.keyboard.ui.LocalKeyboardColors
@@ -66,10 +67,11 @@ fun RowScope.VoiceRow(
     pickerOpen: Boolean,
     clock: () -> Long,
     actions: KeyboardActions,
+    modelWidth: Dp = 200.dp,
 ) {
     val c = LocalKeyboardColors.current
     Spacer(Modifier.width(8.dp))
-    ModelPill(models, pickerOpen, actions)
+    ModelPill(models, pickerOpen, actions, modelWidth)
     // Status area. While the picker is open it is "outside the list": a tap closes the picker.
     Box(
         Modifier
@@ -130,7 +132,7 @@ fun RowScope.VoiceRow(
 
 /** `● Whisper base ⌄`: a compact pill like T3 Code's composer model selector. */
 @Composable
-private fun ModelPill(models: ModelStoreState, open: Boolean, actions: KeyboardActions) {
+private fun ModelPill(models: ModelStoreState, open: Boolean, actions: KeyboardActions, maxWidth: Dp) {
     val c = LocalKeyboardColors.current
     val model = models.activeModel
     val settings by AppGraph.settings.settings.collectAsState()
@@ -143,7 +145,7 @@ private fun ModelPill(models: ModelStoreState, open: Boolean, actions: KeyboardA
     }
     PressTarget(
         if (open) "Close model picker" else "Voice model: $label. Change model",
-        Modifier.fillMaxHeight().widthIn(max = 200.dp),
+        Modifier.fillMaxHeight().widthIn(max = maxWidth),
         onTap = actions::onTogglePicker,
     ) { pressed ->
         Row(

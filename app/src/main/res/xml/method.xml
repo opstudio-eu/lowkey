@@ -2,14 +2,10 @@
 <input-method xmlns:android="http://schemas.android.com/apk/res/android"
     android:settingsActivity="com.rheerkens.androidkeyboard.companion.MainActivity"
     android:supportsSwitchingToNextInputMethod="true">
+    <!-- Languages and layouts are managed by Lowkey. Fixed language subtypes would remain in
+         Android's picker after being turned off in the app, and do not select our stored layout. -->
     <subtype
-        android:imeSubtypeLocale="en_US"
         android:imeSubtypeMode="keyboard"
-        android:label="@string/subtype_label"
-        android:languageTag="en-US" />
-    <subtype
-        android:imeSubtypeLocale="nl_NL"
-        android:imeSubtypeMode="keyboard"
-        android:label="@string/subtype_label"
-        android:languageTag="nl-NL" />
+        android:subtypeId="0x4c4f574b"
+        android:overridesImplicitlyEnabledSubtype="true" />
 </input-method>

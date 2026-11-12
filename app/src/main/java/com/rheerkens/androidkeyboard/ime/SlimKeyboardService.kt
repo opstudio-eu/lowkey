@@ -7,6 +7,8 @@ import android.content.res.Configuration
 import android.database.ContentObserver
 import android.graphics.Bitmap
 import android.graphics.RectF
+import android.graphics.Rect
+import android.view.WindowManager
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
@@ -29,7 +31,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.ComposeView
 import com.rheerkens.androidkeyboard.AppGraph
@@ -55,17 +56,18 @@ import com.rheerkens.androidkeyboard.keyboard.FanCommand
 import com.rheerkens.androidkeyboard.keyboard.Key
 import com.rheerkens.androidkeyboard.keyboard.KeyboardController
 import com.rheerkens.androidkeyboard.keyboard.Layer
+import com.rheerkens.androidkeyboard.keyboard.EmojiSuggestions
 import com.rheerkens.androidkeyboard.keyboard.Layouts
 import com.rheerkens.androidkeyboard.keyboard.ui.ClipChip
 import com.rheerkens.androidkeyboard.keyboard.ui.EnterKind
 import com.rheerkens.androidkeyboard.keyboard.ui.FanSpec
 import com.rheerkens.androidkeyboard.keyboard.ui.KeyboardActions
-import com.rheerkens.androidkeyboard.keyboard.ui.KeyboardChoices
 import com.rheerkens.androidkeyboard.keyboard.ui.KeyboardRoot
 import com.rheerkens.androidkeyboard.keyboard.ui.KeyboardUiState
 import com.rheerkens.androidkeyboard.keyboard.ui.resolveKeyboardColors
 import com.rheerkens.androidkeyboard.keyboard.ui.KeyboardBackgroundImage
-import com.rheerkens.androidkeyboard.keyboard.ui.navigationBarLightIcons
+import com.rheerkens.androidkeyboard.keyboard.ui.NavigationBarStyle
+import com.rheerkens.androidkeyboard.keyboard.ui.keyboardNavigationBarStyle
 import com.rheerkens.androidkeyboard.settings.LoadedBackground
 import com.rheerkens.androidkeyboard.keyboard.ui.StripNote
 import com.rheerkens.androidkeyboard.keyboard.ui.StripState
@@ -73,7 +75,6 @@ import com.rheerkens.androidkeyboard.keyboard.ui.WordAim
 import com.rheerkens.androidkeyboard.keyboard.wordsFrom
 import com.rheerkens.androidkeyboard.settings.InputMode
 import com.rheerkens.androidkeyboard.settings.Settings
-import com.rheerkens.androidkeyboard.keyboard.TypingKeyboard
 import com.rheerkens.androidkeyboard.voice.CancelReason
 import com.rheerkens.androidkeyboard.voice.VoiceConfig
 import com.rheerkens.androidkeyboard.voice.VoiceNotes
@@ -96,6 +97,11 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import com.rheerkens.androidkeyboard.keyboard.KeyboardPlacement
+import com.rheerkens.androidkeyboard.keyboard.EmojiCatalog
+import com.rheerkens.androidkeyboard.keyboard.EmojiHistory
+import com.rheerkens.androidkeyboard.keyboard.PlacementProfile
+import com.rheerkens.androidkeyboard.keyboard.PlacementMode
 
 /**
  * Slim Keyboard input method: keys mode with suggestions, and a one-row voice mode with an
@@ -116,8 +122,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     private val strip = MutableStateFlow(StripState())
     private val enterKind = MutableStateFlow(EnterKind.NEWLINE)
     private val pickerOpen = MutableStateFlow(false)
-    /** The keyboard chooser (long-press Space) is open, in keys mode. */
-    private val chooserOpen = MutableStateFlow(false)
+    private val emojiOpen = MutableStateFlow(false)
+    private val emojiCatalog = MutableStateFlow<EmojiCatalog?>(null)
     private var backspaceTarget: EditorBridge.Target? = null
     /** An active hold-and-slide Backspace, how much of its text before the cursor is in the field, and its level. */
     private var scrub: BackspaceScrub? = null
@@ -143,6 +149,11 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     private var selStart = -1
     private var selEnd = -1
     private var composeView: View? = null
+    private var placementBounds: Rect? = null
+    private var floatingPlacement = false
+    private var layoutBackHandler: (() -> Boolean)? = null
+    private var layoutBackCallback: Any? = null
+    private var resizeOnOpen = false
     private var lastOwnEditAt = 0L
     private var stripJob: Job? = null
     private lateinit var clipboardManager: ClipboardManager
@@ -182,7 +193,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
 
     /** What an autocorrection depends on: the word, the keyboard (language and layout), and sentence position. */
     /** [lexiconLoad] tells a result computed on a fallback list from one on the full list. */
-    private data class CorrectionKey(val word: String, val keyboard: String, val atSentenceStart: Boolean, val lexiconLoad: Int)
+    private data class CorrectionKey(val word: String, val keyboard: String, val atSentenceStart: Boolean,
+        val lexiconLoad: Int, val languages: List<String>)
     private data class CachedCorrection(val key: CorrectionKey, val fix: String?)
 
     /** Autocorrection computed with the latest suggestions; a cached null is a valid answer. */
@@ -219,6 +231,16 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         recentShots.onEach { refreshClipChips() }.launchIn(scope)
         contentResolver.registerContentObserver(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, true, mediaObserver)
         keyboard = KeyboardController(AppGraph.currentKeyboard())
+        scope.launch {
+            emojiCatalog.value = withContext(Dispatchers.IO) {
+                runCatching {
+                    val paint = android.graphics.Paint()
+                    EmojiCatalog.parse(assets.open("emoji/emoji-test.txt").bufferedReader().use { it.readText() })
+                        .supported(paint::hasGlyph)
+                }.getOrElse { EmojiCatalog(emptyList()) }
+            }
+            if (inputViewActive && mode.value == InputMode.KEYS) refreshStrip()
+        }
         voice = VoiceSessionController(
             scope = scope,
             engine = AppGraph.speechEngine,
@@ -233,7 +255,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         physicalKeyboard.value = hasPhysicalKeyboard(resources.configuration)
         mode.value = initialMode()
         pickerOpen.onEach(::updatePickerBack).launchIn(scope)
-        chooserOpen.onEach(::updateChooserBack).launchIn(scope)
+        emojiOpen.onEach(::updateEmojiBack).launchIn(scope)
         // Refresh suggestions when the dictionary changes; readiness when models change.
         dictionary.state.drop(1).onEach { refreshStrip() }.launchIn(scope)
         // Follow keyboards changed in Settings while the keyboard is open (e.g. the current one
@@ -243,14 +265,18 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         AppGraph.lexiconLoads.drop(1).onEach {
             if (inputViewActive && mode.value == InputMode.KEYS) refreshStrip()
         }.launchIn(scope)
-        combine(settings.settings, AppGraph.languagePacks.state) { s, _ -> AppGraph.currentKeyboard(s).id }
+        combine(settings.settings, AppGraph.languagePacks.state) { s, _ ->
+            val current = AppGraph.currentKeyboard(s)
+            current.id to AppGraph.suggestionLanguages(current, s).map { it.id }
+        }
             .distinctUntilChanged().onEach {
             val current = AppGraph.currentKeyboard()
             if (keyboard.state.value.keyboard.id != current.id) {
                 keyboard.setKeyboard(current)
-                AppGraph.preloadLexicon(current.language)
-                if (inputViewActive && mode.value == InputMode.KEYS) refreshStrip()
             }
+            cachedCorrection = null
+            preloadLanguages()
+            if (inputViewActive && mode.value == InputMode.KEYS) refreshStrip()
         }.launchIn(scope)
         observedActiveId = AppGraph.models.state.value.activeId
         AppGraph.models.state.drop(1).onEach { s ->
@@ -279,7 +305,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                 val ek by enterKind.collectAsState()
                 val aim by wordAim.collectAsState()
                 val picker by pickerOpen.collectAsState()
-                val chooser by chooserOpen.collectAsState()
+                val emoji by emojiOpen.collectAsState()
+                val catalog by emojiCatalog.collectAsState()
                 val sensitive by sensitiveField.collectAsState()
                 val physical by physicalKeyboard.collectAsState()
                 val clips by clipChips.collectAsState()
@@ -299,20 +326,26 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                 val background = remember(image, custom?.dim) {
                     if (image != null && custom != null) KeyboardBackgroundImage(image.bitmap, custom.dim) else null
                 }
-                val lightNavIcons = remember(colors.background, custom, image) {
-                    navigationBarLightIcons(
+                val (viewportWidth, viewportHeight) = placementViewport()
+                val profile = PlacementProfile.forSize(viewportWidth, viewportHeight)
+                val placement = s.placement.get(profile)
+                val floating = placement.mode == PlacementMode.FLOATING
+                val navStyle = remember(colors.background, custom, image, floating) {
+                    keyboardNavigationBarStyle(
                         colors.background,
                         custom?.imageRange(image?.sample),
+                        floating = floating,
                         edgeToEdge = Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM,
                     )
                 }
-                // Keyed on the colour, not on light or dark: a custom background can change either way.
-                LaunchedEffect(colors.background, lightNavIcons) { styleNavigationBar(colors.background, lightNavIcons) }
+                // Keyed on the style, not on light or dark: a custom background can change either way,
+                // and a floating keyboard leaves the bar transparent.
+                LaunchedEffect(navStyle) { styleNavigationBar(navStyle) }
                 KeyboardRoot(
                     KeyboardUiState(
                         mode = m,
                         keyboard = kb,
-                        layout = Layouts.forLayer(kb.layer, kb.keyboard),
+                        layout = Layouts.forLayer(kb.layer, kb.keyboard, s.numberRow, s.bottomKey),
                         strip = st.copy(enabled = s.suggestionStrip && !sensitive),
                         voice = vs,
                         models = models,
@@ -321,17 +354,21 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                         rowHeightDp = s.keyboardHeight.rowHeightDp,
                         colors = colors,
                         background = background,
+                        numberRow = s.numberRow,
+                        emojiOpen = emoji && m == InputMode.KEYS,
+                        emojiCatalog = catalog,
+                        recentEmoji = if (sensitive) emptyList() else s.recentEmoji,
+                        placement = placement,
+                        profile = profile,
+                        viewportWidthDp = viewportWidth,
+                        viewportHeightDp = viewportHeight,
+                        resizeOnOpen = resizeOnOpen,
                         // Never hide a running dictation; it returns to keys (and the bar) when done.
                         minimized = isMinimized(s, physical, once) && m == InputMode.KEYS,
                         clipHistory = clips,
                         inputSession = session,
                         fan = fan,
                         wordAim = aim,
-                        keyboardChoices = if (chooser && m == InputMode.KEYS) {
-                            KeyboardChoices(AppGraph.usableKeyboards(s), kb.keyboard)
-                        } else {
-                            null
-                        },
                     ),
                     clock = System::currentTimeMillis,
                     actions = this,
@@ -341,6 +378,69 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onEvaluateFullscreenMode(): Boolean = false
+
+    private fun placementViewport(): Pair<Float, Float> {
+        val density = resources.displayMetrics.density
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val metrics = getSystemService(WindowManager::class.java).currentWindowMetrics
+            val insets = metrics.windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+            return (metrics.bounds.width() - insets.left - insets.right) / density to
+                (metrics.bounds.height() - insets.top - insets.bottom) / density
+        }
+        return resources.configuration.screenWidthDp.toFloat() to resources.configuration.screenHeightDp.toFloat()
+    }
+
+    override fun onComputeInsets(outInsets: Insets) {
+        super.onComputeInsets(outInsets)
+        val bounds = placementBounds ?: return
+        if (floatingPlacement) {
+            val bottom = window.window?.decorView?.height ?: bounds.bottom
+            outInsets.contentTopInsets = bottom
+            outInsets.visibleTopInsets = bottom
+            outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION
+            outInsets.touchableRegion.set(bounds)
+        } else {
+            outInsets.contentTopInsets = bounds.top
+            outInsets.visibleTopInsets = bounds.top
+            outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_CONTENT
+        }
+    }
+
+    override fun onPlacementBounds(left: Int, top: Int, right: Int, bottom: Int, floating: Boolean) {
+        val next = Rect(left, top, right, bottom)
+        if (placementBounds == next && floatingPlacement == floating) return
+        placementBounds = next
+        floatingPlacement = floating
+        composeView?.requestLayout()
+    }
+
+    override fun onSavePlacement(profile: PlacementProfile, placement: KeyboardPlacement) {
+        settings.update { it.copy(placement = it.placement.update(profile) { placement }) }
+    }
+
+    override fun onSetNumberRow(enabled: Boolean) {
+        settings.update { it.copy(numberRow = enabled) }
+    }
+
+    override fun onPrepareResize() {
+        voice.cancel(CancelReason.SWITCHED_TO_KEYS)
+        mode.value = InputMode.KEYS
+        pickerOpen.value = false
+        emojiOpen.value = false
+        keyboardOnce.value = true
+        keyboardOnceEditor = bridge.editorKey()
+    }
+
+    override fun onLayoutBackHandler(handler: (() -> Boolean)?) {
+        layoutBackHandler = handler
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val dispatcher = window.onBackInvokedDispatcher
+            (layoutBackCallback as? OnBackInvokedCallback)?.let(dispatcher::unregisterOnBackInvokedCallback)
+            layoutBackCallback = if (handler != null) OnBackInvokedCallback { handler() }.also {
+                dispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, it)
+            } else null
+        }
+    }
 
     /**
      * Android hides the on-screen keyboard while a physical keyboard is connected, unless the
@@ -388,22 +488,23 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
      * The navigation bar under the keyboard (gesture handle, or back and switcher buttons) takes its
      * icon colour from the input method's window, and before Android 15 also its background. Before
      * Android 15 the bar is painted in the keyboard's background colour; from Android 15 the keyboard,
-     * including any background image, shows through. [lightIcons] comes from
-     * [navigationBarLightIcons], which judges an image by its worst case, not an average.
+     * including any background image, shows through; a floating keyboard leaves the bar
+     * transparent. [style] comes from [keyboardNavigationBarStyle], which judges an image by its
+     * worst case, not an average.
      */
     @Suppress("DEPRECATION")
-    private fun styleNavigationBar(background: Color, lightIcons: Boolean) {
+    private fun styleNavigationBar(style: NavigationBarStyle) {
         val win = window.window ?: return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             val light = WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
-            win.insetsController?.setSystemBarsAppearance(if (lightIcons) 0 else light, light)
+            win.insetsController?.setSystemBarsAppearance(if (style.lightIcons) 0 else light, light)
         } else {
             val flag = View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
             val flags = win.decorView.systemUiVisibility
-            win.decorView.systemUiVisibility = if (lightIcons) flags and flag.inv() else flags or flag
+            win.decorView.systemUiVisibility = if (style.lightIcons) flags and flag.inv() else flags or flag
         }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-            win.navigationBarColor = background.toArgb()
+            win.navigationBarColor = style.color.toArgb()
         }
     }
 
@@ -459,8 +560,11 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         if (keyboardOnce.value && bridge.editorKey() != keyboardOnceEditor) keyboardOnce.value = false
         fanSpec.value = FanSpec(bridge.fanAction(), bridge.fanNewLine(), undoClear = lastClear != null)
         inputViewActive = true
+        emojiOpen.value = false
         sensitiveField.value = bridge.isSensitiveField
         refreshClipChips()
+        resizeOnOpen = info.privateImeOptions?.contains("lowkey.resize") == true
+        placementBounds = null
         inputSession.value++
         // A restart keeps the session only if it's still the same editor at the owned position;
         // otherwise (another field in the same view) the old capture must never write here.
@@ -483,7 +587,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         preloadLanguages()
         autoSpaced = false
         // The slim bar opens in keys mode without forgetting the remembered mode.
-        mode.value = if (isMinimized()) InputMode.KEYS else initialMode()
+        if (resizeOnOpen) onPrepareResize()
+        mode.value = if (resizeOnOpen || isMinimized()) InputMode.KEYS else initialMode()
         if (mode.value == InputMode.VOICE) {
             voice.clearOutcome()
             voice.refreshReadiness()
@@ -498,6 +603,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
+        onLayoutBackHandler(null)
         inputViewActive = false
         clipboardJob?.cancel()
         stripJob?.cancel()
@@ -506,7 +612,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         voice.cancel(if (finishingInput) CancelReason.EDITOR_CHANGED else CancelReason.KEYBOARD_HIDDEN)
         onBackspaceHoldEnded()
         pickerOpen.value = false
-        chooserOpen.value = false
+        emojiOpen.value = false
         clearPrompt()
         owner.onHide()
         super.onFinishInputView(finishingInput)
@@ -555,7 +661,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onKey(key: Key) {
-        chooserOpen.value = false
+        if (key !is Key.Emoji) emojiOpen.value = false
         clearPrompt()
         if (key !is Key.Shift && key !is Key.LayerSwitch) clearNote()
         // Any key other than Backspace accepts the last autocorrection (Space may set a new one).
@@ -572,6 +678,10 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                 settings.update { it.copy(currentKeyboard = next.id) }
                 preloadLanguages()
                 refreshStrip()
+            }
+            is Key.Emoji -> {
+                pickerOpen.value = false
+                emojiOpen.value = true
             }
             is Key.Space -> typeSpace()
             is Key.Enter -> {
@@ -598,7 +708,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             rejectedCorrections += undo.original.lowercase()
             showNote("Kept “${undo.original}”")
         } else {
-            bridge.deleteBackward()
+            bridge.deleteBackward(emojiCatalog.value?.suffixOf(bridge.textBeforeCursor(64)))
         }
         updateShift()
         refreshStrip()
@@ -861,34 +971,41 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onGlobeLongPress() {
-        chooserOpen.value = false
+        clearPrompt()
+        emojiOpen.value = false
         getSystemService(InputMethodManager::class.java).showInputMethodPicker()
     }
 
-    override fun onSpaceLongPress() {
+    override fun onSpaceLongPress() = onGlobeLongPress()
+
+    override fun onCloseEmoji() {
+        emojiOpen.value = false
+        keyboard.setLayer(Layer.LETTERS)
+    }
+
+    override fun onChooseEmoji(value: String) {
+        if (!inputViewActive || !emojiOpen.value || emojiCatalog.value?.find(value) == null) return
         clearPrompt()
-        chooserOpen.value = true
-    }
-
-    override fun onChooseKeyboard(keyboard: TypingKeyboard) {
-        chooserOpen.value = false
-        if (keyboard == this.keyboard.state.value.keyboard) return
-        this.keyboard.setKeyboard(keyboard)
-        settings.update { it.copy(currentKeyboard = keyboard.id) }
-        preloadLanguages()
-        refreshStrip()
-    }
-
-    override fun onCloseKeyboardChooser() {
-        chooserOpen.value = false
+        clearNote()
+        lastCorrection = null
+        typeChar(value)
+        if (!bridge.isSensitiveField) {
+            settings.update { it.copy(recentEmoji = EmojiHistory.record(it.recentEmoji, value)) }
+        }
     }
 
     override fun onOpenKeyboardSettings() {
-        chooserOpen.value = false
+        emojiOpen.value = false
         openCompanion(Destination.SETTINGS_KEYBOARDS)
     }
 
     override fun onSuggestion(suggestion: Suggestion) {
+        if (suggestion.emojiName != null) {
+            if (!inputViewActive || bridge.isSensitiveField || !settings.current.suggestionStrip) return
+            val available = EmojiSuggestions.suggest(bridge.currentWordBeforeCursor(),
+                AppGraph.suggestionLanguages(keyboard.state.value.keyboard).map { it.id }, emojiCatalog.value)
+            if (available != suggestion) return
+        }
         clearNote()
         lastCorrection = null
         markOwnEdit()
@@ -908,6 +1025,9 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             bridge.replaceCurrentWord(suggestion.text + " ")
         }
         autoSpaced = true
+        if (suggestion.emojiName != null) {
+            settings.update { it.copy(recentEmoji = EmojiHistory.record(it.recentEmoji, suggestion.text)) }
+        }
         keyboard.setLayer(Layer.LETTERS)
         keyboard.onCharTyped()
         updateShift()
@@ -1006,6 +1126,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onSuggestionLongPress(suggestion: Suggestion) {
+        if (suggestion.emojiName != null) return
         if (dictionary.contains(suggestion.text)) {
             showNote("“${suggestion.text}” is already in your dictionary")
         } else {
@@ -1028,7 +1149,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     override fun onToggleMode() {
         clearPrompt()
         pickerOpen.value = false
-        chooserOpen.value = false
+        emojiOpen.value = false
         if (mode.value == InputMode.KEYS) {
             if (bridge.isSensitiveField) {
                 showNote(SENSITIVE_NOTE, warn = true)
@@ -1051,7 +1172,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
 
     override fun onSetMinimized(minimized: Boolean) {
         keyboardOnce.value = false
-        chooserOpen.value = false
+        emojiOpen.value = false
         clearPrompt()
         clearNote()
         lastCorrection = null
@@ -1123,20 +1244,20 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
      * IME away without calling onKeyDown), so register a callback there; older versions use
      * the key events below.
      */
-    private var chooserBackCallback: Any? = null
+    private var emojiBackCallback: Any? = null
 
-    /** Back closes the keyboard chooser instead of the keyboard (Android 13+, like the model picker). */
-    private fun updateChooserBack(open: Boolean) {
+    /** Back closes emoji instead of the keyboard (Android 13+, like the model picker). */
+    private fun updateEmojiBack(open: Boolean) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
         val dispatcher = window.onBackInvokedDispatcher
-        val current = chooserBackCallback as OnBackInvokedCallback?
+        val current = emojiBackCallback as OnBackInvokedCallback?
         if (open && current == null) {
-            val cb = OnBackInvokedCallback { chooserOpen.value = false }
+            val cb = OnBackInvokedCallback { emojiOpen.value = false }
             dispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, cb)
-            chooserBackCallback = cb
+            emojiBackCallback = cb
         } else if (!open && current != null) {
             dispatcher.unregisterOnBackInvokedCallback(current)
-            chooserBackCallback = null
+            emojiBackCallback = null
         }
     }
 
@@ -1156,8 +1277,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         }
     }
 
-    /** Back closes the model picker or the keyboard chooser before it closes the keyboard. */
-    private fun backClosesPanel() = (pickerOpen.value || chooserOpen.value) && isInputViewShown
+    /** Back closes our panels before it closes the keyboard; Android owns its keyboard picker. */
+    private fun backClosesPanel() = (pickerOpen.value || emojiOpen.value || layoutBackHandler != null) && isInputViewShown
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         if (keyCode == KeyEvent.KEYCODE_BACK && backClosesPanel()) {
@@ -1170,8 +1291,9 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
         if (keyCode == KeyEvent.KEYCODE_BACK && backClosesPanel()) {
             if (!event.isCanceled) {
+                layoutBackHandler?.invoke()
                 pickerOpen.value = false
-                chooserOpen.value = false
+                emojiOpen.value = false
             }
             return true
         }
@@ -1249,7 +1371,13 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     private fun correctionKey(word: String): CorrectionKey? {
         if (word.isEmpty() || word.lowercase() in rejectedCorrections) return null
         if (!Corrector.isStandaloneWord(bridge.currentTokenBeforeCursor(), word)) return null
-        return CorrectionKey(word, keyboard.state.value.keyboard.id, bridge.wordStartsSentence(word.length), AppGraph.lexiconLoads.value)
+        return suggestionKey(word)
+    }
+
+    private fun suggestionKey(word: String): CorrectionKey {
+        val current = keyboard.state.value.keyboard
+        return CorrectionKey(word, current.id, bridge.wordStartsSentence(word.length), AppGraph.lexiconLoads.value,
+            AppGraph.suggestionLanguages(current).map { it.id })
     }
 
     /** The saved multi-word term to recase before the cursor, unless the user undid it here. */
@@ -1280,7 +1408,10 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         // Removing them here cancels a finger press even if the result is unchanged.
         strip.value = strip.value.copy(typingWord = true)
         val terms = dictionary.state.value.terms
+        val context = suggestionKey(typed)
         val suggester = suggester()
+        val session = inputSession.value
+        val emoji = EmojiSuggestions.suggest(typed, context.languages, emojiCatalog.value)
         val correcting = settings.current.autocorrect && !bridge.isSensitiveField
         // Space recases a saved multi-word term first (see typeSpace); show that in the middle.
         val phrase = if (correcting && typed.isNotEmpty()) savedPhrase(suggester, terms) else null
@@ -1291,10 +1422,10 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             val (ranked, fix) = withContext(Dispatchers.Default) {
                 suggester.suggest(typed, terms) to key?.let { suggester.autocorrection(typed, terms, it.atSentenceStart) }
             }
-            if (bridge.currentWordBeforeCursor() != typed) return@launch
+            if (inputSession.value != session || bridge.currentWordBeforeCursor() != typed || suggestionKey(typed) != context) return@launch
             if (key != null) cachedCorrection = CachedCorrection(key, fix)
             val middle = phrase?.let { Suggestion(it.second, isPersonal = true, replaceChars = it.first) } ?: fix?.let { Suggestion(it) }
-            strip.value = strip.value.copy(slots = Suggester.arrangeForStrip(typed, ranked, middle))
+            strip.value = strip.value.copy(slots = Suggester.arrangeForStrip(typed, ranked, middle, emoji))
         }
     }
 
@@ -1362,15 +1493,9 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
 
     private fun suggester() = AppGraph.suggester(keyboard.state.value.keyboard)
 
-    /**
-     * Loads the current keyboard's word list and the next one in the globe order, so the first
-     * word typed after a switch is already corrected (a list takes a second or more to load).
-     */
+    /** Load exactly the participating languages, within the full-lexicon memory budget. */
     private fun preloadLanguages() {
-        val current = keyboard.state.value.keyboard
-        AppGraph.preloadLexicon(current.language)
-        val order = AppGraph.usableKeyboards()
-        if (order.size > 1) AppGraph.preloadLexicon(order[(order.indexOfFirst { it.id == current.id } + 1) % order.size].language)
+        AppGraph.suggestionLanguages(keyboard.state.value.keyboard).forEach(AppGraph::preloadLexicon)
     }
 
     private fun showVoiceOutcomeNote(outcome: VoiceOutcome.Cancelled) =
