@@ -41,6 +41,11 @@ class PhotoAccessState internal constructor(private val context: Context) {
         deniedForever = screenshots.deniedForever(context as? Activity)
     }
 
+    internal fun onRequestResult() {
+        access = screenshots.access()
+        deniedForever = screenshots.deniedForeverAfterRequest(context as? Activity)
+    }
+
     /**
      * Asks for all photos so Recent screenshots can turn on: the system dialog, or app settings
      * when Android won't show the dialog again.
@@ -50,7 +55,6 @@ class PhotoAccessState internal constructor(private val context: Context) {
         if (deniedForever || launcher == null) {
             openAppSettings(context)
         } else {
-            screenshots.markRequested()
             launcher.launch(RecentScreenshots.REQUEST)
         }
     }
@@ -61,7 +65,7 @@ fun rememberPhotoAccess(): PhotoAccessState {
     val context = LocalContext.current
     val state = remember(context) { PhotoAccessState(context) }
     state.launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-        state.refresh()
+        state.onRequestResult()
         // Asking always means turning Recent screenshots on. Limited access keeps the setting on
         // too: Home and Settings then ask for all photos, and screenshots appear once allowed.
         AppGraph.settings.update { it.copy(recentScreenshots = state.access != PhotoAccess.NONE) }

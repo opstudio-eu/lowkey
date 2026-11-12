@@ -31,22 +31,21 @@ class RecentScreenshots(private val context: Context) {
 
     fun hasPermission(): Boolean = access() == PhotoAccess.ALL
 
-    /** Call before showing the photos dialog, so [deniedForever] can tell a first request from a refusal. */
-    fun markRequested() = prefs.edit { putBoolean(K_REQUESTED, true) }
+    /** True when Android won't show the photos dialog again, as far as the app can tell. */
+    fun deniedForever(activity: Activity?): Boolean = observeDenial(activity, afterRequest = false)
 
-    /**
-     * True when Android won't show the photos dialog again: asked before, still no access, and no
-     * rationale to show (which is also the state before the first request, hence [markRequested]).
-     * Any grant forgets the request, since a later revoke or Android's reset of an unused app's
-     * permissions can show the dialog again.
-     */
-    fun deniedForever(activity: Activity?): Boolean {
-        if (access() != PhotoAccess.NONE) {
-            if (prefs.contains(K_REQUESTED)) prefs.edit { remove(K_REQUESTED) }
-            return false
-        }
-        return activity != null && prefs.getBoolean(K_REQUESTED, false) &&
-            !ActivityCompat.shouldShowRequestPermissionRationale(activity, PERMISSION)
+    /** [deniedForever], called with the result of a photos request. */
+    fun deniedForeverAfterRequest(activity: Activity?): Boolean = observeDenial(activity, afterRequest = true)
+
+    /** Updates what the app knows about earlier refusals (kept across restarts); see [photoDenial]. */
+    private fun observeDenial(activity: Activity?, afterRequest: Boolean): Boolean {
+        if (activity == null) return false
+        val access = access()
+        val rationale = ActivityCompat.shouldShowRequestPermissionRationale(activity, PERMISSION)
+        val before = PhotoDenial(prefs.getBoolean(K_DENIED, false), prefs.getInt(K_UNANSWERED, 0))
+        val now = photoDenial(before, access, rationale, afterRequest)
+        if (now != before) prefs.edit { putBoolean(K_DENIED, now.deniedBefore).putInt(K_UNANSWERED, now.unanswered) }
+        return now.forever(access, rationale)
     }
 
     private val prefs get() = context.getSharedPreferences("permissions", Context.MODE_PRIVATE)
@@ -112,6 +111,33 @@ class RecentScreenshots(private val context: Context) {
                 arrayOf(PERMISSION)
             }
 
+        /**
+         * What the app has seen of photo refusals. [deniedBefore]: Android reported a refusal.
+         * [unanswered]: requests in a row that came back without access and without a rationale.
+         */
+        data class PhotoDenial(val deniedBefore: Boolean = false, val unanswered: Int = 0) {
+            /**
+             * Android shows a rationale only after one refusal, and stops showing it once it won't
+             * ask again. No rationale is also the state before the first answer and after the dialog
+             * was dismissed, so "won't ask again" needs a refusal seen earlier. A refusal from before
+             * the app tracked them shows as two requests in a row without a dialog.
+             */
+            fun forever(access: PhotoAccess, rationale: Boolean): Boolean =
+                access == PhotoAccess.NONE && !rationale && (deniedBefore || unanswered >= 2)
+        }
+
+        /**
+         * The next [PhotoDenial] after looking at [access] and [rationale], when Settings or Home
+         * shows or [afterRequest] a request came back. Any grant forgets it all: after a revoke or
+         * Android's reset of an unused app's permissions, the dialog can show again.
+         */
+        fun photoDenial(before: PhotoDenial, access: PhotoAccess, rationale: Boolean, afterRequest: Boolean): PhotoDenial = when {
+            access != PhotoAccess.NONE -> PhotoDenial()
+            rationale -> PhotoDenial(deniedBefore = true)
+            afterRequest -> before.copy(unanswered = before.unanswered + 1)
+            else -> before
+        }
+
         /** All photos wins; otherwise only picked photos is limited access. */
         fun photoAccess(all: Boolean, picked: Boolean): PhotoAccess = when {
             all -> PhotoAccess.ALL
@@ -119,7 +145,8 @@ class RecentScreenshots(private val context: Context) {
             else -> PhotoAccess.NONE
         }
         const val MAX_SHOTS = 5
-        private const val K_REQUESTED = "photos_requested"
+        private const val K_DENIED = "photos_denied"
+        private const val K_UNANSWERED = "photos_unanswered"
         const val MAX_AGE_MS = 24L * 60 * 60 * 1000
     }
 }
