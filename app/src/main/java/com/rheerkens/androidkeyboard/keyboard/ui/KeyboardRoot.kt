@@ -13,9 +13,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import com.rheerkens.androidkeyboard.keyboard.KeyboardLayout
 import com.rheerkens.androidkeyboard.keyboard.KeyboardState
@@ -64,6 +67,8 @@ data class KeyboardUiState(
     val emojiOpen: Boolean = false,
     val emojiCatalog: com.rheerkens.androidkeyboard.keyboard.EmojiCatalog? = null,
     val recentEmoji: List<String> = emptyList(),
+    /** The enabled, installed keyboards in globe order, offered by holding the emoji key. */
+    val keyboards: List<com.rheerkens.androidkeyboard.keyboard.TypingKeyboard> = emptyList(),
 ) {
     /** Keep panel height stable when switching to the existing four-row symbol layouts. */
     val keyRows: Int get() = if (numberRow) 5 else 4
@@ -80,8 +85,12 @@ data class KeyboardUiState(
 @Composable
 internal fun KeyboardContent(state: KeyboardUiState, clock: () -> Long, actions: KeyboardActions) {
     val colors = if (state.dark) DarkKeyboardColors else LightKeyboardColors
+    val languageMenu = remember { LanguageMenuState() }
+    // A new editor, another panel or a changed keyboard closes the emoji key's language menu.
+    LaunchedEffect(state.inputSession, state.mode, state.minimized, state.toolsOpen, state.emojiOpen,
+        state.keyboard.keyboard, state.keyboard.layer, state.keyboards) { languageMenu.close() }
     CompositionLocalProvider(LocalKeyboardColors provides colors, LocalWordAim provides state.wordAim) {
-        Box {
+        Box(Modifier.onGloballyPositioned { languageMenu.host = it }) {
             Column(
                 Modifier
                     .fillMaxWidth()
@@ -103,7 +112,8 @@ internal fun KeyboardContent(state: KeyboardUiState, clock: () -> Long, actions:
                         EmojiPanel(state.emojiCatalog, state.recentEmoji,
                             (state.keyRows * state.rowHeightDp + 4).dp, actions)
                     } else {
-                        KeysPanel(state.layout, state.keyboard, state.rowHeightDp, state.enterKind, actions, state.splitGapDp, state.keyRows)
+                        KeysPanel(state.layout, state.keyboard, state.rowHeightDp, state.enterKind, actions, state.splitGapDp, state.keyRows,
+                            state.keyboards, languageMenu)
                     }
                 } else {
                     if (state.pickerOpen) {
@@ -116,6 +126,7 @@ internal fun KeyboardContent(state: KeyboardUiState, clock: () -> Long, actions:
                     }
                 }
             }
+            LanguageMenuOverlay(languageMenu, actions)
         }
     }
 }

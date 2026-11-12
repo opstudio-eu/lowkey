@@ -21,7 +21,7 @@ The app checks for updates automatically. Use **Settings → Updates → Check n
 - Each language's own layout (such as German QWERTZ with Ü, Ö and Ä, or Russian ЙЦУКЕН), plus QWERTY, AZERTY, QWERTZ, Dvorak, and Colemak, with long-press numbers and accents.
 - A minimized keyboard for voice input or use with a physical keyboard, and gestures for deleting words.
 - Direct resizing and positioning, one-handed and floating modes, a split keyboard for wider screens, and an optional number row.
-- An offline emoji panel with categories, skin-tone variants, and recent choices, plus tap-to-insert emoji suggestions for English and Dutch words.
+- An offline emoji panel with categories, skin-tone variants, and recent choices, plus tap-to-insert emoji suggestions for English and Dutch words. Hold the emoji key to switch between your keyboard languages.
 - Clipboard history for text and images, with previews and an image editor for cropping, annotation, and blur.
 - A built-in test field to try the keyboard without leaving settings.
 - Light and dark themes in OpStudio's colours for the app and the keyboard, following the system by default.

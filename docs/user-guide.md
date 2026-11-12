@@ -64,6 +64,8 @@ When floating, the Backspace gesture can aim at text above the panel; it does no
 
 The smiley beside Space opens an offline emoji panel. Choose a category, scroll its grid, and tap an emoji to insert it. Hold an emoji with skin-tone variants to choose one. Recent shows up to 40 distinct choices, stored locally; sensitive fields do not show or update that history. Unsupported emoji are filtered using the device's font. **ABC** returns to letters, and Back closes the panel. Backspace removes a complete known emoji sequence.
 
+With two or more languages or layouts enabled, hold the smiley to choose one; a small mark in its corner shows this. A row of choices opens over the key, the way accents do: your current layout sits over your finger and the next one is to its right. Slide to a layout and let go to switch, or slide away to cancel. If you let go without sliding, the choices stay open: tap one to switch, or tap anywhere else or press Back to close them.
+
 Hold Space to open Android's keyboard-app picker directly. **Settings → Keyboard → Key beside Space** can replace the smiley with the language-switch key; holding Space works with either choice. Tap the language key to cycle through enabled Lowkey layouts, or hold it to open the same Android picker. Manage Lowkey's languages and layouts in Settings. Holding the comma also opens emoji, including when the language-switch key is selected.
 
 

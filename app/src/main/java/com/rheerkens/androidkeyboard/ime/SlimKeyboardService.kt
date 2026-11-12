@@ -29,6 +29,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.ComposeView
 import com.rheerkens.androidkeyboard.AppGraph
@@ -308,6 +309,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                 val session by inputSession.collectAsState()
                 val once by keyboardOnce.collectAsState()
                 val fan by fanSpec.collectAsState()
+                val packs by AppGraph.languagePacks.state.collectAsState()
+                val keyboards = remember(s.enabledKeyboards, packs.installed) { AppGraph.usableKeyboards(s) }
                 val dark = resolveDark(s.theme, isSystemInDarkTheme())
                 val (viewportWidth, viewportHeight) = placementViewport()
                 val profile = PlacementProfile.forSize(viewportWidth, viewportHeight)
@@ -340,6 +343,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                         inputSession = session,
                         fan = fan,
                         wordAim = aim,
+                        keyboards = keyboards,
                     ),
                     clock = System::currentTimeMillis,
                     actions = this,
@@ -641,12 +645,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                 keyboard.setLayer(key.target)
                 updateShift()
             }
-            is Key.Globe -> {
-                val next = keyboard.cycleKeyboard(AppGraph.usableKeyboards())
-                settings.update { it.copy(currentKeyboard = next.id) }
-                preloadLanguages()
-                refreshStrip()
-            }
+            is Key.Globe -> useKeyboard(keyboard.cycleKeyboard(AppGraph.usableKeyboards()))
             is Key.Emoji -> {
                 pickerOpen.value = false
                 emojiOpen.value = true
@@ -936,6 +935,24 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         refreshClipChips()
         refreshClipboard()
         showNote("Clipboard history restored")
+    }
+
+    override fun onSelectKeyboard(id: String) {
+        if (!inputViewActive) return
+        val next = AppGraph.usableKeyboards().firstOrNull { it.id == id } ?: return
+        clearPrompt()
+        clearNote()
+        lastCorrection = null
+        if (next == keyboard.state.value.keyboard) return
+        keyboard.setKeyboard(next)
+        useKeyboard(next)
+    }
+
+    /** The globe key or the emoji key's menu switched to [next]: remember it and reload its words. */
+    private fun useKeyboard(next: com.rheerkens.androidkeyboard.keyboard.TypingKeyboard) {
+        settings.update { it.copy(currentKeyboard = next.id) }
+        preloadLanguages()
+        refreshStrip()
     }
 
     override fun onGlobeLongPress() {
