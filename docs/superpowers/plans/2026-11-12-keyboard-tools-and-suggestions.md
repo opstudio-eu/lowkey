@@ -68,7 +68,7 @@ new EmojiSuggestionsTest.kt, docs/user-guide.md.
 ## Verification result
 
 `testDebugUnitTest assembleDebug --max-workers=2` passed after integration with the
-0.6.1 baseline: 366 tests across 52 suites, zero failures, errors or skips. This includes
+0.6.2 baseline: 371 tests across 53 suites, zero failures, errors or skips. This includes
 16 new multilingual and emoji tests and three additional number-hint/grid regressions.
 The source leak checks (including new files and the private denylist) passed.
 A debug APK was installed on an Android 15 phone emulator and verified through actual
@@ -86,7 +86,7 @@ accessibility snapshots remain under ignored artifacts/.
 
 The emulator covered phone portrait, landscape and one-handed layouts. A physical
 Fold device was not tested. The complete interaction pass preceded integration of
-the 0.6.1 minimized-bar fix. A second pass on the integrated build stopped when the
+the mainline minimized-bar and screenshot-history fixes. A second pass on the integrated build stopped when the
 device tool repeatedly rejected navigation in Android's keyboard settings; that
 integrated UI pass is not claimed as complete.
 

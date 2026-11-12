@@ -27,6 +27,10 @@ data class StripState(
     val enabled: Boolean = true,
 )
 
+/** History is filtered for private editors by the service, independently of word suggestions. */
+internal fun StripState.showsClipHistory(hasClips: Boolean): Boolean =
+    note == null && addPrompt == null && !typingWord && hasClips
+
 /** A clipboard-history item in the minimized bar; images are dimmed where the editor refuses them. */
 data class ClipChip(val entry: ClipEntry, val pasteable: Boolean)
 
