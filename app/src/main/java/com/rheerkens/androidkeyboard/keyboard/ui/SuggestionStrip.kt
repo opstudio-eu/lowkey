@@ -20,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -66,7 +67,7 @@ fun RowScope.SuggestionStrip(strip: StripState, clips: List<ClipChip>, session: 
                     onTap = { actions.onAddToDictionary(strip.addPrompt) },
                 ) { pressed ->
                     Row(
-                        Modifier.fillMaxSize().background(if (pressed) c.keyMod else c.background, RoundedCornerShape(8.dp)),
+                        Modifier.fillMaxSize().background(if (pressed) c.keyMod else Color.Transparent, RoundedCornerShape(8.dp)),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center,
                     ) {
@@ -155,7 +156,7 @@ private fun SuggestionChip(s: Suggestion?, modifier: Modifier, center: Boolean, 
         onLongPress = if (s.emojiName == null) ({ actions.onSuggestionLongPress(s) }) else null,
     ) { pressed ->
         Row(
-            Modifier.fillMaxSize().background(if (pressed) c.keyMod else c.background).padding(horizontal = 4.dp),
+            Modifier.fillMaxSize().background(if (pressed) c.keyMod else Color.Transparent).padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {

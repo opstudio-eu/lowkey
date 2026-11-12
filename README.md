@@ -24,7 +24,7 @@ The app checks for updates automatically. Use **Settings → Updates → Check n
 - An offline emoji panel with categories, skin-tone variants, and recent choices, plus tap-to-insert emoji suggestions for English and Dutch words.
 - Clipboard history for text and images, with previews and an image editor for cropping, annotation, and blur.
 - A built-in test field to try the keyboard without leaving settings.
-- Light and dark themes in OpStudio's colours for the app and the keyboard, following the system by default.
+- Light and dark themes in OpStudio's colours, following the system by default, plus an optional custom keyboard theme: your own colours for every part of the keyboard and an optional background photo, with a live preview and contrast checks.
 
 ## Documentation
 

@@ -102,7 +102,7 @@ fun SlimApp(pendingDestination: Destination?, onDestinationConsumed: () -> Unit)
     val canTest = current in setOf(
         Destination.MODELS, Destination.SETTINGS_KEYBOARD, Destination.SETTINGS_TYPING,
         Destination.SETTINGS_CUSTOMIZE, Destination.SETTINGS_KEYBOARDS, Destination.SETTINGS_VOICE,
-        Destination.LANGUAGES, Destination.TRY_IT,
+        Destination.LANGUAGES, Destination.TRY_IT, Destination.KEYBOARD_THEME,
     )
 
     Column(Modifier.fillMaxSize().background(surround).statusBarsPadding().navigationBarsPadding()) {
@@ -187,6 +187,7 @@ fun SlimApp(pendingDestination: Destination?, onDestinationConsumed: () -> Unit)
                     Destination.DIAGNOSTICS -> DiagnosticsScreen(modifier)
                     Destination.ABOUT -> AboutScreen(modifier)
                     Destination.LANGUAGES -> LanguagesScreen(modifier, ::navigate)
+                    Destination.KEYBOARD_THEME -> KeyboardThemeScreen(modifier)
                 }
             }
         }

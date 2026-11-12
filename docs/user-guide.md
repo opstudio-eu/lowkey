@@ -115,6 +115,14 @@ Add an optional caption and tap **Attach** to return the edited image to the ori
 
 **Settings → Appearance → Theme** sets the look of the app and the keyboard together. **System**, the default, follows Android's dark mode and switches as soon as Android does. **Light** and **Dark** keep one look regardless of Android. Both use OpStudio's colours.
 
+To give the keyboard its own look, open **Settings → Appearance → Keyboard theme** and choose **Custom**. Pick five colours (background, keys, function keys, text and accent) with the sliders or a six-digit hex code; Lowkey derives pressed keys, popups and the other shades from them.
+
+Under **Advanced colors**, every other colour has its own row, grouped by where it appears: pressed and active keys, Enter, suggestions and secondary text, popups and clipboard, the voice row, and status colours such as warnings and the delete-all zone. Each row says **Automatic** (following the five colours) or **Custom**; tap it to set its own colour, and **Reset to automatic** to follow the five again. Changing one row changes only that colour.
+
+**Background image → Choose image** opens Android's photo picker; Lowkey needs no storage permission. It keeps its own smaller, upright copy without the photo's location or other details, and fills the keyboard with it behind the keys, cropped from the middle. **Dimming** covers the image with the background colour to keep text readable; keys stay solid. **Remove image** goes back to the plain colour. If the copy goes missing, the keyboard uses the background colour. A docked keyboard shows the image across its full width, including one-handed and split layouts; a floating keyboard shows it only inside the floating panel.
+
+The preview shows your draft, including a new image, and the keyboard changes only when you tap **Save**. **Cancel** or going back drops the draft; the saved image stays until you save without it. **Restore default** sets the five colours to the standard ones for the app theme and clears advanced colours. Lowkey lists text that falls below the WCAG AA contrast minimum, with the ratio. Over an image it checks the lightest and darkest parts after dimming, from a small copy of the image, so fine detail is not measured. It offers a fix that changes only the five colours, never your advanced colours, and with an image it can suggest more dimming; you can still save low-contrast themes. Choose **Standard** to return to the standard keyboard; your custom theme is kept for later. The app's own theme does not change.
+
 ## Try settings and manage updates
 
 Tap the keyboard icon on the keyboard, voice or language pages to open a test field over the current page. Home offers **Try your keyboard** once Lowkey is set up. The draft stays available when you close and reopen the test field. **Settings → Try it** has additional editor types.
