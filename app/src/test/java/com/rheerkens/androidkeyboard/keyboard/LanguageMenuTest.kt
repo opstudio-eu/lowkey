@@ -53,4 +53,23 @@ class LanguageMenuTest {
         assertEquals(5, popup.rows)
         assertEquals(0f, keyTop + popup.top, 0.01f)
     }
+
+    @Test fun capacityCountsReadableRowsAboveTheKey() {
+        // 360 dp wide, 64 dp cells: five columns. A key 192 dp down leaves room for four 44 dp rows above it.
+        assertEquals(25, LanguageMenu.capacity(360f, 64f, 192f, 44f))
+        // A 260 dp keyboard with 32 dp rows: four columns, and two rows fit above a key 108 dp down.
+        assertEquals(12, LanguageMenu.capacity(260f, 64f, 108f, 44f))
+        // No room above the key: one row.
+        assertEquals(5, LanguageMenu.capacity(360f, 64f, 20f, 44f))
+    }
+
+    @Test fun keyboardsThatDoNotFitMoveBehindAMoreCell() {
+        val all = TypingKeyboard.all(TestLanguages.catalog)
+        assertEquals(all to false, LanguageMenu.fit(all, all.size))
+        val (shown, more) = LanguageMenu.fit(all, 12)
+        assertEquals(true, more)
+        assertEquals(all.take(11), shown)
+        // The current keyboard (first) always stays, even with a single cell.
+        assertEquals(all.take(1) to true, LanguageMenu.fit(all, 1))
+    }
 }

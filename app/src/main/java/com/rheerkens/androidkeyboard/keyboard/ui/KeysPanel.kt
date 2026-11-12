@@ -214,20 +214,23 @@ private fun EmojiKey(key: Key.Emoji, state: KeyboardState, actions: KeyboardActi
         val host = menu.host ?: return
         val coords = holder.coords?.takeIf { it.isAttached && host.isAttached } ?: return
         val at = host.localPositionOf(coords, Offset.Zero)
-        val popup = with(density) {
-            val windowWidth = host.size.width.toFloat()
-            val cellWidth = maxOf(coords.size.width.toFloat(), 64.dp.toPx()).coerceAtMost(windowWidth)
-            // Many keyboards make several rows; they shrink to stay inside the keyboard above the key.
-            val rows = LanguageMenu.rows(choices.size, windowWidth, cellWidth)
-            val cellHeight = if (rows > 1) minOf(52.dp.toPx(), at.y / (rows - 1)).coerceAtLeast(1f) else 52.dp.toPx()
-            AlternatesPopup(
-                count = choices.size, keyLeft = at.x, keyWidth = coords.size.width.toFloat(),
-                keyHeight = coords.size.height.toFloat(), windowWidth = windowWidth,
-                cellWidth = cellWidth, cellHeight = cellHeight, slop = 12.dp.toPx(),
-            )
+        val windowWidth = host.size.width.toFloat()
+        val (cellWidth, minCell, fullCell) = with(density) {
+            Triple(maxOf(coords.size.width.toFloat(), 64.dp.toPx()).coerceAtMost(windowWidth), 44.dp.toPx(), 52.dp.toPx())
         }
+        // Rows above the key shrink to fit inside the keyboard, but not below a readable height:
+        // keyboards beyond that are reached through a last "More" cell.
+        val (shown, more) = LanguageMenu.fit(choices, LanguageMenu.capacity(windowWidth, cellWidth, at.y, minCell))
+        val count = shown.size + if (more) 1 else 0
+        val rows = LanguageMenu.rows(count, windowWidth, cellWidth)
+        val cellHeight = if (rows > 1) minOf(fullCell, at.y / (rows - 1)).coerceAtLeast(1f) else fullCell
+        val popup = AlternatesPopup(
+            count = count, keyLeft = at.x, keyWidth = coords.size.width.toFloat(),
+            keyHeight = coords.size.height.toFloat(), windowWidth = windowWidth,
+            cellWidth = cellWidth, cellHeight = cellHeight, slop = with(density) { 12.dp.toPx() },
+        )
         holder.moved = false
-        menu.open = OpenLanguageMenu(choices, popup, at.x, at.y, selected = 0, sticky = false)
+        menu.open = OpenLanguageMenu(shown, popup, at.x, at.y, selected = 0, sticky = false, more = more)
     }
     fun release() {
         val menu = menu ?: return
@@ -237,7 +240,8 @@ private fun EmojiKey(key: Key.Emoji, state: KeyboardState, actions: KeyboardActi
             LanguageMenu.Release.CLOSE -> menu.close()
             LanguageMenu.Release.CHOOSE -> {
                 menu.close()
-                actions.onSelectKeyboard(open.choices[open.selected ?: 0].id)
+                val keyboard = open.choices.getOrNull(open.selected ?: 0)
+                if (keyboard != null) actions.onSelectKeyboard(keyboard.id) else actions.onOpenKeyboardSettings()
             }
         }
     }

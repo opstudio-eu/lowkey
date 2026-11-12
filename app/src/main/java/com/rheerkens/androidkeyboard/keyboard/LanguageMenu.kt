@@ -16,11 +16,29 @@ object LanguageMenu {
         return keyboards.drop(i) + keyboards.take(i)
     }
 
-    /** Rows of the menu's grid, as [AlternatesPopup] lays out [count] cells (at most five per row). */
+    /** Columns of the menu's grid, as [AlternatesPopup] lays out its cells (at most five per row). */
+    fun columns(windowWidth: Float, cellWidth: Float): Int =
+        minOf(5, (windowWidth / cellWidth.coerceAtMost(windowWidth)).toInt().coerceAtLeast(1))
+
+    /** Rows of the menu's grid for [count] cells. */
     fun rows(count: Int, windowWidth: Float, cellWidth: Float): Int {
-        val columns = minOf(5, (windowWidth / cellWidth.coerceAtMost(windowWidth)).toInt().coerceAtLeast(1))
+        val columns = columns(windowWidth, cellWidth)
         return (count + columns - 1) / columns
     }
+
+    /**
+     * How many cells fit while staying readable: the bottom row covers the key and every row above
+     * it needs [minCell] of the [keyTop] space between the keyboard's top and the key.
+     */
+    fun capacity(windowWidth: Float, cellWidth: Float, keyTop: Float, minCell: Float): Int =
+        columns(windowWidth, cellWidth) * (1 + (keyTop / minCell).toInt().coerceAtLeast(0))
+
+    /**
+     * The keyboards to show, and whether a last "More" cell (which opens Settings) replaces the
+     * ones that don't fit in [capacity] cells. The current keyboard always stays.
+     */
+    fun fit(choices: List<TypingKeyboard>, capacity: Int): Pair<List<TypingKeyboard>, Boolean> =
+        if (choices.size <= capacity) choices to false else choices.take(maxOf(1, capacity - 1)) to true
 
     /** What letting go of the held menu does. */
     enum class Release {

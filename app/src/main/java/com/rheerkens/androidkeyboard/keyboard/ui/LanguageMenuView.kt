@@ -23,6 +23,7 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -58,6 +59,8 @@ data class OpenLanguageMenu(
     val selected: Int?,
     /** Still held (false), or released and waiting for a tap (true). */
     val sticky: Boolean,
+    /** A last cell, after [choices], opens Settings for the keyboards that didn't fit. */
+    val more: Boolean = false,
 )
 
 /**
@@ -112,10 +115,15 @@ private fun BoxScope.MenuContent(menu: OpenLanguageMenu, state: LanguageMenuStat
         )
     }
     val shape = RoundedCornerShape(10.dp)
-    fun describe(choice: Int?): String =
-        choice?.let { "Switch to ${menu.choices[it].fullLabel}" } ?: "Slide back to choose a language"
+    fun describe(choice: Int?): String = when {
+        choice == null -> "Slide back to choose a language"
+        choice >= menu.choices.size -> "More keyboard languages in Settings"
+        else -> "Switch to ${menu.choices[choice].fullLabel}"
+    }
     Column(
         Modifier
+            // The Box would align a right-to-left child to its right edge; the offset is from the left.
+            .align(AbsoluteAlignment.TopLeft)
             .absoluteOffset { IntOffset((menu.keyLeft + popup.left).roundToInt(), (menu.keyTop + popup.top).roundToInt()) }
             .requiredSize(with(density) { popup.width.toDp() }, with(density) { popup.height.toDp() })
             .shadow(3.dp, shape).background(c.popup, shape).border(1.dp, c.popupBorder, shape)
@@ -134,15 +142,18 @@ private fun BoxScope.MenuContent(menu: OpenLanguageMenu, state: LanguageMenuStat
                         Box(cell)
                         continue
                     }
-                    val keyboard = menu.choices[choice]
+                    val keyboard = menu.choices.getOrNull(choice)
                     PressTarget(
-                        if (choice == 0) "${keyboard.fullLabel}, current" else describe(choice),
+                        if (choice == 0 && keyboard != null) "${keyboard.fullLabel}, current" else describe(choice),
                         cell,
-                        gestureKey = keyboard.id,
+                        gestureKey = keyboard?.id ?: "more",
                         onDown = actions::onKeyDown,
                         onTap = {
                             state.close()
-                            if (choice != 0) actions.onSelectKeyboard(keyboard.id)
+                            when {
+                                keyboard == null -> actions.onOpenKeyboardSettings()
+                                choice != 0 -> actions.onSelectKeyboard(keyboard.id)
+                            }
                         },
                     ) { pressed ->
                         val on = if (menu.sticky) pressed else choice == menu.selected
@@ -155,9 +166,9 @@ private fun BoxScope.MenuContent(menu: OpenLanguageMenu, state: LanguageMenuStat
                         ) {
                             val ink = if (on) c.enterInk else c.keyText
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(LanguageMenu.code(keyboard), color = ink, fontSize = 19.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                                Text(keyboard?.let(LanguageMenu::code) ?: "…", color = ink, fontSize = 19.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                                 Text(
-                                    LanguageMenu.caption(keyboard), color = if (on) c.enterInk else c.muted, fontSize = 10.sp,
+                                    keyboard?.let(LanguageMenu::caption) ?: "More", color = if (on) c.enterInk else c.muted, fontSize = 10.sp,
                                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 2.dp),
                                 )
                             }
