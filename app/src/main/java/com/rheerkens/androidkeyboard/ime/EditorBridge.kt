@@ -283,6 +283,19 @@ class EditorBridge(private val connection: () -> InputConnection?) {
         get() = isPasswordField ||
             (editorInfo?.imeOptions ?: 0) and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING != 0
 
+    /** Prose shortcuts are inappropriate in passwords, URLs, addresses and numeric fields. */
+    val allowsTextShortcuts: Boolean
+        get() {
+            val type = editorInfo?.inputType ?: return false
+            if (type and InputType.TYPE_MASK_CLASS != InputType.TYPE_CLASS_TEXT || isSensitiveField) return false
+            return type and InputType.TYPE_MASK_VARIATION !in setOf(
+                InputType.TYPE_TEXT_VARIATION_URI,
+                InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
+                InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS,
+                InputType.TYPE_TEXT_VARIATION_FILTER,
+            )
+        }
+
     private val isMultiLine: Boolean
         get() = (editorInfo?.inputType ?: 0) and InputType.TYPE_TEXT_FLAG_MULTI_LINE != 0
 

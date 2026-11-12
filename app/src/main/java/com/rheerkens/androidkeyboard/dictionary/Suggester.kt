@@ -52,6 +52,8 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
             term.text.split(' ').drop(1).any { it.lowercase().startsWith(lower) }
         }.forEach { add(Suggestion(it.text, isPersonal = true)) }
         val lexicons = listOf(lexicon()) + secondaryLexicons()
+        // Explicit safe corrections (notably contractions) must survive prefix completions.
+        lexicons.mapNotNull { it.whitelist[lower] }.forEach { add(Suggestion(matchCase(typed, it))) }
         val completions = interleave(lexicons.map { lex -> lex.completions(typed, limit * 2).map { it.first } })
         val corrections = if (Corrector.looksLikeAWord(typed) && lexicons.none { it.contains(typed) }) {
             interleave(lexicons.map { lex ->
@@ -59,10 +61,12 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
                 listOfNotNull(lex.whitelist[lower]) + Corrector.corrections(typed, lex, limit, keys, checkActive).map { it.word }
             })
         } else emptyList()
-        // 4. If the letters start real words, complete them first ("Kot" → "Kotlin"); otherwise
-        //    it's likely a typo, so spelling corrections come first ("recieve" → "receive").
+        // 4. Keep the best completion, but reserve a slot for a spelling correction: a typo
+        //    can also happen to prefix a rare word ("teh" → "tehran" versus "the").
         if (completions.isNotEmpty()) {
-            completions.forEach { word -> add(Suggestion(matchCase(typed, word))) }
+            add(Suggestion(matchCase(typed, completions.first())))
+            corrections.firstOrNull()?.let { add(Suggestion(matchCase(typed, it))) }
+            completions.drop(1).forEach { word -> add(Suggestion(matchCase(typed, word))) }
             corrections.forEach { add(Suggestion(matchCase(typed, it))) }
         } else {
             corrections.forEach { add(Suggestion(matchCase(typed, it))) }

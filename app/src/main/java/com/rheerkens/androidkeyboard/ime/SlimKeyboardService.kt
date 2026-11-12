@@ -51,6 +51,7 @@ import com.rheerkens.androidkeyboard.dictionary.PersonalTerm
 import com.rheerkens.androidkeyboard.dictionary.Suggester
 import com.rheerkens.androidkeyboard.dictionary.Corrector
 import com.rheerkens.androidkeyboard.dictionary.Suggestion
+import com.rheerkens.androidkeyboard.dictionary.NextWordPredictor
 import com.rheerkens.androidkeyboard.keyboard.BackspaceScrub
 import com.rheerkens.androidkeyboard.keyboard.FanCommand
 import com.rheerkens.androidkeyboard.keyboard.Key
@@ -223,6 +224,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
 
     /** True right after a suggestion pick added a trailing space (for punctuation swap). */
     private var autoSpaced = false
+    private val doubleSpacePeriod = DoubleSpacePeriod()
 
     override fun onCreate() {
         super.onCreate()
@@ -549,6 +551,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
      * the image editor was opened from, insert the attached caption and image once.
      */
     override fun onStartInput(attribute: EditorInfo, restarting: Boolean) {
+        doubleSpacePeriod.reset()
         super.onStartInput(attribute, restarting)
         val attachment = PendingAttachment.take(EditorBridge.keyOf(attribute), System.currentTimeMillis()) ?: return
         bridge.editorInfo = attribute
@@ -627,6 +630,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
+        doubleSpacePeriod.reset()
         menuBackHandler = null
         onLayoutBackHandler(null)
         inputViewActive = false
@@ -661,6 +665,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         if (mode.value != InputMode.KEYS) return
         // Our own edits update shift synchronously; only react to external cursor moves.
         if (SystemClock.uptimeMillis() - lastOwnEditAt > OWN_EDIT_WINDOW_MS) {
+            doubleSpacePeriod.reset()
             autoSpaced = false
             updateShift()
         }
@@ -686,6 +691,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onKey(key: Key) {
+        if (key !is Key.Space) doubleSpacePeriod.reset()
         if (key !is Key.Emoji) emojiOpen.value = false
         clearPrompt()
         if (key !is Key.Shift && key !is Key.LayerSwitch) clearNote()
@@ -716,6 +722,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onBackspace() {
+        doubleSpacePeriod.reset()
         clearNote()
         markOwnEdit()
         autoSpaced = false
@@ -1038,6 +1045,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onSuggestion(suggestion: Suggestion) {
+        doubleSpacePeriod.reset()
         if (suggestion.emojiName != null) {
             if (!inputViewActive || bridge.isSensitiveField || !settings.current.suggestionStrip) return
             val available = EmojiSuggestions.suggest(bridge.currentWordBeforeCursor(),
@@ -1343,6 +1351,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     // ---- Typing helpers ----
 
     private fun typeChar(output: String) {
+        doubleSpacePeriod.reset()
         markOwnEdit()
         val punctuation = output.length == 1 && output[0] in ".,!?;:"
         if (punctuation && autoSpaced && bridge.textBeforeCursor(1) == " ") {
@@ -1362,7 +1371,16 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
 
     private fun typeSpace() {
         markOwnEdit()
-        commitWordBoundary(" ")
+        val shortcuts = bridge.allowsTextShortcuts && !bridge.hasSelection()
+        if (!shortcuts) doubleSpacePeriod.reset()
+        if (shortcuts && doubleSpacePeriod.onSpace(bridge.textBeforeCursor(DoubleSpacePeriod.CONTEXT_LIMIT), SystemClock.uptimeMillis())) {
+            bridge.replaceBeforeCursor(1, ". ")
+            val cursor = bridge.currentSelection()?.takeIf { it.first == it.second }?.first
+            lastCorrection = cursor?.let { Undo(" ", ".", " ", bridge.editorKey(), it) }
+        } else {
+            commitWordBoundary(" ")
+            if (shortcuts) doubleSpacePeriod.spaceCommitted(bridge.textBeforeCursor(DoubleSpacePeriod.CONTEXT_LIMIT))
+        }
         autoSpaced = false
         keyboard.setLayer(Layer.LETTERS)
         updateShift()
@@ -1442,10 +1460,14 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         if (typed.isEmpty() || bridge.isSensitiveField) {
             invalidateStrip()
             cachedCorrection = null
+            val predictions = if (typed.isEmpty() && bridge.allowsTextShortcuts &&
+                settings.current.suggestionStrip && !bridge.hasSelection()) {
+                NextWordPredictor.suggest(bridge.textBeforeCursor(NextWordPredictor.CONTEXT_LIMIT), dictionary.state.value.terms)
+            } else emptyList()
             val image = strip.value.clipboard as? ClipboardContent.Image
             strip.value = strip.value.copy(
-                slots = listOf(null, null, null),
-                typingWord = false,
+                slots = Suggester.arrangeForStrip("", predictions),
+                typingWord = predictions.isNotEmpty(),
                 imagePasteSupported = image != null && bridge.acceptsImage(image.mimeType),
             )
             return

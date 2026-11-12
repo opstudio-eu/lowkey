@@ -66,7 +66,7 @@ object Layouts {
         (keyboard.language.accents[letter].orEmpty() + ACCENTS[letter].orEmpty()).distinct()
 
     private fun bottomRow(switchKey: Key.LayerSwitch) = listOf(
-        switchKey, Key.Globe(), Key.Char(",", opensEmojiOnHold = true), Key.Space(), Key.Char("."), Key.Enter(),
+        switchKey, Key.Char(",", opensEmojiOnHold = true), Key.Globe(), Key.Space(), Key.Char("."), Key.Enter(),
     )
 
     /**
