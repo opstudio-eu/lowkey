@@ -1,5 +1,9 @@
 package com.rheerkens.androidkeyboard.companion.screens
 
+import android.app.Activity
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -14,9 +18,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -30,8 +36,11 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
+import androidx.core.app.ActivityCompat
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rheerkens.androidkeyboard.AppGraph
+import com.rheerkens.androidkeyboard.clipboard.PhotoAccess
 import com.rheerkens.androidkeyboard.clipboard.RecentScreenshots
 import com.rheerkens.androidkeyboard.models.resolveLanguage
 import com.rheerkens.androidkeyboard.models.speechLanguageCode
@@ -66,10 +75,23 @@ fun SettingsScreen(modifier: Modifier, focus: SettingsFocus, navigate: (Destinat
     val listState = rememberLazyListState()
     fun update(t: (Settings) -> Settings) = AppGraph.settings.update(t)
     val context = LocalContext.current
-    var photosGranted by remember { mutableStateOf(RecentScreenshots(context).hasPermission()) }
-    val photosLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        photosGranted = granted
-        update { it.copy(recentScreenshots = granted) }
+    var photoAccess by remember { mutableStateOf(RecentScreenshots(context).access()) }
+    /** Android won't show the photos dialog again: the switch opens app settings instead. */
+    var photosDeniedForever by remember { mutableStateOf(false) }
+    // Photo access can change in system settings while this screen is in the background.
+    LifecycleResumeEffect(Unit) {
+        photoAccess = RecentScreenshots(context).access()
+        onPauseOrDispose { }
+    }
+    val photosLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        val access = RecentScreenshots(context).access()
+        photoAccess = access
+        // Limited access keeps the setting on: the note under the switch asks for all photos,
+        // and screenshots appear as soon as all photos are allowed.
+        update { s -> s.copy(recentScreenshots = access != PhotoAccess.NONE) }
+        val activity = context as? Activity
+        photosDeniedForever = access == PhotoAccess.NONE && activity != null &&
+            !ActivityCompat.shouldShowRequestPermissionRationale(activity, RecentScreenshots.PERMISSION)
     }
 
     LaunchedEffect(focus) {
@@ -103,14 +125,25 @@ fun SettingsScreen(modifier: Modifier, focus: SettingsFocus, navigate: (Destinat
             )
         }
         item {
-            SwitchRow(
-                "Recent screenshots", s.recentScreenshots && photosGranted,
-                { v ->
-                    if (v && !photosGranted) photosLauncher.launch(RecentScreenshots.PERMISSION)
-                    else update { it.copy(recentScreenshots = v) }
-                },
-                subtitle = "Show screenshots from the last day next to copied clips in the minimized bar. Needs access to photos.",
-            )
+            Column {
+                SwitchRow(
+                    "Recent screenshots", s.recentScreenshots && photoAccess == PhotoAccess.ALL,
+                    { v ->
+                        when {
+                            !v || photoAccess == PhotoAccess.ALL -> update { it.copy(recentScreenshots = v) }
+                            photosDeniedForever -> openAppSettings(context)
+                            else -> photosLauncher.launch(RecentScreenshots.REQUEST)
+                        }
+                    },
+                    subtitle = "Show screenshots from the last day next to copied clips in the minimized bar. Needs access to all photos.",
+                )
+                if (s.recentScreenshots && photoAccess == PhotoAccess.LIMITED) {
+                    LimitedPhotosNote(
+                        onAllowAll = { photosLauncher.launch(RecentScreenshots.REQUEST) },
+                        onTurnOff = { update { it.copy(recentScreenshots = false) } },
+                    )
+                }
+            }
         }
         item { KeyboardsSetting(s, packs, ::update, navigate) }
         item { Spacer8() }
@@ -320,4 +353,30 @@ internal fun moreLanguagesSummary(available: List<String>): String = when {
     available.size == 1 -> "Download ${available.single()}, or delete languages"
     available.size <= 4 -> "Download ${available.dropLast(1).joinToString(", ")} or ${available.last()}, or delete languages"
     else -> "Download ${available.take(3).joinToString(", ")} and ${available.size - 3} more, or delete languages"
+}
+
+/**
+ * Under Recent screenshots when photo access is limited to picked photos: Android then hides
+ * every new screenshot from the keyboard, so the switch stays off until all photos are allowed.
+ */
+@Composable
+private fun LimitedPhotosNote(onAllowAll: () -> Unit, onTurnOff: () -> Unit) {
+    SlimCard(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)) {
+        Text("New screenshots can't appear", style = MaterialTheme.typography.titleSmall)
+        Text(
+            "Lowkey can only see the photos you picked, so screenshots you take later stay hidden. Allow all photos to show them.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Button(onClick = onAllowAll) { Text("Allow all photos") }
+            TextButton(onClick = onTurnOff) { Text("Turn off") }
+        }
+    }
+}
+
+private fun openAppSettings(context: Context) {
+    context.startActivity(
+        Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+    )
 }

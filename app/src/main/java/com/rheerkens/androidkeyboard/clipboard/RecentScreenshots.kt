@@ -3,18 +3,37 @@ package com.rheerkens.androidkeyboard.clipboard
 import android.Manifest
 import android.content.ContentUris
 import android.content.Context
-import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.MediaStore
-import androidx.core.content.ContextCompat
+import androidx.core.content.PermissionChecker
+
+/** How much of the photo library the app can read. */
+enum class PhotoAccess {
+    /** Every photo, so new screenshots too. */
+    ALL,
+    /** Only the photos the user picked (Android 14+ "Allow limited access"): new screenshots stay hidden. */
+    LIMITED,
+    NONE,
+}
 
 /**
  * Recent screenshots from the media library (Android doesn't put screenshots on the clipboard).
- * Needs the photos permission, which the companion app requests when the setting is turned on.
+ * Needs access to all photos, which the companion app requests when the setting is turned on.
  */
 class RecentScreenshots(private val context: Context) {
-    fun hasPermission(): Boolean =
-        ContextCompat.checkSelfPermission(context, PERMISSION) == PackageManager.PERMISSION_GRANTED
+    fun access(): PhotoAccess = photoAccess(
+        all = granted(PERMISSION),
+        picked = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && granted(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED),
+    )
+
+    fun hasPermission(): Boolean = access() == PhotoAccess.ALL
+
+    /**
+     * Checks the app op as well as the permission: a "limited access" grant from before this app
+     * declared READ_MEDIA_VISUAL_USER_SELECTED keeps READ_MEDIA_IMAGES granted with its app op denied.
+     */
+    private fun granted(permission: String): Boolean =
+        PermissionChecker.checkSelfPermission(context, permission) == PermissionChecker.PERMISSION_GRANTED
 
     /** Screenshots from the last [maxAgeMs], newest first. Call on an IO dispatcher. */
     fun query(now: Long, limit: Int = MAX_SHOTS, maxAgeMs: Long = MAX_AGE_MS): List<ClipEntry.Screenshot> {
@@ -57,6 +76,25 @@ class RecentScreenshots(private val context: Context) {
         val PERMISSION: String =
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Manifest.permission.READ_MEDIA_IMAGES
             else Manifest.permission.READ_EXTERNAL_STORAGE
+
+        /**
+         * What to request. From Android 14 it includes READ_MEDIA_VISUAL_USER_SELECTED, so a
+         * "limited access" choice shows as [PhotoAccess.LIMITED] instead of a grant that only
+         * reaches the picked photos and lapses when the app leaves the screen.
+         */
+        val REQUEST: Array<String> =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                arrayOf(PERMISSION, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
+            } else {
+                arrayOf(PERMISSION)
+            }
+
+        /** All photos wins; otherwise only picked photos is limited access. */
+        fun photoAccess(all: Boolean, picked: Boolean): PhotoAccess = when {
+            all -> PhotoAccess.ALL
+            picked -> PhotoAccess.LIMITED
+            else -> PhotoAccess.NONE
+        }
         const val MAX_SHOTS = 5
         const val MAX_AGE_MS = 24L * 60 * 60 * 1000
     }
