@@ -35,6 +35,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.BoxWithConstraints
+import com.rheerkens.androidkeyboard.keyboard.splitRows
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -60,10 +63,37 @@ fun KeysPanel(
     rowHeightDp: Int,
     enterKind: EnterKind,
     actions: KeyboardActions,
+    splitGapDp: Float = 0f,
+    keyRows: Int = layout.rows.size,
 ) {
+    val rowHeight = (rowHeightDp * keyRows.toFloat() / layout.rows.size).dp
+    if (splitGapDp > 0f) {
+        val rows = remember(layout, state.keyboard, state.layer) { splitRows(layout, state.keyboard, state.layer) }
+        val units = rows.filterNot { it.fullWidth }.maxOf { maxOf(it.left.sumOf { key -> key.weight.toDouble() }, it.right.sumOf { key -> key.weight.toDouble() }) }.toFloat()
+        BoxWithConstraints(Modifier.fillMaxWidth().padding(start = 3.dp, end = 3.dp, bottom = 4.dp)) {
+            val unit = ((maxWidth - splitGapDp.dp) / (2 * units)).coerceAtLeast(1.dp)
+            Column {
+                rows.forEach { row ->
+                    Row(Modifier.fillMaxWidth().height(rowHeight)) {
+                        if (row.fullWidth) {
+                            row.left.forEach { key ->
+                                val width = if (key is Key.Space) Modifier.weight(1f) else Modifier.width(unit * key.weight)
+                                KeyView(key, state, enterKind, actions, width.fillMaxHeight())
+                            }
+                        } else {
+                            row.left.forEach { key -> KeyView(key, state, enterKind, actions, Modifier.width(unit * key.weight).fillMaxHeight()) }
+                            Spacer(Modifier.weight(1f))
+                            row.right.forEach { key -> KeyView(key, state, enterKind, actions, Modifier.width(unit * key.weight).fillMaxHeight()) }
+                        }
+                    }
+                }
+            }
+        }
+        return
+    }
     Column(Modifier.fillMaxWidth().padding(start = 3.dp, end = 3.dp, bottom = 4.dp)) {
         layout.rows.forEach { row ->
-            Row(Modifier.fillMaxWidth().height(rowHeightDp.dp)) {
+            Row(Modifier.fillMaxWidth().height(rowHeight)) {
                 row.forEach { key -> KeyView(key, state, enterKind, actions, Modifier.weight(key.weight).fillMaxHeight()) }
             }
         }

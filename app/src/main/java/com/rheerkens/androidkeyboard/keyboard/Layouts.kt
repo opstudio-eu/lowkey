@@ -149,9 +149,12 @@ object Layouts {
         )
     )
 
-    fun forLayer(layer: Layer, keyboard: TypingKeyboard): KeyboardLayout = when (layer) {
-        Layer.LETTERS -> letters(keyboard)
-        Layer.SYMBOLS -> SYMBOLS
-        Layer.SYMBOLS_2 -> SYMBOLS_2
+    fun forLayer(layer: Layer, keyboard: TypingKeyboard, numberRow: Boolean = false): KeyboardLayout {
+        val layout = when (layer) {
+            Layer.LETTERS -> letters(keyboard)
+            Layer.SYMBOLS -> SYMBOLS
+            Layer.SYMBOLS_2 -> SYMBOLS_2
+        }
+        return if (numberRow && layer == Layer.LETTERS) KeyboardLayout(listOf(SYMBOLS.rows.first()) + layout.rows) else layout
     }
 }

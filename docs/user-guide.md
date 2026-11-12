@@ -34,6 +34,18 @@ Hold a top-row letter to select a number. Hold a letter with accents, slide to t
 
 Space and punctuation apply autocorrections. Press Backspace immediately after a correction to restore what you typed. Add terms to the personal dictionary to use them in suggestions and preserve their casing in dictated text. Spoken-phrase replacement rules are opt-in. Next-word prediction is not available.
 
+Turn **Settings → Keyboard → Number row** on for a dedicated 1–0 row above the letters. It is off by default and works with every language and keyboard mode. In Split mode the digits divide between the two halves. Symbol layouts keep their existing characters and fill the same panel height, so switching layers does not move the keyboard.
+
+## Resize, move and split the keyboard
+
+Tap **Keyboard tools** beside the minimize button. **Resize** outlines the keyboard: drag the top edge to change height, the bottom edge to leave more or less space underneath, or the centre move handle to reposition it. **Reset** restores the current mode's default size and position; the checkmark finishes. Completed drags are remembered, including when you press Android's Back button.
+
+The same menu offers **One-handed**, **Floating** and **Split**. Tap an active mode again to return to the normal keyboard. One-handed has side buttons to move it left/right or restore full width. Floating has a drag bar beneath it and leaves the surrounding app usable. Split is available in wide windows, shares the middle keys between both thumbs (G and V on QWERTY), and keeps one broad spacebar across the bottom.
+
+Lowkey remembers size, position and mode separately for small/large screens and portrait/landscape. **Settings → Keyboard → Automatically split on large screens** chooses Split as the large-screen default; your manual choices are remembered. Turning it off does not cancel a manually chosen Split mode. **Size and position** opens the controls in the keyboard lab. **Reset size and position** resets all saved dimensions without changing the selected modes.
+
+When floating, the Backspace gesture can aim at text above the panel; it does not aim through or below it.
+
 ## Minimize the keyboard
 
 Tap the chevron at the left of the suggestion strip to minimize the keyboard. Tap the keyboard button on the minimized bar to expand it.

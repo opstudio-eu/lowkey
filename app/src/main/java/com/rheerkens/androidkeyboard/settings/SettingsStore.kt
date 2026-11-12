@@ -47,6 +47,7 @@ class SettingsStore(context: Context) {
                 enumOr(prefs.getString(K_HEIGHT, null), d.keyboardHeight).rowHeightDp.toFloat(),
             ),
             keyboardHeight = enumOr(prefs.getString(K_HEIGHT, null), d.keyboardHeight),
+            numberRow = prefs.getBoolean(K_NUMBER_ROW, d.numberRow),
             vibrateOnKeyPress = prefs.getBoolean(K_VIBRATE, d.vibrateOnKeyPress),
             autoCapitalize = prefs.getBoolean(K_AUTOCAP, d.autoCapitalize),
             autocorrect = prefs.getBoolean(K_AUTOCORRECT, d.autocorrect),
@@ -78,6 +79,7 @@ class SettingsStore(context: Context) {
     private fun save(s: Settings) = prefs.edit {
         putString("keyboard_placement", s.placement.encode())
         putString(K_HEIGHT, s.keyboardHeight.name)
+        putBoolean(K_NUMBER_ROW, s.numberRow)
         putBoolean(K_VIBRATE, s.vibrateOnKeyPress)
         putBoolean(K_AUTOCAP, s.autoCapitalize)
         putBoolean(K_AUTOCORRECT, s.autocorrect)
@@ -140,6 +142,7 @@ class SettingsStore(context: Context) {
         private val LEGACY_LANGUAGES = mapOf("EN_US" to "en_US", "NL_NL" to "nl")
 
         const val K_HEIGHT = "keyboard_height"
+        const val K_NUMBER_ROW = "number_row"
         const val K_LOUPE_CORNERS = "loupe_corner_choice"
         const val K_CHECK_UPDATES = "check_for_updates"
         const val K_VIBRATE = "vibrate"

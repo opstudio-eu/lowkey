@@ -46,6 +46,13 @@ val LocalWordAim = androidx.compose.runtime.compositionLocalOf<WordAim?> { null 
 
 /** Callbacks from the keyboard UI into the input method. */
 interface KeyboardActions {
+    fun onOpenTools() {}
+    fun onResizeKeyboard() {}
+    fun onSelectPlacementMode(mode: com.rheerkens.androidkeyboard.keyboard.PlacementMode) {}
+    fun onSavePlacement(profile: com.rheerkens.androidkeyboard.keyboard.PlacementProfile, placement: com.rheerkens.androidkeyboard.keyboard.KeyboardPlacement) {}
+    fun onPlacementBounds(left: Int, top: Int, right: Int, bottom: Int, floating: Boolean) {}
+    fun onLayoutBackHandler(handler: (() -> Boolean)?) {}
+    fun onPrepareResize() {}
     fun onKeyDown()
     fun onKey(key: Key)
     fun onBackspace()

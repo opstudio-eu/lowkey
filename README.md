@@ -20,6 +20,7 @@ The app checks for updates automatically. Use **Settings → Updates → Check n
 - Suggestions and autocorrect in English, with Dutch, Polish and 18 more languages to download, plus a personal dictionary for saved terms and dictation casing.
 - Each language's own layout (such as German QWERTZ with Ü, Ö and Ä, or Russian ЙЦУКЕН), plus QWERTY, AZERTY, QWERTZ, Dvorak, and Colemak, with long-press numbers and accents.
 - A minimized keyboard for voice input or use with a physical keyboard, and gestures for deleting words.
+- Direct resizing and positioning, one-handed and floating modes, a split keyboard for wider screens, and an optional number row.
 - Clipboard history for text and images, with previews and an image editor for cropping, annotation, and blur.
 - A built-in test field to try the keyboard without leaving settings.
 - Light and dark themes in OpStudio's colours for the app and the keyboard, following the system by default.

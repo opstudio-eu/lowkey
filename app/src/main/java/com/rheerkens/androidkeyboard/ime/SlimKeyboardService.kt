@@ -7,6 +7,8 @@ import android.content.res.Configuration
 import android.database.ContentObserver
 import android.graphics.Bitmap
 import android.graphics.RectF
+import android.graphics.Rect
+import android.view.WindowManager
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
@@ -91,6 +93,9 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import com.rheerkens.androidkeyboard.keyboard.KeyboardPlacement
+import com.rheerkens.androidkeyboard.keyboard.PlacementProfile
+import com.rheerkens.androidkeyboard.keyboard.PlacementMode
 
 /**
  * Slim Keyboard input method: keys mode with suggestions, and a one-row voice mode with an
@@ -138,6 +143,11 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     private var selStart = -1
     private var selEnd = -1
     private var composeView: View? = null
+    private var placementBounds: Rect? = null
+    private var floatingPlacement = false
+    private var layoutBackHandler: (() -> Boolean)? = null
+    private var layoutBackCallback: Any? = null
+    private var resizeOnOpen = false
     private var lastOwnEditAt = 0L
     private var stripJob: Job? = null
     private lateinit var clipboardManager: ClipboardManager
@@ -282,19 +292,28 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                 val once by keyboardOnce.collectAsState()
                 val fan by fanSpec.collectAsState()
                 val dark = resolveDark(s.theme, isSystemInDarkTheme())
-                LaunchedEffect(dark) { styleNavigationBar(dark) }
+                val (viewportWidth, viewportHeight) = placementViewport()
+                val profile = PlacementProfile.forSize(viewportWidth, viewportHeight)
+                val placement = s.placement.get(profile)
+                LaunchedEffect(dark, placement.mode) { styleNavigationBar(dark, placement.mode == PlacementMode.FLOATING) }
                 KeyboardRoot(
                     KeyboardUiState(
                         mode = m,
                         keyboard = kb,
-                        layout = Layouts.forLayer(kb.layer, kb.keyboard),
+                        layout = Layouts.forLayer(kb.layer, kb.keyboard, s.numberRow),
                         strip = st.copy(enabled = s.suggestionStrip && !sensitive),
                         voice = vs,
                         models = models,
                         pickerOpen = picker && m == InputMode.VOICE,
                         enterKind = ek,
                         rowHeightDp = s.keyboardHeight.rowHeightDp,
+                        numberRow = s.numberRow,
                         dark = dark,
+                        placement = placement,
+                        profile = profile,
+                        viewportWidthDp = viewportWidth,
+                        viewportHeightDp = viewportHeight,
+                        resizeOnOpen = resizeOnOpen,
                         // Never hide a running dictation; it returns to keys (and the bar) when done.
                         minimized = isMinimized(s, physical, once) && m == InputMode.KEYS,
                         clipHistory = clips,
@@ -315,6 +334,65 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onEvaluateFullscreenMode(): Boolean = false
+
+    private fun placementViewport(): Pair<Float, Float> {
+        val density = resources.displayMetrics.density
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val metrics = getSystemService(WindowManager::class.java).currentWindowMetrics
+            val insets = metrics.windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+            return (metrics.bounds.width() - insets.left - insets.right) / density to
+                (metrics.bounds.height() - insets.top - insets.bottom) / density
+        }
+        return resources.configuration.screenWidthDp.toFloat() to resources.configuration.screenHeightDp.toFloat()
+    }
+
+    override fun onComputeInsets(outInsets: Insets) {
+        super.onComputeInsets(outInsets)
+        val bounds = placementBounds ?: return
+        if (floatingPlacement) {
+            val bottom = window.window?.decorView?.height ?: bounds.bottom
+            outInsets.contentTopInsets = bottom
+            outInsets.visibleTopInsets = bottom
+            outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION
+            outInsets.touchableRegion.set(bounds)
+        } else {
+            outInsets.contentTopInsets = bounds.top
+            outInsets.visibleTopInsets = bounds.top
+            outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_CONTENT
+        }
+    }
+
+    override fun onPlacementBounds(left: Int, top: Int, right: Int, bottom: Int, floating: Boolean) {
+        val next = Rect(left, top, right, bottom)
+        if (placementBounds == next && floatingPlacement == floating) return
+        placementBounds = next
+        floatingPlacement = floating
+        composeView?.requestLayout()
+    }
+
+    override fun onSavePlacement(profile: PlacementProfile, placement: KeyboardPlacement) {
+        settings.update { it.copy(placement = it.placement.update(profile) { placement }) }
+    }
+
+    override fun onPrepareResize() {
+        voice.cancel(CancelReason.SWITCHED_TO_KEYS)
+        mode.value = InputMode.KEYS
+        pickerOpen.value = false
+        chooserOpen.value = false
+        keyboardOnce.value = true
+        keyboardOnceEditor = bridge.editorKey()
+    }
+
+    override fun onLayoutBackHandler(handler: (() -> Boolean)?) {
+        layoutBackHandler = handler
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val dispatcher = window.onBackInvokedDispatcher
+            (layoutBackCallback as? OnBackInvokedCallback)?.let(dispatcher::unregisterOnBackInvokedCallback)
+            layoutBackCallback = if (handler != null) OnBackInvokedCallback { handler() }.also {
+                dispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, it)
+            } else null
+        }
+    }
 
     /**
      * Android hides the on-screen keyboard while a physical keyboard is connected, unless the
@@ -364,7 +442,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
      * both to the keyboard's theme, which can differ from the system one.
      */
     @Suppress("DEPRECATION")
-    private fun styleNavigationBar(dark: Boolean) {
+    private fun styleNavigationBar(dark: Boolean, floating: Boolean = floatingPlacement) {
         val win = window.window ?: return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             val light = WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
@@ -375,7 +453,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             win.decorView.systemUiVisibility = if (dark) flags and flag.inv() else flags or flag
         }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-            win.navigationBarColor = (if (dark) DarkKeyboardColors else LightKeyboardColors).background.toArgb()
+            win.navigationBarColor = if (floating) android.graphics.Color.TRANSPARENT else (if (dark) DarkKeyboardColors else LightKeyboardColors).background.toArgb()
         }
     }
 
@@ -433,6 +511,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         inputViewActive = true
         sensitiveField.value = bridge.isSensitiveField
         refreshClipChips()
+        resizeOnOpen = info.privateImeOptions?.contains("lowkey.resize") == true
+        placementBounds = null
         inputSession.value++
         // A restart keeps the session only if it's still the same editor at the owned position;
         // otherwise (another field in the same view) the old capture must never write here.
@@ -455,7 +535,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         preloadLanguages()
         autoSpaced = false
         // The slim bar opens in keys mode without forgetting the remembered mode.
-        mode.value = if (isMinimized()) InputMode.KEYS else initialMode()
+        if (resizeOnOpen) onPrepareResize()
+        mode.value = if (resizeOnOpen || isMinimized()) InputMode.KEYS else initialMode()
         if (mode.value == InputMode.VOICE) {
             voice.clearOutcome()
             voice.refreshReadiness()
@@ -470,6 +551,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
+        onLayoutBackHandler(null)
         inputViewActive = false
         clipboardJob?.cancel()
         stripJob?.cancel()
@@ -1129,7 +1211,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     /** Back closes the model picker or the keyboard chooser before it closes the keyboard. */
-    private fun backClosesPanel() = (pickerOpen.value || chooserOpen.value) && isInputViewShown
+    private fun backClosesPanel() = (pickerOpen.value || chooserOpen.value || layoutBackHandler != null) && isInputViewShown
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         if (keyCode == KeyEvent.KEYCODE_BACK && backClosesPanel()) {
@@ -1142,6 +1224,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
         if (keyCode == KeyEvent.KEYCODE_BACK && backClosesPanel()) {
             if (!event.isCanceled) {
+                layoutBackHandler?.invoke()
                 pickerOpen.value = false
                 chooserOpen.value = false
             }

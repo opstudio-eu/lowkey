@@ -71,6 +71,7 @@ data class Settings(
     val placement: PlacementPreferences = PlacementPreferences(),
     // Keyboard
     val keyboardHeight: KeyboardHeight = KeyboardHeight.NORMAL,
+    val numberRow: Boolean = false,
     val vibrateOnKeyPress: Boolean = true,
     val autoCapitalize: Boolean = true,
     val autocorrect: Boolean = true,
