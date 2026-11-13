@@ -2,6 +2,9 @@ package com.rheerkens.androidkeyboard.keyboard
 
 import kotlin.math.min
 
+/** Space above the keyboard bar controls for grabbing the expand/minimize grip. */
+const val KEYBOARD_GRIP_SPACE_DP = 8
+
 enum class PlacementMode { NORMAL, ONE_HANDED, FLOATING, SPLIT }
 
 enum class PlacementProfile(val large: Boolean) {
@@ -84,10 +87,11 @@ data class KeyboardPlacement(
         val floating = actualMode == PlacementMode.FLOATING
         val extra = if (floating && !minimized) 24f else 0f
         val rowCount = rows.coerceIn(4, 5)
-        val maxRow = ((h * .7f - 49f - extra) / rowCount).coerceIn(1f, 88f)
+        val barHeight = 49f + KEYBOARD_GRIP_SPACE_DP
+        val maxRow = ((h * .7f - barHeight - extra) / rowCount).coerceIn(1f, 88f)
         val row = (if (floating) floatingRowHeight else rowHeight).safe(48f).coerceIn(min(32f, maxRow), maxRow)
-        val expandedHeight = (49f + row * rowCount + extra).coerceAtMost(h)
-        val panelHeight = (if (minimized) 49f else compactHeight?.plus(extra) ?: expandedHeight).coerceIn(1f, h)
+        val expandedHeight = (barHeight + row * rowCount + extra).coerceAtMost(h)
+        val panelHeight = (if (minimized) barHeight else compactHeight?.plus(extra) ?: expandedHeight).coerceIn(1f, h)
         val panelWidth = when (actualMode) {
             PlacementMode.NORMAL -> (w * dockedWidth.safe(1f)).coerceIn(min(260f, w), w)
             PlacementMode.ONE_HANDED -> (w * oneHandWidth.safe(.8f)).coerceIn(min(260f, w), (w - 44f).coerceAtLeast(min(260f, w)))

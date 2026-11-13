@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rheerkens.androidkeyboard.keyboard.KeyboardLayout
 import com.rheerkens.androidkeyboard.keyboard.KeyboardState
+import com.rheerkens.androidkeyboard.keyboard.KEYBOARD_GRIP_SPACE_DP
 import com.rheerkens.androidkeyboard.models.ModelStoreState
 import com.rheerkens.androidkeyboard.settings.InputMode
 import com.rheerkens.androidkeyboard.voice.VoiceState
@@ -36,7 +37,7 @@ import com.rheerkens.androidkeyboard.voice.ui.VOICE_ROW_DP
 import com.rheerkens.androidkeyboard.voice.ui.VoiceRow
 
 /** Height of the minimized keyboard, the slim bar shown with a physical keyboard. */
-const val MINIMIZED_BAR_DP = 48
+const val MINIMIZED_BAR_DP = 48 + KEYBOARD_GRIP_SPACE_DP
 
 /** Everything the keyboard UI renders. Produced by the input method service. */
 data class KeyboardUiState(
@@ -122,14 +123,14 @@ internal fun KeyboardContent(
                 if (state.minimized) {
                     MinimizedBar(state, actions, talk, more, showHint = state.showExpandHint)
                 } else if (state.mode == InputMode.KEYS) {
-                    Box(Modifier.fillMaxWidth().height(44.dp)
+                    Box(Modifier.fillMaxWidth().height((44 + KEYBOARD_GRIP_SPACE_DP).dp)
                         .keyboardBarSwipe(minimized = false) { actions.onSetMinimized(true) }
                         .semantics {
                             customActions = listOf(CustomAccessibilityAction("Minimize keyboard") {
                                 actions.onSetMinimized(true); true
                             })
                         }) {
-                        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.fillMaxSize().padding(top = KEYBOARD_GRIP_SPACE_DP.dp), verticalAlignment = Alignment.CenterVertically) {
                             VoiceEntryButton(state.voice, actions, talk, more)
                             SuggestionStrip(state.strip, state.clipHistory, state.inputSession, actions)
                         }
@@ -146,7 +147,7 @@ internal fun KeyboardContent(
                     }
                 } else {
                     if (state.pickerOpen) {
-                        val keysHeight = 44 + state.keyRows * state.rowHeightDp + 4 // strip + rows + bottom padding
+                        val keysHeight = 44 + KEYBOARD_GRIP_SPACE_DP + state.keyRows * state.rowHeightDp + 4 // strip + rows + bottom padding
                         ModelPicker(state.models, (keysHeight - VOICE_ROW_DP).dp, actions)
                     }
                     Row(Modifier.fillMaxWidth().height(VOICE_ROW_DP.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -174,7 +175,7 @@ private fun MinimizedBar(state: KeyboardUiState, actions: KeyboardActions, talk:
                 actions.onSetMinimized(false); true
             })
         }) {
-        Row(Modifier.fillMaxWidth().height(MINIMIZED_BAR_DP.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxSize().padding(top = KEYBOARD_GRIP_SPACE_DP.dp), verticalAlignment = Alignment.CenterVertically) {
             VoiceEntryButton(state.voice, actions, talk, more)
             val note = state.strip.note
             if (note != null) {
@@ -183,9 +184,9 @@ private fun MinimizedBar(state: KeyboardUiState, actions: KeyboardActions, talk:
                     modifier = Modifier.weight(1f).padding(horizontal = 6.dp))
             } else {
                 ClipHistoryRow(state.clipHistory, state.inputSession, actions,
-                    Modifier.weight(1f).height(MINIMIZED_BAR_DP.dp), chipHeight = 36.dp)
+                    Modifier.weight(1f).height(48.dp), chipHeight = 36.dp)
             }
-            BackspaceKey(actions, Modifier.padding(end = 6.dp).size(width = 56.dp, height = MINIMIZED_BAR_DP.dp),
+            BackspaceKey(actions, Modifier.padding(end = 6.dp).size(width = 56.dp, height = 48.dp),
                 sliderInPopup = true, fan = state.fan)
         }
         KeyboardBarGrip()

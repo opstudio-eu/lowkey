@@ -10,8 +10,8 @@ class KeyboardPlacementTest {
                 for (rows in 4..5) {
                     val value = KeyboardPlacement(mode = mode, bottomSpace = 120f, floatingY = .1f)
                     val frame = value.frame(width, height, rows = rows, minimized = true)
-                    assertEquals("$mode at ${width}x$height", height - 49f, frame.top, .01f)
-                    assertEquals(49f, frame.height, .01f)
+                    assertEquals("$mode at ${width}x$height", height - 57f, frame.top, .01f)
+                    assertEquals(57f, frame.height, .01f)
                     assertEquals(height, frame.top + frame.height, .01f)
                 }
             }
@@ -28,7 +28,7 @@ class KeyboardPlacementTest {
                 assertEquals(expanded.left, minimized.left, .01f)
                 assertEquals(expanded.width, minimized.width, .01f)
                 assertEquals(expanded.mode, minimized.mode)
-                assertEquals(49f, minimized.height, .01f)
+                assertEquals(57f, minimized.height, .01f)
             }
         }
     }
@@ -46,7 +46,7 @@ class KeyboardPlacementTest {
                 val value = saved.get(profile)
                 val expanded = value.frame(720f, 1000f, rows = 5)
                 repeat(3) {
-                    assertEquals(951f, value.frame(720f, 1000f, rows = 5, minimized = true).top, .01f)
+                    assertEquals(943f, value.frame(720f, 1000f, rows = 5, minimized = true).top, .01f)
                     assertEquals(expanded, value.frame(720f, 1000f, rows = 5))
                 }
             }
@@ -163,7 +163,7 @@ class KeyboardPlacementTest {
 
     @Test fun allRowsFitEvenInAShortWindow() {
         val frame = KeyboardPlacement().frame(400f, 160f)
-        assertTrue(49f + frame.rowHeight * 4f <= frame.height + .01f)
+        assertTrue(57f + frame.rowHeight * 4f <= frame.height + .01f)
     }
 
     @Test fun floatingWidthResizeKeepsItsLeftEdge() {
@@ -209,7 +209,7 @@ class KeyboardPlacementTest {
             assertEquals(four.rowHeight, five.rowHeight, .01f)
             assertEquals(four.height + four.rowHeight, five.height, .01f)
             val small = value.frame(720f, 300f, rows = 5)
-            assertTrue(49f + small.rowHeight * 5 + (if (mode == PlacementMode.FLOATING) 24f else 0f) <= small.height + .01f)
+            assertTrue(57f + small.rowHeight * 5 + (if (mode == PlacementMode.FLOATING) 24f else 0f) <= small.height + .01f)
         }
     }
 
