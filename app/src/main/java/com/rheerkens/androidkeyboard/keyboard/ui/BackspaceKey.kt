@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -449,18 +448,14 @@ fun BackspaceKey(
         contentAlignment = Alignment.Center,
     ) {
         if (fan != null) {
-            // Round, and the fan opens around it: its inner edge sits just outside this circle.
+            // Keep the fan's existing geometry and touch area, with only the glyph visible.
             Box(
-                Modifier
-                    .size((CommandFan.BUTTON * 2).dp)
-                    .background(if (pressed) c.keyPressed else c.keyMod, CircleShape),
+                Modifier.size((CommandFan.BUTTON * 2).dp),
                 contentAlignment = Alignment.Center,
-            ) { Icon(SlimIcons.Backspace, null, tint = c.keyText, modifier = Modifier.size(20.dp)) }
+            ) { Icon(SlimIcons.Backspace, null, tint = if (pressed) c.enter else c.keyText, modifier = Modifier.size(22.dp)) }
         } else {
-            KeyCap(if (minimizeArmed) c.enter else if (pressed) c.keyPressed else c.keyMod) {
-                if (minimizeArmed) Icon(SlimIcons.ChevronDown, "Release to minimize", tint = c.enterInk, modifier = Modifier.size(22.dp))
-                else Icon(SlimIcons.Backspace, null, tint = c.keyText, modifier = Modifier.size(21.dp))
-            }
+            if (minimizeArmed) Icon(SlimIcons.ChevronDown, "Release to minimize", tint = c.enter, modifier = Modifier.size(22.dp))
+            else Icon(SlimIcons.Backspace, null, tint = if (pressed) c.enter else c.keyText, modifier = Modifier.size(22.dp))
         }
         if (hasAimed) {
             val aim = if (aiming) LocalWordAim.current ?: WordAim.Searching else null

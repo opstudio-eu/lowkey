@@ -6,7 +6,7 @@ For installation, see the [README](../README.md#install).
 
 1. Open **Voice**, allow microphone access and choose **Download & use** for a speech model. A completed download becomes active; choose **Use** to switch to another downloaded model.
 2. Open a text field and tap the keyboard's microphone button.
-3. Speak, then tap **Stop**. Lowkey transcribes on your phone and inserts the finished text.
+3. Speak, then tap the **checkmark**. Lowkey transcribes on your phone and inserts the finished text.
 
 With **Voice → Dictation settings → Dictate from the keys** enabled, keys return after transcription so you can make corrections. This is the default. Turn it off to use mode recall, auto-start, or continuous dictation settings.
 
@@ -58,7 +58,7 @@ Open **Dictionary → My words** to add, search, edit or delete saved terms. **M
 
 ## Resize, move and split the keyboard
 
-Tap **Keyboard tools** beside the minimize button. **Size & position** outlines the keyboard: drag the top edge to change height, the bottom edge to leave more or less space underneath, or the centre move handle to reposition it. In Normal and Floating modes, the left and right handles change width independently of height. A narrower Normal keyboard can also move horizontally while remaining docked. **Reset** restores the current mode's default size and position; the checkmark finishes. Completed drags are remembered, including when you press Android's Back button.
+Hold the microphone to open quick settings. **Size & position** outlines the keyboard: drag the top edge to change height, the bottom edge to leave more or less space underneath, or the centre move handle to reposition it. In Normal and Floating modes, the left and right handles change width independently of height. A narrower Normal keyboard can also move horizontally while remaining docked. **Reset** restores the current mode's default size and position; the checkmark finishes. Completed drags are remembered, including when you press Android's Back button.
 
 The same menu offers **One-handed**, **Floating** and **Split**, with an On/Off label and a checkmark for the active mode. Tap an active mode again to return to the normal keyboard. One-handed has side buttons to move it left/right or restore full width. Floating has a drag bar beneath it and leaves the surrounding app usable. Split is available in wide windows (at least 480 dp); narrower windows show it as unavailable. It shares the middle keys between both thumbs (G and V on QWERTY), and keeps one broad spacebar across the bottom. **Settings** opens the keyboard settings; dictionary management stays in the companion app's **Dictionary** tab.
 
@@ -77,7 +77,9 @@ Hold Space to open Android's keyboard-app picker directly. **Settings → Keyboa
 
 ## Minimize the keyboard
 
-Tap the chevron at the left of the suggestion strip to minimize the keyboard. Tap the keyboard button on the minimized bar to expand it.
+Swipe down over the suggestion strip to minimize the keyboard, or swipe up over the minimized bar to expand it. Both forms have a small horizontal grip. You can also hold the microphone and choose **Show keyboard** or **Minimize keyboard** in quick settings.
+
+The microphone stays at the left in both forms. Tap it to start voice typing; hold it for quick settings, including model selection and voice settings. During dictation, the cancel cross is on the left and the checkmark to stop and insert is on the right. Stopping returns to the previous keyboard form when keyboard-first dictation is enabled.
 
 The minimized bar sits at the bottom, above Android's navigation area, even if you moved the full keyboard upward. Expanding restores the keyboard's saved size and position.
 

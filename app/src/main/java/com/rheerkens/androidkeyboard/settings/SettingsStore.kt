@@ -76,6 +76,7 @@ class SettingsStore(context: Context) {
             lastMode = enumOr(prefs.getString(K_LAST_MODE, null), d.lastMode),
             minimizedWithPhysicalKeyboard = prefs.getBoolean(K_MINIMIZED_PHYSICAL, d.minimizedWithPhysicalKeyboard),
             minimizedWithoutPhysicalKeyboard = prefs.getBoolean(K_MINIMIZED_TOUCH, d.minimizedWithoutPhysicalKeyboard),
+            compactExpandHintSeen = prefs.getBoolean("compact_expand_hint_seen", d.compactExpandHintSeen),
         )
     }
 
@@ -112,6 +113,7 @@ class SettingsStore(context: Context) {
         putString(K_LAST_MODE, s.lastMode.name)
         putBoolean(K_MINIMIZED_PHYSICAL, s.minimizedWithPhysicalKeyboard)
         putBoolean(K_MINIMIZED_TOUCH, s.minimizedWithoutPhysicalKeyboard)
+        putBoolean("compact_expand_hint_seen", s.compactExpandHintSeen)
     }
 
     private inline fun <reified E : Enum<E>> enumOr(name: String?, default: E): E =
