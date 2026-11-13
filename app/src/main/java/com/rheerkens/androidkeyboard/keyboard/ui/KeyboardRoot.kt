@@ -1,31 +1,35 @@
 package com.rheerkens.androidkeyboard.keyboard.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.rheerkens.androidkeyboard.keyboard.KeyboardLayout
 import com.rheerkens.androidkeyboard.keyboard.KeyboardState
 import com.rheerkens.androidkeyboard.models.ModelStoreState
 import com.rheerkens.androidkeyboard.settings.InputMode
-import com.rheerkens.androidkeyboard.ui.SlimIcons
 import com.rheerkens.androidkeyboard.voice.VoiceState
 import com.rheerkens.androidkeyboard.voice.ui.ModelPicker
 import com.rheerkens.androidkeyboard.voice.ui.VOICE_ROW_DP
@@ -51,6 +55,7 @@ data class KeyboardUiState(
     val background: KeyboardBackgroundImage? = null,
     /** Show only the slim bar (keys mode, minimized by the user). */
     val minimized: Boolean = false,
+    val showExpandHint: Boolean = false,
     /** Recent clips and screenshots, newest first: the slim bar, and the strip when no word is typed. */
     val clipHistory: List<ClipChip> = emptyList(),
     /** Changes each time the keyboard opens; the clip row then scrolls back to the newest item. */
@@ -65,6 +70,8 @@ data class KeyboardUiState(
     val viewportHeightDp: Float = 700f,
     val resizeOnOpen: Boolean = false,
     val toolsOpen: Boolean = false,
+    /** The size to return to when quick settings close. */
+    val toolsReturnToMinimized: Boolean = false,
     val splitGapDp: Float = 0f,
     val contentWidthDp: Float = 360f,
     val numberRow: Boolean = false,
@@ -79,12 +86,8 @@ data class KeyboardUiState(
 }
 
 /**
- * Concept 4 keyboard: a 44 dp top line (book, three suggestions, toggle) above four key rows,
- * or in voice mode one 56 dp row (model pill, status, Talk/Stop, toggle). The model picker
- * expands upward above the voice row, inside the keyboard, to about keys-mode height.
- * The mic/keyboard toggle stays in the same far-right 44 × 44 slot in both modes.
- * A chevron at the far left minimizes everything to one slim bar whose expand button sits in
- * the same spot.
+ * The microphone stays on the left in both keyboard forms. During dictation its slot becomes
+ * Cancel, with Stop and insert at the right. The model picker expands above that voice row.
  */
 @Composable
 internal fun KeyboardContent(
@@ -98,7 +101,14 @@ internal fun KeyboardContent(
     val languageMenu = remember { LanguageMenuState() }
     // A new editor, another panel or a changed keyboard closes the emoji key's language menu.
     LaunchedEffect(state.inputSession, state.mode, state.minimized, state.toolsOpen, state.emojiOpen,
-        state.keyboard.keyboard, state.keyboard.layer, state.keyboards) { languageMenu.close() }
+        state.keyboard.keyboard, state.keyboard.layer, state.keyboards, state.pickerOpen) {
+        languageMenu.close()
+    }
+    val more = { actions.onDismissExpandHint(); languageMenu.close(); actions.onOpenTools() }
+    val talk = {
+        actions.onDismissExpandHint()
+        if (state.voice == VoiceState.NoPermission) actions.onOpenSetup() else actions.onToggleMode()
+    }
     CompositionLocalProvider(LocalKeyboardColors provides colors, LocalWordAim provides state.wordAim) {
         Box(Modifier.onGloballyPositioned { languageMenu.host = it }) {
             Column(
@@ -110,13 +120,20 @@ internal fun KeyboardContent(
             ) {
                 Box(Modifier.fillMaxWidth().height(1.dp).background(colors.divider))
                 if (state.minimized) {
-                    MinimizedBar(state.clipHistory, state.inputSession, state.fan, actions)
+                    MinimizedBar(state, actions, talk, more, showHint = state.showExpandHint)
                 } else if (state.mode == InputMode.KEYS) {
-                    Row(Modifier.fillMaxWidth().height(44.dp), verticalAlignment = Alignment.CenterVertically) {
-                        StripIconButton(SlimIcons.ChevronDown, "Minimize keyboard") { actions.onSetMinimized(true) }
-                        StripIconButton(SlimIcons.Tools, "Keyboard tools", onTap = actions::onOpenTools)
-                        SuggestionStrip(state.strip, state.clipHistory, state.inputSession, actions)
-                        ModeToggle(state.mode, actions)
+                    Box(Modifier.fillMaxWidth().height(44.dp)
+                        .keyboardBarSwipe(minimized = false) { actions.onSetMinimized(true) }
+                        .semantics {
+                            customActions = listOf(CustomAccessibilityAction("Minimize keyboard") {
+                                actions.onSetMinimized(true); true
+                            })
+                        }) {
+                        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                            VoiceEntryButton(state.voice, actions, talk, more)
+                            SuggestionStrip(state.strip, state.clipHistory, state.inputSession, actions)
+                        }
+                        KeyboardBarGrip()
                     }
                     if (state.toolsOpen) {
                         KeyboardTools(state, actions)
@@ -133,8 +150,8 @@ internal fun KeyboardContent(
                         ModelPicker(state.models, (keysHeight - VOICE_ROW_DP).dp, actions)
                     }
                     Row(Modifier.fillMaxWidth().height(VOICE_ROW_DP.dp), verticalAlignment = Alignment.CenterVertically) {
-                        VoiceRow(state.voice, state.models, state.pickerOpen, clock, actions, (state.contentWidthDp - 160f).coerceIn(60f, 200f).dp)
-                        ModeToggle(state.mode, actions)
+                        VoiceRow(state.voice, state.models, state.pickerOpen, clock, actions,
+                            widthDp = state.contentWidthDp, fan = state.fan, onMore = more)
                     }
                 }
             }
@@ -144,65 +161,48 @@ internal fun KeyboardContent(
 }
 
 /**
- * The whole keyboard while minimized: one slim row with an expand button at the far left, recent
- * clips in the middle (scrolls sideways, newest first), and Backspace at the far right, for
- * corrections while dictating with another app.
+ * Two fixed controls: microphone and Backspace. Swipe up or use quick settings to expand.
  */
 @Composable
-private fun MinimizedBar(clips: List<ClipChip>, session: Int, fan: FanSpec, actions: KeyboardActions) {
+private fun MinimizedBar(state: KeyboardUiState, actions: KeyboardActions, talk: () -> Unit,
+    more: () -> Unit, showHint: Boolean) {
     val c = LocalKeyboardColors.current
-    Row(Modifier.fillMaxWidth().height(MINIMIZED_BAR_DP.dp), verticalAlignment = Alignment.CenterVertically) {
-        PressTarget(
-            "Show keyboard",
-            Modifier.size(width = 58.dp, height = MINIMIZED_BAR_DP.dp),
-            onDown = actions::onKeyDown,
-            onTap = { actions.onSetMinimized(false) },
-        ) { pressed ->
-            Box(
-                Modifier
-                    .padding(start = 6.dp)
-                    .size(width = 48.dp, height = 34.dp)
-                    .background(if (pressed) c.keyPressed else c.key, RoundedCornerShape(17.dp)),
-                contentAlignment = Alignment.Center,
-            ) { Icon(SlimIcons.Keyboard, null, tint = c.keyText, modifier = Modifier.size(22.dp)) }
+    Box(Modifier.fillMaxWidth().height(MINIMIZED_BAR_DP.dp)
+        .keyboardBarSwipe(minimized = true) { actions.onSetMinimized(false) }
+        .semantics {
+            customActions = listOf(CustomAccessibilityAction("Show keyboard") {
+                actions.onSetMinimized(false); true
+            })
+        }) {
+        Row(Modifier.fillMaxWidth().height(MINIMIZED_BAR_DP.dp), verticalAlignment = Alignment.CenterVertically) {
+            VoiceEntryButton(state.voice, actions, talk, more)
+            val note = state.strip.note
+            if (note != null) {
+                Text(note.text, color = if (note.warn) c.amber else c.muted,
+                    fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f).padding(horizontal = 6.dp))
+            } else {
+                ClipHistoryRow(state.clipHistory, state.inputSession, actions,
+                    Modifier.weight(1f).height(MINIMIZED_BAR_DP.dp), chipHeight = 36.dp)
+            }
+            BackspaceKey(actions, Modifier.padding(end = 6.dp).size(width = 56.dp, height = MINIMIZED_BAR_DP.dp),
+                sliderInPopup = true, fan = state.fan)
         }
-        ClipHistoryRow(clips, session, actions, Modifier.weight(1f).height(MINIMIZED_BAR_DP.dp), chipHeight = 34.dp)
-        BackspaceKey(
-            actions,
-            // Inset from the screen corner, where the thumb reaches it more easily.
-            Modifier.padding(end = 8.dp).size(width = 64.dp, height = MINIMIZED_BAR_DP.dp),
-            sliderInPopup = true,
-            fan = fan,
-        )
+        KeyboardBarGrip()
+        if (showHint) {
+            AbovePopup {
+                PressTarget("Swipe up to show keyboard", onTap = { actions.onSetMinimized(false) }) { pressed ->
+                    Text("Swipe up to show keyboard", color = c.keyText, fontSize = 13.sp,
+                        modifier = Modifier.background(if (pressed) c.keyPressed else c.popup, RoundedCornerShape(10.dp))
+                            .padding(horizontal = 12.dp, vertical = 9.dp))
+                }
+            }
+        }
     }
 }
 
 @Composable
-private fun ModeToggle(mode: InputMode, actions: KeyboardActions) {
-    val c = LocalKeyboardColors.current
-    val voice = mode == InputMode.VOICE
-    PressTarget(
-        if (voice) "Switch to keyboard" else "Switch to voice typing",
-        Modifier.size(44.dp),
-        onDown = actions::onKeyDown,
-        onTap = actions::onToggleMode,
-    ) { pressed ->
-        val shape = RoundedCornerShape(10.dp)
-        Box(
-            Modifier
-                .size(38.dp)
-                .background(
-                    when {
-                        pressed -> c.keyPressed
-                        voice -> c.toggleVoiceBg
-                        else -> Color.Transparent
-                    },
-                    shape,
-                )
-                .then(if (voice) Modifier.border(1.dp, c.toggleVoiceRing, shape) else Modifier),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(if (voice) SlimIcons.Keyboard else SlimIcons.Mic, null, tint = c.keyText, modifier = Modifier.size(22.dp))
-        }
-    }
+private fun BoxScope.KeyboardBarGrip() {
+    Box(Modifier.align(Alignment.TopCenter).padding(top = 3.dp).size(32.dp, 3.dp)
+        .background(LocalKeyboardColors.current.toggleVoiceRing, RoundedCornerShape(2.dp)))
 }

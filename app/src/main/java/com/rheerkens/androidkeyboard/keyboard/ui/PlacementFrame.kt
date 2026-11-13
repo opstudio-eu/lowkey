@@ -51,7 +51,7 @@ fun KeyboardRoot(state: KeyboardUiState, clock: () -> Long, actions: KeyboardAct
     val minimized = state.minimized && !editing && !menu
     val compactHeight = when {
         editing || menu -> null
-        state.mode == InputMode.VOICE && !state.pickerOpen -> 57f
+        state.mode == InputMode.VOICE && !state.pickerOpen -> (com.rheerkens.androidkeyboard.voice.ui.VOICE_ROW_DP + 1).toFloat()
         else -> null
     }
     val frame = placement.frame(width, height, compactHeight, state.keyRows, minimized = minimized)
@@ -61,11 +61,15 @@ fun KeyboardRoot(state: KeyboardUiState, clock: () -> Long, actions: KeyboardAct
     val leftRail = rail > 0 && placement.rightHand
     val panelHeight = frame.height - if (floatingHandle) 24f else 0f
     val displayed = state.copy(rowHeightDp = frame.rowHeight.roundToInt(), minimized = minimized,
-        toolsOpen = menu, placement = placement, splitGapDp = frame.splitGap, contentWidthDp = frame.width)
+        toolsOpen = menu, toolsReturnToMinimized = state.minimized,
+        placement = placement, splitGapDp = frame.splitGap, contentWidthDp = frame.width)
 
     fun save(value: KeyboardPlacement) { actions.onSavePlacement(state.profile, value); draft = null }
     val routed = object : KeyboardActions by actions {
-        override fun onOpenTools() { editing = false; menu = !menu }
+        override fun onOpenTools() {
+            if (state.mode == InputMode.VOICE) actions.onToggleMode()
+            editing = false; menu = !menu
+        }
         override fun onResizeKeyboard() { actions.onPrepareResize(); menu = false; editing = true }
         override fun onSelectPlacementMode(mode: PlacementMode) {
             save(placement.copy(mode = mode, automatic = false)); menu = false; editing = false
@@ -73,6 +77,11 @@ fun KeyboardRoot(state: KeyboardUiState, clock: () -> Long, actions: KeyboardAct
         override fun onOpenDictionary() { menu = false; actions.onOpenDictionary() }
         override fun onOpenKeyboardSettings() { menu = false; actions.onOpenKeyboardSettings() }
         override fun onToggleMode() { menu = false; editing = false; actions.onToggleMode() }
+        override fun onOpenVoicePicker() { menu = false; editing = false; actions.onOpenVoicePicker() }
+        override fun onOpenVoiceSettings() { menu = false; actions.onOpenVoiceSettings() }
+        override fun onSetMinimized(minimized: Boolean) {
+            menu = false; editing = false; actions.onSetMinimized(minimized)
+        }
     }
     // Dispose gesture detectors and popups when their coordinate system or editor changes.
     key(state.inputSession, state.profile, frame.mode, width, height, state.keyRows) {

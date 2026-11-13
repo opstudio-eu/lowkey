@@ -15,8 +15,8 @@ import androidx.compose.ui.window.PopupProperties
 
 /**
  * Shows [content] above its anchor in a separate window, so it can extend past the top of the
- * keyboard (the slim bar has no room above its keys). Not focusable; it is shown only while a finger
- * is down on the keyboard, and that gesture stays with the keyboard window until release.
+ * keyboard (the slim bar has no room above its keys). Focus stays with the IME: a focusable popup
+ * would hide it.
  * [endInset] right-aligns the popup that far inside the anchor's end; null centers it.
  */
 @Composable
@@ -27,12 +27,13 @@ fun AbovePopup(gap: Dp = 6.dp, endInset: Dp? = null, content: @Composable () -> 
     }
     Popup(
         popupPositionProvider = provider,
-        properties = PopupProperties(focusable = false, dismissOnBackPress = false, dismissOnClickOutside = false),
+        properties = PopupProperties(focusable = false, clippingEnabled = false,
+            dismissOnBackPress = false, dismissOnClickOutside = false),
         content = content,
     )
 }
 
-private class AboveAnchor(private val gap: Int, private val endInset: Int?, private val margin: Int) : PopupPositionProvider {
+internal class AboveAnchor(private val gap: Int, private val endInset: Int?, private val margin: Int) : PopupPositionProvider {
     override fun calculatePosition(
         anchorBounds: IntRect,
         windowSize: IntSize,
@@ -42,9 +43,8 @@ private class AboveAnchor(private val gap: Int, private val endInset: Int?, priv
         val preferred = if (endInset != null) anchorBounds.right - endInset - popupContentSize.width
             else anchorBounds.center.x - popupContentSize.width / 2
         val maxX = (windowSize.width - popupContentSize.width - margin).coerceAtLeast(margin)
-        val above = anchorBounds.top - popupContentSize.height - gap
-        val preferredY = if (above >= margin) above else anchorBounds.bottom + gap
-        val maxY = (windowSize.height - popupContentSize.height - margin).coerceAtLeast(margin)
-        return IntOffset(preferred.coerceIn(margin, maxX), preferredY.coerceIn(margin, maxY))
+        // Coordinates are relative to the IME window. Negative y deliberately draws above the
+        // short keyboard window, not below it over Android's navigation area.
+        return IntOffset(preferred.coerceIn(margin, maxX), anchorBounds.top - popupContentSize.height - gap)
     }
 }

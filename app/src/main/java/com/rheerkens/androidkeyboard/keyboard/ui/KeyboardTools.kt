@@ -1,6 +1,8 @@
 package com.rheerkens.androidkeyboard.keyboard.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -14,6 +16,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rheerkens.androidkeyboard.keyboard.PlacementMode
@@ -30,7 +33,9 @@ internal fun KeyboardTools(state: KeyboardUiState, actions: KeyboardActions) {
             actions.onSelectPlacementMode(if (selected) PlacementMode.NORMAL else mode)
         }
     }
-    Column(Modifier.height((state.keyRows * state.rowHeightDp + 4).dp).padding(6.dp)) {
+    val panelHeight = state.keyRows * state.rowHeightDp + 4
+    val rowHeight = ((panelHeight - 12) / 3f).coerceAtLeast(60f).dp
+    Column(Modifier.height(panelHeight.dp).verticalScroll(rememberScrollState()).padding(6.dp)) {
         val rows = listOf(
             listOf(Tool("Size & position", SlimIcons.Resize, tap = actions::onResizeKeyboard),
                 modeTool("One-handed", SlimIcons.OneHand, PlacementMode.ONE_HANDED),
@@ -40,9 +45,18 @@ internal fun KeyboardTools(state: KeyboardUiState, actions: KeyboardActions) {
                     actions.onSetNumberRow(!state.numberRow)
                 },
                 Tool("Settings", SlimIcons.Settings, tap = actions::onOpenKeyboardSettings)),
+            listOf(
+                Tool(if (state.toolsReturnToMinimized) "Show keyboard" else "Minimize keyboard",
+                    if (state.toolsReturnToMinimized) SlimIcons.Keyboard else SlimIcons.ChevronDown) {
+                    actions.onSetMinimized(!state.toolsReturnToMinimized)
+                },
+                Tool("Voice model", SlimIcons.Models, status = state.models.activeModel?.name ?: "Choose model",
+                    tap = actions::onOpenVoicePicker),
+                Tool("Voice settings", SlimIcons.Mic, tap = actions::onOpenVoiceSettings),
+            ),
         )
         rows.forEach { row ->
-            Row(Modifier.weight(1f)) {
+            Row(Modifier.height(rowHeight)) {
                 row.forEach { tool ->
                     ToolTile(tool, Modifier.weight(1f).fillMaxHeight())
                 }
@@ -68,8 +82,10 @@ private fun ToolTile(tool: Tool, modifier: Modifier) {
                 modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(14.dp))
             Column(Modifier.fillMaxSize().padding(horizontal = 4.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 Icon(tool.icon, null, tint = tint, modifier = Modifier.size(23.dp))
-                Text(tool.label, fontSize = 12.sp, color = tint, textAlign = TextAlign.Center)
-                tool.status?.let { Text(if (tool.enabled) it else "Wide only", fontSize = 10.sp, color = tint, textAlign = TextAlign.Center) }
+                Text(tool.label, fontSize = 12.sp, color = tint, textAlign = TextAlign.Center,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                tool.status?.let { Text(if (tool.enabled) it else "Wide only", fontSize = 10.sp, color = tint,
+                    textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
         }
     }

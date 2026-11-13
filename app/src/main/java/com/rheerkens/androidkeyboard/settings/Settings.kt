@@ -123,6 +123,7 @@ data class Settings(
     /** Show only the slim bar until the user expands it, remembered with and without a physical keyboard. */
     val minimizedWithPhysicalKeyboard: Boolean = true,
     val minimizedWithoutPhysicalKeyboard: Boolean = false,
+    val compactExpandHintSeen: Boolean = false,
 ) {
     /** Selects an installed layout and remembers it, enabling it if necessary. */
     fun selectKeyboard(id: String, usable: List<String>): Settings =

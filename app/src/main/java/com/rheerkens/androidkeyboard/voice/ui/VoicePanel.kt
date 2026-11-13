@@ -10,21 +10,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -34,19 +30,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import com.rheerkens.androidkeyboard.keyboard.ui.KeyboardActions
 import com.rheerkens.androidkeyboard.keyboard.ui.LocalKeyboardColors
 import com.rheerkens.androidkeyboard.keyboard.ui.PressTarget
-import com.rheerkens.androidkeyboard.AppGraph
+import com.rheerkens.androidkeyboard.keyboard.ui.VoiceEntryButton
+import com.rheerkens.androidkeyboard.keyboard.ui.BackspaceKey
+import com.rheerkens.androidkeyboard.keyboard.ui.FanSpec
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
 import com.rheerkens.androidkeyboard.models.ModelStoreState
-import com.rheerkens.androidkeyboard.models.SpeechLanguage
-import com.rheerkens.androidkeyboard.models.resolveLanguage
 import com.rheerkens.androidkeyboard.ui.SlimIcons
 import com.rheerkens.androidkeyboard.voice.VoiceNotes
 import com.rheerkens.androidkeyboard.voice.VoiceOutcome
@@ -54,11 +50,11 @@ import com.rheerkens.androidkeyboard.voice.VoiceState
 import kotlinx.coroutines.delay
 
 /** Height of the one-row voice panel. */
-const val VOICE_ROW_DP = 56
+const val VOICE_ROW_DP = 48
 
 /**
- * One-row voice panel, without the mode toggle (the caller adds it in the far-right slot):
- * model pill, status area (meter and time, spinner, or a fading note), and Talk/Stop.
+ * The same left-hand microphone as both keyboard forms, replaced by Cancel while recording.
+ * Status doubles as the model picker entry; Stop and insert stays at the far right.
  */
 @Composable
 fun RowScope.VoiceRow(
@@ -67,29 +63,38 @@ fun RowScope.VoiceRow(
     pickerOpen: Boolean,
     clock: () -> Long,
     actions: KeyboardActions,
-    modelWidth: Dp = 200.dp,
+    widthDp: Float = 360f,
+    fan: FanSpec = FanSpec(action = null, newLine = false),
+    onMore: () -> Unit = actions::onOpenVoicePicker,
 ) {
     val c = LocalKeyboardColors.current
-    Spacer(Modifier.width(8.dp))
-    ModelPill(models, pickerOpen, actions, modelWidth)
-    // Status area. While the picker is open it is "outside the list": a tap closes the picker.
+    val recording = state is VoiceState.Listening || state is VoiceState.Finalizing
+    if (recording) {
+        PressTarget("Cancel dictation and return to keyboard", Modifier.width(58.dp).fillMaxHeight(),
+            onDown = actions::onKeyDown, onTap = actions::onToggleMode) { pressed ->
+            Box(Modifier.size(48.dp, 36.dp),
+                contentAlignment = Alignment.Center) {
+                Icon(SlimIcons.Close, null, tint = if (pressed) c.enter else c.keyText, modifier = Modifier.size(22.dp))
+            }
+        }
+    } else {
+        VoiceEntryButton(state, actions,
+            onTap = if (state == VoiceState.NoPermission) actions::onOpenSetup else actions::onTapToTalk,
+            onMore = onMore)
+    }
+    val modelName = models.activeModel?.name ?: "Choose model"
     Box(
         Modifier
             .weight(1f)
             .fillMaxHeight()
-            .then(
-                if (pickerOpen) {
-                    Modifier.clickable(interactionSource = null, indication = null, onClickLabel = "Close model picker") {
-                        actions.onClosePicker()
-                    }
-                } else {
-                    Modifier
-                },
-            ),
+            .semantics { contentDescription = "Voice model: $modelName. Change model" }
+            .clickable(interactionSource = null, indication = null,
+                onClickLabel = if (pickerOpen) "Close model picker" else "Change voice model",
+                onClick = actions::onTogglePicker),
         contentAlignment = Alignment.CenterStart,
     ) {
         Row(
-            Modifier.padding(horizontal = 10.dp),
+            Modifier.padding(horizontal = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -98,78 +103,40 @@ fun RowScope.VoiceRow(
                     LevelMeter(state.level, c.green)
                     if (state.loading) {
                         CircularProgressIndicator(Modifier.size(14.dp), color = c.muted, trackColor = c.busy, strokeWidth = 2.dp)
-                        Text("Loading model", color = c.muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("Loading model", color = c.muted, fontSize = 13.sp, maxLines = 1,
+                            overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                     } else {
                         ElapsedTime(state.startedAtMs, state.sessionId, clock)
-                        if (state.backlogSeconds >= 2f) {
-                            Text("Catching up", color = c.muted, fontSize = 13.sp, maxLines = 1)
+                        if (widthDp >= 412f) {
+                            Text(if (state.backlogSeconds >= 2f) "Catching up" else modelName,
+                                color = c.muted, fontSize = 13.sp, maxLines = 1,
+                                overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                         }
                     }
                 }
                 is VoiceState.Finalizing -> {
                     CircularProgressIndicator(Modifier.size(16.dp), color = c.green, trackColor = c.busy, strokeWidth = 2.dp)
                     if (state.backlogSeconds >= 1f) {
-                        Text("${state.backlogSeconds.toInt()} s of audio to go", color = c.muted, fontSize = 13.sp, maxLines = 1)
+                        Text("${state.backlogSeconds.toInt()} s of audio to go", color = c.muted, fontSize = 13.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                     }
                 }
-                is VoiceState.Idle -> state.last?.let { FadingNote(it) }
-                VoiceState.NoModel, VoiceState.NoPermission -> Unit
+                is VoiceState.Idle -> if (state.last != null) FadingNote(state.last) else
+                    Text(modelName, color = c.muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                VoiceState.NoModel -> Text("Choose model", color = c.amber, fontSize = 13.sp)
+                VoiceState.NoPermission -> Text("Microphone access needed", color = c.amber,
+                    fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
     when (state) {
         is VoiceState.Listening ->
-            TalkButton("Stop", "Stop and insert text", SlimIcons.Stop, c.stop, c.stopInk, c.stopPressed, onTap = actions::onStop)
+            AcceptButton("Stop and insert text", onTap = actions::onStop)
         is VoiceState.Finalizing ->
-            TalkButton("Stop", "Finalizing, Stop already pressed", SlimIcons.Stop, c.busy, c.muted, c.busy, onTap = null)
-        is VoiceState.Idle, VoiceState.NoModel ->
-            TalkButton("Talk", "Talk", SlimIcons.Mic, c.key, c.keyText, c.keyPressed, onTap = actions::onTapToTalk)
-        VoiceState.NoPermission ->
-            TalkButton("Allow mic", "Allow microphone in Lowkey Keyboard setup", SlimIcons.Mic, c.enter, c.enterInk, c.enterPressed, onTap = actions::onOpenSetup)
+            AcceptButton("Finalizing, Stop already pressed", onTap = null)
+        else -> BackspaceKey(actions, Modifier.width(58.dp).fillMaxHeight(), sliderInPopup = true, fan = fan)
     }
     Spacer(Modifier.width(4.dp))
-}
-
-/** `● Whisper base ⌄`: a compact pill like T3 Code's composer model selector. */
-@Composable
-private fun ModelPill(models: ModelStoreState, open: Boolean, actions: KeyboardActions, maxWidth: Dp) {
-    val c = LocalKeyboardColors.current
-    val model = models.activeModel
-    val settings by AppGraph.settings.settings.collectAsState()
-    val language = model?.resolveLanguage(AppGraph.speechLanguage(settings))
-    val label = when {
-        model == null -> "Choose model"
-        language == null -> model.name
-        language == SpeechLanguage.AUTO -> "${model.name} · Auto"
-        else -> "${model.name} · ${language.code.uppercase()}"
-    }
-    PressTarget(
-        if (open) "Close model picker" else "Voice model: $label. Change model",
-        Modifier.fillMaxHeight().widthIn(max = maxWidth),
-        onTap = actions::onTogglePicker,
-    ) { pressed ->
-        Row(
-            Modifier
-                .height(34.dp)
-                .background(if (pressed || open) c.keyPressed else c.pill, RoundedCornerShape(17.dp))
-                .padding(start = 11.dp, end = 7.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(Modifier.size(7.dp).background(if (model != null) c.green else c.amber, CircleShape))
-            Spacer(Modifier.width(7.dp))
-            Text(
-                label,
-                color = c.keyText, fontSize = 14.sp, fontWeight = FontWeight.Medium,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false),
-            )
-            Spacer(Modifier.width(3.dp))
-            Icon(
-                if (open) SlimIcons.ChevronUp else SlimIcons.ChevronDown, null,
-                tint = c.muted, modifier = Modifier.size(16.dp),
-            )
-        }
-    }
 }
 
 /** Commit/cancel note that fades out after about 2 s (errors later); a notice stays until Talk. */
@@ -222,30 +189,18 @@ private fun LevelMeter(level: Float, color: Color) {
 }
 
 @Composable
-private fun TalkButton(
-    label: String,
+private fun AcceptButton(
     description: String,
-    icon: ImageVector,
-    background: Color,
-    ink: Color,
-    /** Background while pressed, chosen so [ink] stays readable on it. */
-    pressedBackground: Color,
     onTap: (() -> Unit)?,
 ) {
-    PressTarget(description, Modifier.fillMaxHeight().defaultMinSize(minWidth = 84.dp), onTap = onTap) { pressed ->
-        Row(
-            Modifier
-                .height(40.dp)
-                .defaultMinSize(minWidth = 84.dp)
-                .background(if (pressed && onTap != null) pressedBackground else background, RoundedCornerShape(20.dp))
-                .padding(horizontal = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
-        ) {
-            Icon(icon, null, tint = ink, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(6.dp))
-            Text(label, color = ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-        }
+    val c = LocalKeyboardColors.current
+    PressTarget(description, Modifier.fillMaxHeight().width(58.dp)
+        .then(if (onTap == null) Modifier.semantics { disabled() } else Modifier), onTap = onTap) { pressed ->
+        Icon(SlimIcons.Check, null, tint = when {
+            onTap == null -> c.muted
+            pressed -> c.enter
+            else -> c.keyText
+        }, modifier = Modifier.size(22.dp))
     }
 }
 

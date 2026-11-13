@@ -516,12 +516,19 @@ public final class KeyboardTouchProbe extends Instrumentation {
     /** The keyboard stays minimized to its slim bar when a hardware keyboard is present (emulator). */
     private void expandKeyboard() {
         for (int i=0; i<30; i++) {
+            if (descriptionContains("Numbers and symbols")) return;
             for (AccessibilityNodeInfo n:nodes()) {
                 String d = String.valueOf(n.getContentDescription());
-                if (d.equals("Switch to voice typing")) return;
-                if (d.equals("Show keyboard")) {
+                if (d.equals("Show keyboard") || d.equals("Swipe up to show keyboard")) {
                     tap(bounds(n)); SystemClock.sleep(800);
                     return;
+                }
+            }
+            for (AccessibilityNodeInfo n:nodes()) {
+                if ("Switch to voice typing".equals(String.valueOf(n.getContentDescription()))) {
+                    n.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK);
+                    SystemClock.sleep(300);
+                    break;
                 }
             }
             SystemClock.sleep(100);

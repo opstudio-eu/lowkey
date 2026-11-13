@@ -103,8 +103,8 @@ android {
         minSdk = 28
         targetSdk = 37
         testInstrumentationRunner = "com.rheerkens.androidkeyboard.test.KeyboardTouchProbe"
-        versionCode = 61
-        versionName = "0.11.0"
+        versionCode = 62
+        versionName = "0.11.1"
 
         // The release feed the in-app updater reads. -PupdateFeedUrl=https://… points a test build elsewhere.
         val updateFeedUrl = providers.gradleProperty("updateFeedUrl")

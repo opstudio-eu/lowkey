@@ -379,6 +379,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                         resizeOnOpen = resizeOnOpen,
                         // Never hide a running dictation; it returns to keys (and the bar) when done.
                         minimized = isMinimized(s, physical, once) && m == InputMode.KEYS,
+                        showExpandHint = !s.compactExpandHintSeen,
                         clipHistory = clips,
                         inputSession = session,
                         fan = fan,
@@ -616,9 +617,10 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         // The slim bar opens in keys mode without forgetting the remembered mode.
         if (resizeOnOpen) onPrepareResize()
         mode.value = if (resizeOnOpen || isMinimized()) InputMode.KEYS else initialMode()
+        // The microphone is visible in keys mode too; show its readiness before the first tap.
+        voice.refreshReadiness()
         if (mode.value == InputMode.VOICE) {
             voice.clearOutcome()
-            voice.refreshReadiness()
             if (settings.current.autoStartVoice) autoStartVoice()
         } else {
             updateShift()
@@ -1223,8 +1225,9 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         clearNote()
         lastCorrection = null
         settings.update {
-            if (physicalKeyboard.value) it.copy(minimizedWithPhysicalKeyboard = minimized)
+            val next = if (physicalKeyboard.value) it.copy(minimizedWithPhysicalKeyboard = minimized)
             else it.copy(minimizedWithoutPhysicalKeyboard = minimized)
+            if (minimized) next else next.copy(compactExpandHintSeen = true)
         }
         if (!minimized) {
             updateShift()
@@ -1236,6 +1239,22 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     override fun onOpenVoiceSettings() = openCompanion(Destination.SETTINGS_VOICE)
     override fun onOpenModels() = openCompanion(Destination.MODELS)
     override fun onOpenSetup() = openCompanion(Destination.HOME)
+
+    override fun onDismissExpandHint() {
+        if (!settings.current.compactExpandHintSeen) settings.update { it.copy(compactExpandHintSeen = true) }
+    }
+
+    override fun onOpenVoicePicker() {
+        if (bridge.isSensitiveField) {
+            showNote(SENSITIVE_NOTE, warn = true)
+            return
+        }
+        clearPrompt()
+        emojiOpen.value = false
+        setMode(InputMode.VOICE)
+        voice.refreshReadiness()
+        if (!pickerOpen.value) onTogglePicker()
+    }
 
     override fun onStop() {
         voice.stop()

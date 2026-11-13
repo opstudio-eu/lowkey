@@ -110,6 +110,9 @@ interface KeyboardActions {
     fun onOpenSetup()
     fun onStop()
     fun onTapToTalk()
+    /** Opens model selection from either keyboard form, without auto-starting capture. */
+    fun onOpenVoicePicker() {}
+    fun onDismissExpandHint() {}
 
     // Model picker (voice mode)
     fun onTogglePicker()
