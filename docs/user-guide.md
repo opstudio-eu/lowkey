@@ -79,7 +79,7 @@ Hold Space to open Android's keyboard-app picker directly. **Settings → Keyboa
 
 Swipe down over the suggestion strip to minimize the keyboard, or swipe up over the minimized bar to expand it. Both forms have a small horizontal grip. You can also hold the microphone and choose **Show keyboard** or **Minimize keyboard** in quick settings.
 
-The microphone stays at the left in both forms. Tap it to start voice typing; hold it for quick settings, including model selection and voice settings. During dictation, the cancel cross is on the left and the checkmark to stop and insert is on the right. Stopping returns to the previous keyboard form when keyboard-first dictation is enabled.
+The microphone stays at the left in both forms. Tap it to start voice typing; hold it for quick settings, including model selection and voice settings. Three small dots beside the microphone show that it opens this menu when held. During dictation, the cancel cross is on the left and the checkmark to stop and insert is on the right. Stopping returns to the previous keyboard form when keyboard-first dictation is enabled.
 
 The minimized bar sits at the bottom, above Android's navigation area, even if you moved the full keyboard upward. Expanding restores the keyboard's saved size and position.
 
