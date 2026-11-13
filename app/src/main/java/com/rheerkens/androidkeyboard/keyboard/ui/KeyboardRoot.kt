@@ -152,7 +152,8 @@ internal fun KeyboardContent(
                     }
                     Row(Modifier.fillMaxWidth().height(VOICE_ROW_DP.dp), verticalAlignment = Alignment.CenterVertically) {
                         VoiceRow(state.voice, state.models, state.pickerOpen, clock, actions,
-                            widthDp = state.contentWidthDp, fan = state.fan, onMore = more)
+                            widthDp = state.contentWidthDp, fan = state.fan, onMore = more,
+                            moreLabel = "Open keyboard tools")
                     }
                 }
             }

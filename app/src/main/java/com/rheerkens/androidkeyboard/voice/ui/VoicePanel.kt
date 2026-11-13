@@ -66,6 +66,7 @@ fun RowScope.VoiceRow(
     widthDp: Float = 360f,
     fan: FanSpec = FanSpec(action = null, newLine = false),
     onMore: () -> Unit = actions::onOpenVoicePicker,
+    moreLabel: String = "Change voice model",
 ) {
     val c = LocalKeyboardColors.current
     val recording = state is VoiceState.Listening || state is VoiceState.Finalizing
@@ -80,7 +81,7 @@ fun RowScope.VoiceRow(
     } else {
         VoiceEntryButton(state, actions,
             onTap = if (state == VoiceState.NoPermission) actions::onOpenSetup else actions::onTapToTalk,
-            onMore = onMore)
+            onMore = onMore, moreLabel = moreLabel)
     }
     val modelName = models.activeModel?.name ?: "Choose model"
     Box(

@@ -54,6 +54,8 @@ fun PressTarget(
     onDown: () -> Unit = {},
     onTap: (() -> Unit)? = null,
     onLongPress: (() -> Unit)? = null,
+    /** What TalkBack announces for the hold action, such as "Open keyboard tools". */
+    longPressLabel: String? = null,
     onRepeat: (() -> Unit)? = null,
     onLongPressRelease: (() -> Unit)? = null,
     onLongPressState: (Boolean) -> Unit = {},
@@ -80,7 +82,7 @@ fun PressTarget(
                 role = Role.Button
                 onClick { (tap ?: repeat)?.invoke(); true }
                 // A semantic long-click is a whole hold: start it, then release with its default choice.
-                if (hasLong) onLongClick { longPress?.invoke(); longRelease?.invoke(); true }
+                if (hasLong) onLongClick(longPressLabel) { longPress?.invoke(); longRelease?.invoke(); true }
             }
             .pointerInput(gestureKey, hasTap, hasLong, rollover) {
                 coroutineScope {

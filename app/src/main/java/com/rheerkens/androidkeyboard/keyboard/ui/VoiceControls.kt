@@ -1,14 +1,17 @@
 package com.rheerkens.androidkeyboard.keyboard.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.semantics
@@ -19,9 +22,13 @@ import com.rheerkens.androidkeyboard.keyboard.barSwipe
 import com.rheerkens.androidkeyboard.ui.SlimIcons
 import com.rheerkens.androidkeyboard.voice.VoiceState
 
-/** Shared, icon-only entry point in the compact bar and the expanded keyboard's top row. */
+/**
+ * Shared entry point in the compact bar and the expanded keyboard's top row. Three small dots beside
+ * the microphone show that holding it opens a menu ([moreLabel]).
+ */
 @Composable
-fun VoiceEntryButton(state: VoiceState, actions: KeyboardActions, onTap: () -> Unit, onMore: () -> Unit) {
+fun VoiceEntryButton(state: VoiceState, actions: KeyboardActions, onTap: () -> Unit, onMore: () -> Unit,
+    moreLabel: String = "Open keyboard tools") {
     val c = LocalKeyboardColors.current
     val permission = state == VoiceState.NoPermission
     PressTarget("Switch to voice typing", Modifier.width(58.dp).fillMaxHeight().semantics {
@@ -31,7 +38,7 @@ fun VoiceEntryButton(state: VoiceState, actions: KeyboardActions, onTap: () -> U
             else -> "Ready"
         }
     }, onDown = actions::onKeyDown,
-        onTap = onTap, onLongPress = onMore) { pressed ->
+        onTap = onTap, onLongPress = onMore, longPressLabel = moreLabel) { pressed ->
         Box(Modifier.padding(start = 4.dp).size(48.dp, 36.dp), contentAlignment = Alignment.Center) {
             Icon(SlimIcons.Mic, null, tint = when {
                 pressed -> c.enter
@@ -39,7 +46,16 @@ fun VoiceEntryButton(state: VoiceState, actions: KeyboardActions, onTap: () -> U
                 state == VoiceState.NoModel -> c.amber
                 else -> c.keyText
             }, modifier = Modifier.size(22.dp))
+            MenuDots(if (pressed) c.enter else c.muted, Modifier.align(Alignment.CenterEnd).padding(end = 3.dp))
         }
+    }
+}
+
+/** A vertical "more" mark: three 3 dp dots. */
+@Composable
+private fun MenuDots(color: Color, modifier: Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        repeat(3) { Box(Modifier.size(3.dp).background(color, CircleShape)) }
     }
 }
 /** Vertical size gestures yield immediately to horizontal scrolling, and never steal Backspace. */
