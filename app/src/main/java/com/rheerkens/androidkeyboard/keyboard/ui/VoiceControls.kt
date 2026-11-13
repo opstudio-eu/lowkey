@@ -53,7 +53,7 @@ fun VoiceEntryButton(state: VoiceState, actions: KeyboardActions, onTap: () -> U
 
 /** A vertical "more" mark: three 3 dp dots. */
 @Composable
-private fun MenuDots(color: Color, modifier: Modifier) {
+internal fun MenuDots(color: Color, modifier: Modifier) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
         repeat(3) { Box(Modifier.size(3.dp).background(color, CircleShape)) }
     }

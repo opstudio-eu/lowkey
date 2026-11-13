@@ -106,6 +106,8 @@ internal fun KeyboardContent(
         languageMenu.close()
     }
     val more = { actions.onDismissExpandHint(); languageMenu.close(); actions.onOpenTools() }
+    // Holding the microphone toggles the tools panel, so TalkBack names the direction.
+    val moreLabel = if (state.toolsOpen) "Close keyboard tools" else "Open keyboard tools"
     val talk = {
         actions.onDismissExpandHint()
         if (state.voice == VoiceState.NoPermission) actions.onOpenSetup() else actions.onToggleMode()
@@ -121,7 +123,7 @@ internal fun KeyboardContent(
             ) {
                 Box(Modifier.fillMaxWidth().height(1.dp).background(colors.divider))
                 if (state.minimized) {
-                    MinimizedBar(state, actions, talk, more, showHint = state.showExpandHint)
+                    MinimizedBar(state, actions, talk, more, moreLabel, showHint = state.showExpandHint)
                 } else if (state.mode == InputMode.KEYS) {
                     Box(Modifier.fillMaxWidth().height((44 + KEYBOARD_GRIP_SPACE_DP).dp)
                         .keyboardBarSwipe(minimized = false) { actions.onSetMinimized(true) }
@@ -131,7 +133,7 @@ internal fun KeyboardContent(
                             })
                         }) {
                         Row(Modifier.fillMaxSize().padding(top = KEYBOARD_GRIP_SPACE_DP.dp), verticalAlignment = Alignment.CenterVertically) {
-                            VoiceEntryButton(state.voice, actions, talk, more)
+                            VoiceEntryButton(state.voice, actions, talk, more, moreLabel)
                             SuggestionStrip(state.strip, state.clipHistory, state.inputSession, actions)
                         }
                         KeyboardBarGrip()
@@ -153,7 +155,7 @@ internal fun KeyboardContent(
                     Row(Modifier.fillMaxWidth().height(VOICE_ROW_DP.dp), verticalAlignment = Alignment.CenterVertically) {
                         VoiceRow(state.voice, state.models, state.pickerOpen, clock, actions,
                             widthDp = state.contentWidthDp, fan = state.fan, onMore = more,
-                            moreLabel = "Open keyboard tools")
+                            moreLabel = moreLabel)
                     }
                 }
             }
@@ -167,7 +169,7 @@ internal fun KeyboardContent(
  */
 @Composable
 private fun MinimizedBar(state: KeyboardUiState, actions: KeyboardActions, talk: () -> Unit,
-    more: () -> Unit, showHint: Boolean) {
+    more: () -> Unit, moreLabel: String, showHint: Boolean) {
     val c = LocalKeyboardColors.current
     Box(Modifier.fillMaxWidth().height(MINIMIZED_BAR_DP.dp)
         .keyboardBarSwipe(minimized = true) { actions.onSetMinimized(false) }
@@ -177,7 +179,7 @@ private fun MinimizedBar(state: KeyboardUiState, actions: KeyboardActions, talk:
             })
         }) {
         Row(Modifier.fillMaxSize().padding(top = KEYBOARD_GRIP_SPACE_DP.dp), verticalAlignment = Alignment.CenterVertically) {
-            VoiceEntryButton(state.voice, actions, talk, more)
+            VoiceEntryButton(state.voice, actions, talk, more, moreLabel)
             val note = state.strip.note
             if (note != null) {
                 Text(note.text, color = if (note.warn) c.amber else c.muted,

@@ -60,7 +60,8 @@ fun KeyboardThemePreview(c: KeyboardColors, modifier: Modifier = Modifier, image
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
             }
-            Icon(SlimIcons.Mic, null, tint = c.keyText, modifier = Modifier.padding(horizontal = 6.dp).size(18.dp))
+            Icon(SlimIcons.Mic, null, tint = c.keyText, modifier = Modifier.padding(start = 6.dp).size(18.dp))
+            MenuDots(c.muted, Modifier.padding(start = 3.dp, end = 6.dp))
         }
         Box {
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
