@@ -250,14 +250,14 @@ object Corrector {
      * apostrophe form (`didnt`, `youre`, `itll`, French `jai`). A known word changes only to an
      * ending contraction that is far more common (`cant`, `wont`, `whats`), so that `its`,
      * `lets`, `ill` and `were` stay, and so do French words that look like an elision
-     * (`dune` is not `d'une`).
+     * (`dun` and `dune` are not `d'un` and `d'une`).
      */
     fun contraction(typed: String, lexicon: Lexicon): String? {
         val forms = apostropheForms(typed, lexicon)
         val own = lexicon.frequency(typed)
             ?: return forms.firstOrNull()?.takeIf { it.second >= MIN_TARGET_FREQUENCY }?.first
         return forms.firstOrNull { (word, freq) ->
-            freq >= own + CONTRACTION_MARGIN && word.lastIndexOf('\'') >= word.length - MAX_ENDING
+            freq >= own + CONTRACTION_MARGIN && ENDINGS.any { word.endsWith(it, ignoreCase = true) }
         }?.first
     }
 
@@ -315,6 +315,6 @@ object Corrector {
      * as: `wont` 50 → `won't` 158 and `cant` 70 → `can't` 160 change, `lets` 106 → `let's` 145 not.
      */
     private const val CONTRACTION_MARGIN = 60
-    /** Letters after the apostrophe of an ending contraction: `n't`, `'ll`, `'re`, `'ve`, `'s`, `'d`, `'m`. */
-    private const val MAX_ENDING = 3
+    /** Endings a known word may gain an apostrophe in (`cant` → `can't`, `whats` → `what's`). */
+    private val ENDINGS = listOf("n't", "'s", "'ll", "'re", "'ve", "'d", "'m")
 }

@@ -65,9 +65,8 @@ class MultilingualSuggesterTest {
 
     @Test fun knownWordsOnlyTakeAnEndingContraction() {
         // French `dune` and `laide` are words, not `d'une` and `l'aide`; `jai` is no word but `j'ai`.
-        val french = Lexicon.fromWords(listOf("d'une", "l'aide", "j'ai", "dune", "laide"))
-        assertNull(Corrector.autocorrect("dune", french))
-        assertNull(Corrector.autocorrect("laide", french))
+        val french = Lexicon.fromWords(listOf("d'un", "s'en", "d'une", "l'aide", "j'ai", "dun", "sen", "dune", "laide"))
+        listOf("dun", "sen", "dune", "laide").forEach { assertNull(it, Corrector.autocorrect(it, french)) }
         assertEquals("j'ai", Corrector.autocorrect("jai", french))
     }
 
