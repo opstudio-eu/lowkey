@@ -78,7 +78,8 @@ class AutocorrectQualityTest {
             "Dont" to "Don't", "Ive" to "I've", "DONT" to "DON'T", "DIDNT" to "DIDN'T",
         )
         val wrong = expected.mapNotNull { (typed, want) ->
-            Corrector.autocorrect(typed, lexicon).takeIf { it != want }?.let { "$typed -> $it (want $want)" }
+            val actual = Corrector.autocorrect(typed, lexicon)
+            if (actual == want) null else "$typed -> $actual (want $want)"
         }
         assertTrue(wrong.joinToString("\n"), wrong.isEmpty())
         // Everyday words that are also contractions stay; so do short all-caps acronyms.

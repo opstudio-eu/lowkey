@@ -116,8 +116,17 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
                 other.contains(word) &&
                     (primaryRule !is Corrector.Rule.Replace || (other.frequency(word) ?: 0) >= RARE_IN_OTHER_LANGUAGE)
             }) return null
-        if (primaryRule is Corrector.Rule.Replace) return primaryRule.word
+        if (primaryRule is Corrector.Rule.Replace) {
+            // Another language's sure fix that differs (German `Probe`, Polish `próbę`) is a tie.
+            val conflict = secondary.any { other ->
+                (Corrector.rule(word, other, atSentenceStart) as? Corrector.Rule.Replace)?.word.let { it != null && it != primaryRule.word }
+            }
+            return primaryRule.word.takeIf { !conflict }
+        }
         if (Corrector.looksLikeAWord(word) && word.length >= 4 && !lex.contains(word)) {
+            // Edit distances to every saved term are too slow for the input thread; without
+            // them a saved term could still win, so the quick answer is "not sure".
+            if (!search && terms.any { ' ' !in it.text }) return null
             terms.filter { ' ' !in it.text }
                 .map { it.text to Corrector.distance(word.lowercase(), it.text.lowercase(), 1.0, keys, lex.folding) }
                 .filter { it.second <= 1.0 }

@@ -247,14 +247,18 @@ object Corrector {
 
     /**
      * The contraction [typed] is missing an apostrophe of, or null. An unknown word takes its
-     * apostrophe form (`didnt`, `youre`, `itll`); a known word only when the contraction is far
-     * more common (`cant`, `wont`, `whats`), so that `its`, `lets`, `ill` and `were` stay.
+     * apostrophe form (`didnt`, `youre`, `itll`, French `jai`). A known word changes only to an
+     * ending contraction that is far more common (`cant`, `wont`, `whats`), so that `its`,
+     * `lets`, `ill` and `were` stay, and so do French words that look like an elision
+     * (`dune` is not `d'une`).
      */
     fun contraction(typed: String, lexicon: Lexicon): String? {
-        val (word, freq) = apostropheForms(typed, lexicon).firstOrNull() ?: return null
+        val forms = apostropheForms(typed, lexicon)
         val own = lexicon.frequency(typed)
-        val needed = if (own == null) MIN_TARGET_FREQUENCY else own + CONTRACTION_MARGIN
-        return word.takeIf { freq >= needed }
+            ?: return forms.firstOrNull()?.takeIf { it.second >= MIN_TARGET_FREQUENCY }?.first
+        return forms.firstOrNull { (word, freq) ->
+            freq >= own + CONTRACTION_MARGIN && word.lastIndexOf('\'') >= word.length - MAX_ENDING
+        }?.first
     }
 
     private fun isPronounI(word: String): Boolean = word.length > 2 && word.startsWith("I'")
@@ -311,4 +315,6 @@ object Corrector {
      * as: `wont` 50 → `won't` 158 and `cant` 70 → `can't` 160 change, `lets` 106 → `let's` 145 not.
      */
     private const val CONTRACTION_MARGIN = 60
+    /** Letters after the apostrophe of an ending contraction: `n't`, `'ll`, `'re`, `'ve`, `'s`, `'d`, `'m`. */
+    private const val MAX_ENDING = 3
 }

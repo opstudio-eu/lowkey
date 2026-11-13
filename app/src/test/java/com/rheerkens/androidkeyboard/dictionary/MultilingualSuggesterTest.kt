@@ -38,7 +38,8 @@ class MultilingualSuggesterTest {
             "thier" to "their", "becasue" to "because",
         )
         val wrong = expected.mapNotNull { (typed, want) ->
-            suggester.autocorrection(typed, emptyList()).takeIf { it != want }?.let { "$typed -> $it (want $want)" }
+            val actual = suggester.autocorrection(typed, emptyList())
+            if (actual == want) null else "$typed -> $actual (want $want)"
         }
         assertTrue(wrong.joinToString("\n"), wrong.isEmpty())
         // Dutch typos on the English keyboard are still fixed, and Dutch words kept.
@@ -51,6 +52,32 @@ class MultilingualSuggesterTest {
         val suggester = Suggester({ TestLanguages.lexicon("en_US") }, secondaryLexicons = { listOf(TestLanguages.lexicon("pl")) })
         assertNull(suggester.autocorrection("im", emptyList()))
         assertEquals("don't", suggester.autocorrection("dont", emptyList()))
+    }
+
+    @Test fun differingSureFixesInTwoLanguagesLeaveTheWordAlone() {
+        // German capitalizes the noun, Polish restores the accents: neither language wins.
+        val probe = Suggester({ Lexicon.fromWords(listOf("Probe"), rules = SpellingRules(capitalizedNouns = true)) },
+            secondaryLexicons = { listOf(TestLanguages.lexicon("pl")) })
+        assertEquals("próbę", Corrector.autocorrect("probe", TestLanguages.lexicon("pl")))
+        assertNull(probe.autocorrection("probe", emptyList()))
+        assertNull(probe.quickAutocorrection("probe", emptyList()))
+    }
+
+    @Test fun knownWordsOnlyTakeAnEndingContraction() {
+        // French `dune` and `laide` are words, not `d'une` and `l'aide`; `jai` is no word but `j'ai`.
+        val french = Lexicon.fromWords(listOf("d'une", "l'aide", "j'ai", "dune", "laide"))
+        assertNull(Corrector.autocorrect("dune", french))
+        assertNull(Corrector.autocorrect("laide", french))
+        assertEquals("j'ai", Corrector.autocorrect("jai", french))
+    }
+
+    @Test fun quickAutocorrectionSkipsSavedTermDistances() {
+        val suggester = Suggester({ TestLanguages.lexicon("en_US") })
+        // `kotln` could be the saved `Kotlin`: only the full search can tell, so the quick answer is "not sure".
+        val terms = listOf(PersonalTerm(1, "Kotlin", 1))
+        assertNull(suggester.quickAutocorrection("kotln", terms))
+        assertEquals("Kotlin", suggester.autocorrection("kotln", terms))
+        assertEquals("don't", suggester.quickAutocorrection("dont", terms))
     }
 
     @Test fun quickAutocorrectionGivesSureFixesWithoutASpellingSearch() {
