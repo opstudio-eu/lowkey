@@ -31,6 +31,8 @@ object BuiltInWords {
      */
     val TECH: List<String> = """
         lol lmao omg ok okay yeah yea yep nope btw tbh imo imho thx pls plz gonna wanna gotta
+        idk ikr ngl smh fyi asap brb ttyl lmk irl dms tho ofc afaik iirc tbf wyd hbu wbu cuz
+        convo omw
         api apis json yaml toml xml html css scss async await sync repo repos github gitlab
         git commit commits refactor refactoring refactored kotlin java javascript typescript
         python rust golang gradle android ios macos linux ubuntu debian windows coroutine

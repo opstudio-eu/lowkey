@@ -52,8 +52,13 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
             term.text.split(' ').drop(1).any { it.lowercase().startsWith(lower) }
         }.forEach { add(Suggestion(it.text, isPersonal = true)) }
         val lexicons = listOf(lexicon()) + secondaryLexicons()
-        // Explicit safe corrections (notably contractions) must survive prefix completions.
+        // Explicit safe corrections and contractions (`cant` → `can't`, `its` → `it's`) must
+        // survive prefix completions.
         lexicons.mapNotNull { it.whitelist[lower] }.forEach { add(Suggestion(matchCase(typed, it))) }
+        if (Corrector.looksLikeAWord(typed)) {
+            interleave(lexicons.map { lex -> Corrector.apostropheForms(typed, lex).map { it.first } })
+                .forEach { add(Suggestion(it)) }
+        }
         val completions = interleave(lexicons.map { lex -> lex.completions(typed, limit * 2).map { it.first } })
         val corrections = if (Corrector.looksLikeAWord(typed) && lexicons.none { it.contains(typed) }) {
             interleave(lexicons.map { lex ->
@@ -78,12 +83,25 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
      * What autocorrect should turn [word] into when Space is pressed, or null to leave it.
      * 1. A word saved exactly is never changed (`ADB` stays `ADB` even if `adb` is saved too).
      * 2. A saved term with different case wins (`viewmodel` → `ViewModel`).
-     * 3. A close match to a single-word saved term (`kotln` → `Kotlin`).
-     * 4. The dictionary corrector (`teh` → `the`, `dont` → `don't`), conservative by design.
+     * 3. A dictionary rule of the keyboard's language (`dont` → `don't`, Polish `juz` → `już`).
+     * 4. A close match to a single-word saved term (`kotln` → `Kotlin`).
+     * 5. The dictionary corrector (`teh` → `the`), conservative by design. When the languages
+     *    typed in disagree, the clearly stronger fix wins; a close call leaves the word alone.
      */
     @JvmOverloads
     fun autocorrection(word: String, terms: List<PersonalTerm>, atSentenceStart: Boolean = true,
-        checkActive: () -> Unit = {}): String? {
+        checkActive: () -> Unit = {}): String? = decide(word, terms, atSentenceStart, search = true, checkActive)
+
+    /**
+     * [autocorrection] without the spelling search: a few hash lookups, for a Space pressed
+     * before the background search has finished. Returns a fix only when [autocorrection] would
+     * return the same one (`dont` → `don't`), else null.
+     */
+    fun quickAutocorrection(word: String, terms: List<PersonalTerm>, atSentenceStart: Boolean = true): String? =
+        decide(word, terms, atSentenceStart, search = false) {}
+
+    private fun decide(word: String, terms: List<PersonalTerm>, atSentenceStart: Boolean, search: Boolean,
+        checkActive: () -> Unit): String? {
         checkActive()
         if (terms.any { it.text == word }) return null
         terms.firstOrNull { it.text.equals(word, ignoreCase = true) }?.let { return it.text }
@@ -91,8 +109,14 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
         if (!dictionariesReady) return null
         val lex = lexicon()
         val secondary = secondaryLexicons()
-        // A valid word in another participating language is not a typo in this one.
-        if (secondary.any { it.contains(word) }) return null
+        val primaryRule = Corrector.rule(word, lex, atSentenceStart)
+        // A valid word in another participating language is not a typo in this one, unless it is
+        // rare there and this language has a sure fix (`im`, odd in Dutch, is `I'm` in English).
+        if (secondary.any { other ->
+                other.contains(word) &&
+                    (primaryRule !is Corrector.Rule.Replace || (other.frequency(word) ?: 0) >= RARE_IN_OTHER_LANGUAGE)
+            }) return null
+        if (primaryRule is Corrector.Rule.Replace) return primaryRule.word
         if (Corrector.looksLikeAWord(word) && word.length >= 4 && !lex.contains(word)) {
             terms.filter { ' ' !in it.text }
                 .map { it.text to Corrector.distance(word.lowercase(), it.text.lowercase(), 1.0, keys, lex.folding) }
@@ -100,14 +124,21 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
                 .minByOrNull { it.second }
                 ?.let { return it.first }
         }
-        val primaryFix = Corrector.autocorrect(word, lex, atSentenceStart, keys, checkActive)
         // Preserve language-specific casing/accent rules for known words in the active language.
-        if (lex.contains(word)) return primaryFix
-        val fixes = (listOfNotNull(primaryFix) + secondary.mapNotNull {
+        if (primaryRule == Corrector.Rule.Keep && lex.contains(word)) return null
+        val fixes = (listOf(lex) + secondary).mapNotNull { language ->
             checkActive()
-            Corrector.autocorrect(word, it, atSentenceStart, keys, checkActive)
-        }).distinct()
-        return fixes.singleOrNull()
+            if (search) {
+                // The keyboard's own language is the likelier one: `dne` is `done`, not Dutch `de`.
+                Corrector.autoFix(word, language, atSentenceStart, keys, checkActive)
+                    ?.let { if (language === lex) it.copy(score = it.score + PRIMARY_LEAD) else it }
+            } else {
+                (Corrector.rule(word, language, atSentenceStart) as? Corrector.Rule.Replace)
+                    ?.let { AutoFix(it.word, Double.MAX_VALUE, certain = true) }
+            }
+        }
+        // Without the search a sure fix still wins over any found later; anything else is unsure.
+        return pick(if (search) fixes else fixes.filter { it.certain })
     }
 
     /**
@@ -128,6 +159,38 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
     }
 
     companion object {
+        /**
+         * Frequency (0–255) at which a word in another participating language blocks a sure fix
+         * in the keyboard's language: Polish `im` (159) stays, the Dutch list's `im` (119) doesn't.
+         */
+        private const val RARE_IN_OTHER_LANGUAGE = 128
+
+        /** Score lead a spelling fix needs over a different one from another language. */
+        private const val LANGUAGE_MARGIN = 1.0
+
+        /**
+         * Score head start of the keyboard's own language when languages disagree. Larger values
+         * fix more typos in that language but break more in the other one; 1.0 balances both.
+         */
+        private const val PRIMARY_LEAD = 1.0
+
+        /**
+         * The fix to apply when languages may disagree: a sure (rule) fix beats spelling search
+         * results, and a search result needs a clear lead. Two sure fixes that differ, or a close
+         * call, leave the word alone.
+         */
+        private fun pick(fixes: List<AutoFix>): String? {
+            val ranked = fixes.groupBy { it.word }
+                .map { (_, same) -> same.maxWith(compareBy<AutoFix> { it.certain }.thenBy { it.score }) }
+                .sortedWith(compareByDescending<AutoFix> { it.certain }.thenByDescending { it.score })
+            val best = ranked.firstOrNull() ?: return null
+            val second = ranked.getOrNull(1) ?: return best.word
+            return when {
+                best.certain -> best.word.takeIf { !second.certain }
+                else -> best.word.takeIf { best.score - second.score >= LANGUAGE_MARGIN }
+            }
+        }
+
         /** Compare rank within each dictionary; raw frequencies across languages aren't comparable. */
         private fun interleave(lists: List<List<String>>): List<String> = buildList {
             for (rank in 0 until (lists.maxOfOrNull { it.size } ?: 0)) {
