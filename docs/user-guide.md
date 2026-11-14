@@ -68,7 +68,7 @@ When floating, the Backspace gesture can aim at text above the panel; it does no
 
 ## Emoji and keyboard switching
 
-The smiley beside Space opens an offline emoji panel. Choose a category, scroll its grid, and tap an emoji to insert it. Hold an emoji with skin-tone variants to choose one. Recent shows up to 40 distinct choices, stored locally; sensitive fields do not show or update that history. Unsupported emoji are filtered using the device's font. **ABC** returns to letters, and Back closes the panel. Backspace removes a complete known emoji sequence.
+The smiley beside Space opens an offline emoji panel. Choose a category, scroll its grid, and tap an emoji to insert it. Hold an emoji with skin-tone variants to choose one. Recent shows up to 40 distinct choices, stored locally; sensitive fields do not show or update that history. Unsupported emoji are filtered using the device's font. The panel sits over the keys like a sheet, with the top of the bottom row peeking out below it. The key you opened emoji with shows there as a lit keyboard tab: tap it, or anywhere on that strip, to return to letters. Swiping down on the category bar or the strip also returns to letters, and Back closes the panel. Backspace removes a complete known emoji sequence.
 
 With two or more languages or layouts enabled, hold the smiley to choose one; a small mark in its corner shows this. A row of choices opens over the key, the way accents do: your current layout sits over your finger and the next one is to its right. Slide to a layout and let go to switch, or slide away to cancel. If you let go without sliding, the choices stay open: tap one to switch, or tap anywhere else or press Back to close them.
 

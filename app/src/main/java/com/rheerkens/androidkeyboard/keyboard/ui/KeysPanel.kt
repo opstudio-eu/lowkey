@@ -46,6 +46,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.BoxWithConstraints
 import com.rheerkens.androidkeyboard.keyboard.splitRows
+import com.rheerkens.androidkeyboard.keyboard.SplitRow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -83,7 +84,7 @@ fun KeysPanel(
     val rowHeight = (rowHeightDp * keyRows.toFloat() / layout.rows.size).dp
     if (splitGapDp > 0f) {
         val rows = remember(layout, state.keyboard, state.layer) { splitRows(layout, state.keyboard, state.layer) }
-        val units = rows.filterNot { it.fullWidth }.maxOf { maxOf(it.left.sumOf { key -> key.weight.toDouble() }, it.right.sumOf { key -> key.weight.toDouble() }) }.toFloat()
+        val units = splitKeyUnits(rows)
         BoxWithConstraints(Modifier.fillMaxWidth().padding(start = 3.dp, end = 3.dp, bottom = 4.dp)) {
             val unit = ((maxWidth - splitGapDp.dp) / (2 * units)).coerceAtLeast(1.dp)
             Column {
@@ -113,6 +114,10 @@ fun KeysPanel(
         }
     }
 }
+
+/** Key widths a split half holds: the wider half of the widest split row, in key-weight units. */
+internal fun splitKeyUnits(rows: List<SplitRow>): Float =
+    rows.filterNot { it.fullWidth }.maxOf { maxOf(it.left.sumOf { key -> key.weight.toDouble() }, it.right.sumOf { key -> key.weight.toDouble() }) }.toFloat()
 
 @Composable
 private fun KeyView(

@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rheerkens.androidkeyboard.keyboard.KeyboardLayout
 import com.rheerkens.androidkeyboard.keyboard.KeyboardState
+import com.rheerkens.androidkeyboard.keyboard.splitRows
 import com.rheerkens.androidkeyboard.keyboard.KEYBOARD_GRIP_SPACE_DP
 import com.rheerkens.androidkeyboard.models.ModelStoreState
 import com.rheerkens.androidkeyboard.settings.InputMode
@@ -141,8 +142,14 @@ internal fun KeyboardContent(
                     if (state.toolsOpen) {
                         KeyboardTools(state, actions)
                     } else if (state.emojiOpen) {
+                        val peek = remember(state.layout, state.keyboard, state.splitGapDp) {
+                            val units = if (state.splitGapDp > 0f) {
+                                splitKeyUnits(splitRows(state.layout, state.keyboard.keyboard, state.keyboard.layer))
+                            } else null
+                            PeekRow(state.layout.rows.last(), units, state.splitGapDp)
+                        }
                         EmojiPanel(state.emojiCatalog, state.recentEmoji,
-                            (state.keyRows * state.rowHeightDp + 4).dp, actions)
+                            (state.keyRows * state.rowHeightDp + 4).dp, peek, actions)
                     } else {
                         KeysPanel(state.layout, state.keyboard, state.rowHeightDp, state.enterKind, actions, state.splitGapDp, state.keyRows,
                             state.keyboards, languageMenu)
