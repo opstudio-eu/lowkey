@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -52,7 +53,9 @@ fun DiagnosticsScreen(modifier: Modifier) {
     var sessionsOpen by rememberSaveable { mutableStateOf(false) }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
 
-    LazyColumn(modifier.fillMaxWidth()) {
+    val list = rememberLazyListState()
+    RevealSettingHighlight(list)
+    LazyColumn(modifier.fillMaxWidth(), state = list) {
         item(key = "summary") {
             PageSummary(
                 when {

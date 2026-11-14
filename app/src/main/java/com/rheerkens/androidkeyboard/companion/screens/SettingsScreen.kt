@@ -14,6 +14,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.text.input.ImeAction
+import com.rheerkens.androidkeyboard.companion.SettingEntry
+import com.rheerkens.androidkeyboard.companion.searchSettings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -62,7 +74,13 @@ enum class SettingsFocus { TOP, KEYBOARDS, VOICE, KEYBOARD, TYPING, CUSTOMIZE, C
 private typealias Update = ((Settings) -> Settings) -> Unit
 
 @Composable
-fun SettingsScreen(modifier: Modifier, focus: SettingsFocus, navigate: (Destination) -> Unit, resizeKeyboard: () -> Unit = {}) {
+fun SettingsScreen(
+    modifier: Modifier,
+    focus: SettingsFocus,
+    navigate: (Destination) -> Unit,
+    resizeKeyboard: () -> Unit = {},
+    search: SettingsSearch? = null,
+) {
     val s by AppGraph.settings.settings.collectAsStateWithLifecycle()
     val models by AppGraph.models.state.collectAsStateWithLifecycle()
     // Recomposes the layout grid and language summary when a download finishes or a word list is deleted.
@@ -72,9 +90,15 @@ fun SettingsScreen(modifier: Modifier, focus: SettingsFocus, navigate: (Destinat
     val photos = rememberPhotoAccess()
     val photosGranted = photos.access == PhotoAccess.ALL
 
-    LazyColumn(modifier.fillMaxWidth()) {
+    val list = rememberLazyListState()
+    RevealSettingHighlight(list)
+    LazyColumn(modifier.fillMaxWidth(), state = list) {
         when (focus) {
-            SettingsFocus.TOP -> topPage(s, models, photosGranted, keyboardTheme.enabled, navigate)
+            SettingsFocus.TOP -> {
+                if (search != null) searchField(search)
+                if (search != null && search.query.isNotBlank()) searchResults(search)
+                else topPage(s, models, photosGranted, keyboardTheme.enabled, navigate)
+            }
             SettingsFocus.KEYBOARD -> keyboardPage(s, update, navigate, resizeKeyboard)
             SettingsFocus.TYPING -> typingPage(s, update, navigate)
             SettingsFocus.CUSTOMIZE -> customizePage(s, update)
@@ -127,6 +151,52 @@ fun SettingsScreen(modifier: Modifier, focus: SettingsFocus, navigate: (Destinat
             SettingsFocus.UPDATES -> item { UpdatesSection() }
         }
         item { Spacer(Modifier.padding(12.dp)) }
+    }
+}
+
+/** The Settings tab's search: the query lives in the app shell, so Back from a result returns to the results. */
+class SettingsSearch(val query: String, val onQueryChange: (String) -> Unit, val onOpen: (SettingEntry) -> Unit)
+
+private fun LazyListScope.searchField(search: SettingsSearch) {
+    item(key = "search") {
+        val keyboard = LocalSoftwareKeyboardController.current
+        OutlinedTextField(
+            value = search.query,
+            onValueChange = search.onQueryChange,
+            placeholder = { Text("Search settings") },
+            leadingIcon = { Icon(SlimIcons.Search, null) },
+            trailingIcon = if (search.query.isNotEmpty()) ({
+                IconButton(onClick = { search.onQueryChange("") }) { Icon(SlimIcons.Close, "Clear search") }
+            }) else null,
+            singleLine = true,
+            shape = RoundedCornerShape(28.dp),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { keyboard?.hide() }),
+            // The placeholder goes once there's a query; TalkBack keeps naming the field.
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                .semantics { contentDescription = "Search settings" },
+        )
+    }
+}
+
+private fun LazyListScope.searchResults(search: SettingsSearch) {
+    val results = searchSettings(search.query)
+    item(key = "results") {
+        if (results.isEmpty()) {
+            EmptyState(
+                "No settings found",
+                "Nothing matches “${search.query.trim()}”. Try another word, such as dark, vibration or language.",
+                Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
+        } else {
+            Column {
+                // Announced as the count changes while typing.
+                GroupTitle(countLabel(results.size, "result", "results"), Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                SettingsGroup {
+                    results.forEach { entry -> LinkRow(entry.title, entry.location) { search.onOpen(entry) } }
+                }
+            }
+        }
     }
 }
 
@@ -329,7 +399,7 @@ private fun VoiceLanguage(s: Settings, models: ModelStoreState, update: Update) 
             subtitle = "For ${active.name}. Same as keyboard follows the language you type in; switching reloads the model.",
         )
     } else {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Column(settingHighlight("Voice language").fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
             Text("Voice language", style = MaterialTheme.typography.bodyLarge)
             Text(
                 if (active == null) "Set by the speech model. Choose one on the Voice tab."
@@ -410,7 +480,7 @@ private fun ActionRow(title: String, onClick: () -> Unit) {
         title,
         style = MaterialTheme.typography.bodyLarge,
         color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier
+        modifier = settingHighlight(title)
             .fillMaxWidth()
             .heightIn(min = 48.dp)
             .clickable(role = Role.Button, onClick = onClick)
