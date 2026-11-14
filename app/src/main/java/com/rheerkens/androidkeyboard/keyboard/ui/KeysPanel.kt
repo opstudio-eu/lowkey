@@ -277,7 +277,7 @@ private fun EmojiKey(key: Key.Emoji, state: KeyboardState, actions: KeyboardActi
             }
         } else null,
     ) { pressed ->
-        KeyCap(if (pressed) c.keyPressed else c.keyMod) {
+        KeyCap(if (pressed) c.keyPressed else c.key) {
             KeyIcon(SlimIcons.Emoji)
             if (switches) LongPressMark()
         }
