@@ -10,6 +10,8 @@ class EmojiCatalog(val entries: List<EmojiItem>) {
     }.toMap()
     private val longestFirst = byValue.keys.sortedByDescending { it.length }
     val categories: List<String> = entries.map { it.category }.distinct()
+    /** English emoji names as keywords for suggestions; built on first use. */
+    val nameIndex: EmojiNameIndex by lazy { EmojiNameIndex(entries) }
     fun find(value: String): EmojiItem? = byValue[value]
     fun suffixOf(text: String): String? = longestFirst.firstOrNull { text.endsWith(it) }
 
