@@ -133,6 +133,10 @@ Under **Advanced colors**, every other colour has its own row, grouped by where 
 
 The preview shows your draft, including a new image, and the keyboard changes only when you tap **Save theme**. **Cancel** drops the draft. Going back, switching tabs or choosing Standard asks before discarding unsaved changes; choose **Keep editing** to retain them. The saved image stays until you save without it. **Restore default colors** sets the five colours to the standard ones for the app theme and clears advanced colours. Lowkey lists text that falls below the WCAG AA contrast minimum, with the ratio. Over an image it checks the lightest and darkest parts after dimming, from a small copy of the image, so fine detail is not measured. It offers a fix that changes only the five colours, never your advanced colours, and with an image it can suggest more dimming; you can still save low-contrast themes. Choose **Standard** to return to the standard keyboard; your saved custom theme is kept for later. The app's own theme does not change.
 
+## Find a setting
+
+Type in **Search settings** at the top of the **Settings** tab to find any setting by name or by an everyday word: *dark* finds **Theme**, *haptic* finds **Vibrate on key press**, and *silence* finds **Stop after silence** under Voice. Each result shows where the setting lives. Tap a result to open its page, where the setting is scrolled into view and briefly highlighted. **Back** returns to your results; tapping a tab at the bottom clears the search.
+
 ## Try settings and manage updates
 
 Home offers **Try your keyboard** once Lowkey is set up. The Voice checklist also offers a test after setup. The draft stays available when you close and reopen the test field. **Settings → Try it → Advanced test fields** has additional editor types.

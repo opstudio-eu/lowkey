@@ -20,6 +20,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,6 +43,7 @@ import com.rheerkens.androidkeyboard.companion.screens.*
 import com.rheerkens.androidkeyboard.companion.theme.isDark
 import com.rheerkens.androidkeyboard.companion.theme.applyThemeToWindow
 import com.rheerkens.androidkeyboard.ui.SlimIcons
+import kotlinx.coroutines.delay
 
 /** Native companion shell. Stored preference keys and IME destinations remain unchanged. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -56,6 +58,10 @@ fun SlimApp(pendingDestination: Destination?, onDestinationConsumed: () -> Unit)
     var setupSkipped by rememberSaveable { mutableStateOf(false) }
     var themeHasChanges by remember { mutableStateOf(false) }
     var pendingRoute by rememberSaveable { mutableStateOf<List<String>?>(null) }
+    var pendingClearsSearch by rememberSaveable { mutableStateOf(false) }
+    // Kept while the user opens results, so Back returns to them; a tab tap starts afresh.
+    var settingsQuery by rememberSaveable { mutableStateOf("") }
+    val highlighter = remember { SettingHighlighter() }
     val ime = rememberImeStatus()
     val setup = keyboardSetupState(ime.enabled, ime.selected)
     val onboarding = current == Destination.HOME && setup != KeyboardSetupState.READY && !setupSkipped
@@ -87,18 +93,36 @@ fun SlimApp(pendingDestination: Destination?, onDestinationConsumed: () -> Unit)
     }
     fun openTest() { focus.clearFocus(force = true); resizeKeyboard = false; testOpen = true }
     fun openResize() { focus.clearFocus(force = true); resizeKeyboard = true; testOpen = true }
-    fun applyRoute(route: List<String>) {
+    fun applyRoute(route: List<String>, clearSearch: Boolean = false) {
         if (testOpen) closeTest()
+        highlighter.clear()
+        if (clearSearch) settingsQuery = ""
         stackNames = route
     }
-    fun requestRoute(route: List<String>) {
+    fun requestRoute(route: List<String>, clearSearch: Boolean = false) {
         if (current == Destination.KEYBOARD_THEME && themeHasChanges && route != stackNames) {
             pendingRoute = route
+            pendingClearsSearch = clearSearch
         } else {
-            applyRoute(route)
+            applyRoute(route, clearSearch)
         }
     }
     fun navigate(destination: Destination) = requestRoute(destinationPath(destination).map { it.name })
+    fun openSetting(entry: SettingEntry) {
+        focus.clearFocus(force = true)
+        keyboard?.hide()
+        // Opened over the results, even for a Voice or Dictionary page, so Back returns to them.
+        requestRoute(searchResultRoute(entry.destination).map { it.name })
+        if (entry.highlight) highlighter.show(entry.title)
+    }
+    // A row that isn't on screen right now (e.g. hidden by another setting) mustn't flash later.
+    LaunchedEffect(highlighter.request) {
+        val request = highlighter.request
+        if (highlighter.target != null) {
+            delay(3_000)
+            if (!highlighter.found) highlighter.finish(request)
+        }
+    }
     LaunchedEffect(pendingDestination) {
         pendingDestination?.let { navigate(it); onDestinationConsumed() }
     }
@@ -144,7 +168,8 @@ fun SlimApp(pendingDestination: Destination?, onDestinationConsumed: () -> Unit)
                                 row.forEach { (destination, label, icon) ->
                                     NavigationBarItem(
                                         selected = stack.first() == destination,
-                                        onClick = { navigate(destination) },
+                                        // A tab starts afresh, but only once the switch happens (not on Keep editing).
+                                        onClick = { requestRoute(destinationPath(destination).map { it.name }, clearSearch = true) },
                                         icon = { Icon(icon, null) },
                                         label = { Text(label, maxLines = 2, overflow = TextOverflow.Ellipsis) },
                                     )
@@ -160,11 +185,14 @@ fun SlimApp(pendingDestination: Destination?, onDestinationConsumed: () -> Unit)
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp).semantics { heading() },
                     )
                     val modifier = Modifier.weight(1f).fillMaxSize()
-                    when (current) {
+                    CompositionLocalProvider(LocalSettingHighlighter provides highlighter) { when (current) {
                         Destination.HOME -> HomeScreen(modifier, ::navigate, ::openTest, ime)
                         Destination.MODELS -> ModelsScreen(modifier, ::navigate, ::openTest)
                         Destination.DICTIONARY -> DictionaryScreen(modifier)
-                        Destination.SETTINGS -> SettingsScreen(modifier, SettingsFocus.TOP, ::navigate, ::openResize)
+                        Destination.SETTINGS -> SettingsScreen(
+                            modifier, SettingsFocus.TOP, ::navigate, ::openResize,
+                            search = SettingsSearch(settingsQuery, { settingsQuery = it }, ::openSetting),
+                        )
                         Destination.SETTINGS_VOICE -> SettingsScreen(modifier, SettingsFocus.VOICE, ::navigate, ::openResize)
                         Destination.SETTINGS_KEYBOARDS -> SettingsScreen(modifier, SettingsFocus.KEYBOARDS, ::navigate, ::openResize)
                         Destination.SETTINGS_KEYBOARD -> SettingsScreen(modifier, SettingsFocus.KEYBOARD, ::navigate, ::openResize)
@@ -179,7 +207,7 @@ fun SlimApp(pendingDestination: Destination?, onDestinationConsumed: () -> Unit)
                         Destination.ABOUT -> AboutScreen(modifier)
                         Destination.LANGUAGES -> LanguagesScreen(modifier, ::navigate)
                         Destination.KEYBOARD_THEME -> KeyboardThemeScreen(modifier, onDirtyChange = { themeHasChanges = it })
-                    }
+                    } }
                 }
             }
         }
@@ -191,7 +219,7 @@ fun SlimApp(pendingDestination: Destination?, onDestinationConsumed: () -> Unit)
             onDiscard = {
                 pendingRoute = null
                 themeHasChanges = false
-                applyRoute(route)
+                applyRoute(route, pendingClearsSearch)
             },
             onKeepEditing = { pendingRoute = null },
         )
