@@ -76,6 +76,9 @@ class EmojiSuggestionsTest {
         assertEquals("👕", en("shirts"))
         assertEquals("👟", en("shoes"))
         assertEquals("🏮", en("lantern"))
+        assertEquals("🧢", en("caps"))
+        assertEquals("💃", en("dancer"))
+        assertEquals("😷", en("mask"))
         assertEquals("👆", en("finger"))
         assertEquals("🤔", en("thinking"))
         assertEquals("👓", en("glasses"))
@@ -96,7 +99,7 @@ class EmojiSuggestionsTest {
     @Test fun commonWordsShortWordsSymbolsAndFlagsOfferNoEmoji() {
         for (word in listOf("with", "face", "open", "right", "left", "from", "have", "this", "that", "time",
             "good", "make", "people", "hands", "black", "light", "watch", "note", "stop", "back", "short",
-            "glass", "dishes", "bullets", "shootings", "machines", "fields", "piles", "clauses", "department", "passengers", "ceremony", "mechanical", "rays", "postal", "loudly", "hair", "kitchen", "medical", "steam", "cooked", "military", "musical", "electric", "milky", "backhand", "feeding", "cream", "drops", "polo", "leftward", "jordan", "georgia", "chad", "new", "free", "soon", "top", "cool", "egg", "eye", "dump",
+            "glass", "dishes", "bullets", "shootings", "machines", "fields", "piles", "clauses", "department", "passengers", "ceremony", "mechanical", "rays", "postal", "loudly", "hair", "kitchen", "medical", "steam", "cooked", "military", "musical", "electric", "milky", "backhand", "feeding", "cream", "drops", "polo", "leftward", "spiral", "straws", "cork", "uniform", "bottles", "lamp", "jordan", "georgia", "chad", "new", "free", "soon", "top", "cool", "egg", "eye", "dump",
             "news", "ways", "ones", "sees", "dies", "offs", "billed", "capped", "skin", "tone", "aids")) {
             assertNull(word, en(word))
         }

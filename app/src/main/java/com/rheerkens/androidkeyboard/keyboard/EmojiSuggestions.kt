@@ -31,6 +31,7 @@ object EmojiSuggestions {
             "🎬" to "movie movies", "🎞️" to "film films", "👜" to "bag bags",
             "🛍️" to "shopping", "♟️" to "chess", "🎓" to "graduation", "🌍" to "globe", "⏰" to "alarm alarms",
             "🌴" to "palm palms", "👕" to "shirt shirts", "👟" to "shoe shoes", "🏮" to "lantern lanterns",
+            "🧢" to "cap caps", "💃" to "dancer dancers", "😷" to "mask masks",
         ),
         "nl" to words(
             "👋" to "hoi hallo hey dag doei", "❤️" to "liefde hart", "☕" to "koffie thee",
@@ -163,7 +164,8 @@ class EmojiNameIndex(entries: List<EmojiItem>) {
             "performing tropical flying hair hairs motor motors root roots bar bars fallen kitchen " +
             "kitchens triangular clutch clutches revolving pouring hairy bouncing bunny oncoming " +
             "popping tipping safety speaker speakers increasing decreasing feeding cream creams drops " +
-            "polo splayed leftward leftwards rightward rightwards"
+            "polo splayed leftward leftwards rightward rightwards spiral spirals straw straws cork corks " +
+            "uniform uniforms bottle bottles lamp lamps"
             ).split(' ').toSet()
 
         private fun usable(word: String) = word.length >= MIN_LENGTH && word !in COMMON
