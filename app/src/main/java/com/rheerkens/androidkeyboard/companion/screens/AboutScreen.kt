@@ -2,7 +2,8 @@ package com.rheerkens.androidkeyboard.companion.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -26,6 +27,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -75,8 +78,12 @@ fun AboutScreen(modifier: Modifier) {
     val context = LocalContext.current
     val uri = LocalUriHandler.current
     val version = remember { appVersion(context) }
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
 
     var openLicense by rememberSaveable { mutableStateOf<String?>(null) }
+    var licensesOpen by rememberSaveable { mutableStateOf(false) }
+    var creditsOpen by rememberSaveable { mutableStateOf(false) }
+    var trademarksOpen by rememberSaveable { mutableStateOf(false) }
     openLicense?.let { file ->
         LicenseDialog(
             title = licenseTitle(file),
@@ -86,93 +93,108 @@ fun AboutScreen(modifier: Modifier) {
     }
 
     Column(modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
-        SlimCard(Modifier.padding(16.dp)) {
-            Text("Lowkey Keyboard", style = MaterialTheme.typography.titleLarge)
-            Text("Version $version · com.rheerkens.androidkeyboard", style = MaterialTheme.typography.bodySmall)
-            Text("Made by OpStudio", style = MaterialTheme.typography.bodySmall)
+        Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("Lowkey Keyboard", style = MaterialTheme.typography.titleMedium)
+            Text("Version $version · made by OpStudio", style = MaterialTheme.typography.bodyMedium, color = muted)
             Spacer(Modifier.height(6.dp))
             Text(
-                "A slim keyboard with local dictation. Speech runs on the device with Whisper. " +
-                    "Suggestions use a small built-in word list for now.",
+                "A slim keyboard with on-device voice typing. Speech recognition, suggestions and autocorrect run on your phone.",
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
 
-        SectionTitle("License")
-        Body(
-            "Lowkey is open source under the Apache License 2.0. It comes with no warranty. " +
-                "The libraries it includes are listed under License texts below."
-        )
-        Row(Modifier.padding(horizontal = 8.dp)) {
-            TextButton(onClick = { openLicense = APACHE_ASSET }) { Text("Apache License 2.0") }
-            TextButton(onClick = { uri.openUri(SOURCE_URL) }) { Text("Source code") }
+        SettingsGroup("Privacy") {
+            GroupText(
+                "Typed text, audio, dictation and your dictionary stay on your phone. Lowkey goes online only to " +
+                    "download the speech models and keyboard languages you choose, to check for a newer version about " +
+                    "once a day (unless you turn it off in Settings → Updates), and to download an update when you tap " +
+                    "Update. Audio is recorded only while you dictate and is not saved.",
+            )
         }
 
-        SectionTitle("Trademarks")
-        Body(
-            "The OpStudio name and logo are trademarks of OpStudio. The Apache License does not grant " +
-                "permission to use them, except to describe where Lowkey comes from. Forks and modified " +
-                "versions should remove the logo."
-        )
-
-        SectionTitle("Privacy")
-        Body(
-            "Everything stays on the device. The app goes online only for model downloads you start and, " +
-                "unless you turn it off in Settings → Updates, a daily check of its GitHub releases for a newer " +
-                "version. Typed text, audio, dictation, and your dictionary never leave the phone. " +
-                "Audio is recorded only while voice mode is listening and is not saved."
-        )
-
-        SectionTitle("References")
-        Body(
-            "Lowkey's code is its own. These projects inspired its design; no source code or assets " +
-                "are taken from them. Model file names, URLs, sizes and checksums are facts about the " +
-                "published model files and were cross-checked against them."
-        )
-        references.forEach { ref ->
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                Text(ref.name, style = MaterialTheme.typography.titleSmall)
-                Text(ref.role, style = MaterialTheme.typography.bodyMedium)
-                Text(
-                    "License: ${ref.license}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                TextButton(onClick = { uri.openUri(ref.url) }, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
-                    Text(ref.url, style = MaterialTheme.typography.bodySmall)
+        SettingsGroup("Open source") {
+            LinkRow("Apache License 2.0", "Lowkey's license. It comes with no warranty.") { openLicense = APACHE_ASSET }
+            LinkRow("Source code", SOURCE_URL.removePrefix("https://")) { uri.openUri(SOURCE_URL) }
+            DisclosureRow("Third-party licenses", licensesOpen, { licensesOpen = !licensesOpen },
+                summary = "Full license texts of bundled components")
+            if (licensesOpen) {
+                val licenseFiles = remember { licenseAssets(context) }
+                licenseFiles.forEach { file ->
+                    TextButton(
+                        onClick = { openLicense = file },
+                        modifier = Modifier.padding(horizontal = 8.dp).heightIn(min = 48.dp),
+                    ) { Text(licenseTitle(file)) }
                 }
             }
         }
 
-        SectionTitle("Models")
-        Body(
-            "Speech recognition uses OpenAI Whisper and Distil-Whisper models (MIT), as sherpa-onnx " +
-                "exports by k2-fsa. They are downloaded on request and stored in app-private storage, " +
-                "never inside the APK."
-        )
-
-        SectionTitle("Word lists")
-        Body(
-            "Suggestions and autocorrect use word lists derived from the Android Open Source Project " +
-                "LatinIME dictionaries (English and Dutch). Copyright 2008 The Android Open Source Project, " +
-                "Apache License 2.0. Converted to word and frequency lists, with offensive entries removed."
-        )
-
-        SectionTitle("Open-source libraries")
-        Body(
-            "AndroidX, Jetpack Compose, Material 3 and Kotlin coroutines (Apache License 2.0). Speech " +
-                "recognition runs on sherpa-onnx (Apache License 2.0), built for speech recognition only, and " +
-                "ONNX Runtime (MIT); the overview below lists their components."
-        )
-
-        SectionTitle("License texts")
-        val licenseFiles = remember { licenseAssets(context) }
-        licenseFiles.forEach { file ->
-            TextButton(onClick = { openLicense = file }, modifier = Modifier.padding(horizontal = 8.dp)) {
-                Text(licenseTitle(file))
+        SettingsGroup("Credits") {
+            DisclosureRow("Acknowledgements", creditsOpen, { creditsOpen = !creditsOpen },
+                summary = "Speech models, word lists, libraries and design references")
+            if (creditsOpen) {
+                CreditHeading("Speech models")
+                GroupText(
+                    "Speech recognition uses OpenAI Whisper and Distil-Whisper models (MIT), as sherpa-onnx " +
+                        "exports by k2-fsa. They are downloaded on request and stored in app-private storage, " +
+                        "never inside the APK.",
+                )
+                CreditHeading("Word lists")
+                GroupText(
+                    "Suggestions and autocorrect use word lists derived from the Android Open Source Project " +
+                        "LatinIME dictionaries. Copyright 2008 The Android Open Source Project, Apache License 2.0. " +
+                        "English (US) is built in; other languages download on request. Converted to word and " +
+                        "frequency lists, with offensive entries removed.",
+                )
+                CreditHeading("Open-source libraries")
+                GroupText(
+                    "AndroidX, Jetpack Compose, Material 3 and Kotlin coroutines (Apache License 2.0). Speech " +
+                        "recognition runs on sherpa-onnx (Apache License 2.0), built for speech recognition only, and " +
+                        "ONNX Runtime (MIT); the license overview lists their components.",
+                )
+                CreditHeading("Design references")
+                GroupText(
+                    "Lowkey's code is its own. These projects inspired its design; no source code or assets " +
+                        "are taken from them. Model file names, URLs, sizes and checksums are facts about the " +
+                        "published model files and were cross-checked against them.",
+                )
+                references.forEach { ref ->
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                        Text(ref.name, style = MaterialTheme.typography.titleSmall)
+                        Text(ref.role, style = MaterialTheme.typography.bodyMedium)
+                        Text("License: ${ref.license}", style = MaterialTheme.typography.bodySmall, color = muted)
+                        TextButton(
+                            onClick = { uri.openUri(ref.url) },
+                            contentPadding = PaddingValues(0.dp),
+                            modifier = Modifier.heightIn(min = 48.dp),
+                        ) { Text(ref.url, style = MaterialTheme.typography.bodySmall) }
+                    }
+                }
+            }
+            DisclosureRow("Trademarks", trademarksOpen, { trademarksOpen = !trademarksOpen })
+            if (trademarksOpen) {
+                GroupText(
+                    "The OpStudio name and logo are trademarks of OpStudio. The Apache License does not grant " +
+                        "permission to use them, except to describe where Lowkey comes from. Forks and modified " +
+                        "versions should remove the logo.",
+                )
             }
         }
+        Text(
+            "Package ${context.packageName}",
+            style = MaterialTheme.typography.bodySmall,
+            color = muted,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+        )
     }
+}
+
+@Composable
+private fun CreditHeading(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelLarge,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp).semantics { heading() },
+    )
 }
 
 @Composable

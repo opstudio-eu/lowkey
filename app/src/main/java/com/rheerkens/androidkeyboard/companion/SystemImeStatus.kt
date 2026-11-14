@@ -6,7 +6,35 @@ import android.content.Intent
 import android.os.Build
 import android.provider.Settings
 import android.view.inputmethod.InputMethodManager
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.rheerkens.androidkeyboard.ime.SlimKeyboardService
+import kotlinx.coroutines.delay
+
+/** Refresh after returning from Android settings or dismissing its keyboard picker. */
+@Composable
+internal fun rememberImeStatus(): SystemImeStatus.Status {
+    val context = LocalContext.current
+    var status by remember(context) { mutableStateOf(SystemImeStatus.read(context)) }
+    LifecycleResumeEffect(context) {
+        status = SystemImeStatus.read(context)
+        onPauseOrDispose { }
+    }
+    val focused = LocalWindowInfo.current.isWindowFocused
+    LaunchedEffect(context, focused) {
+        status = SystemImeStatus.read(context)
+        delay(600)
+        status = SystemImeStatus.read(context)
+    }
+    return status
+}
 
 /** Real system state for the setup checklist. */
 object SystemImeStatus {

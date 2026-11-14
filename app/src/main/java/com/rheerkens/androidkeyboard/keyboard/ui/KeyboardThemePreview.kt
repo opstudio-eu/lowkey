@@ -16,15 +16,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.sp
 import com.rheerkens.androidkeyboard.ui.SlimIcons
 
@@ -36,6 +39,16 @@ import com.rheerkens.androidkeyboard.ui.SlimIcons
  */
 @Composable
 fun KeyboardThemePreview(c: KeyboardColors, modifier: Modifier = Modifier, image: KeyboardBackgroundImage? = null) {
+    // This non-interactive color illustration has fixed proportions, like a screenshot.
+    // Its surrounding editor controls still follow the user's system text size.
+    val density = LocalDensity.current.density
+    CompositionLocalProvider(LocalDensity provides Density(density, fontScale = 1f)) {
+        KeyboardColorIllustration(c, modifier, image)
+    }
+}
+
+@Composable
+private fun KeyboardColorIllustration(c: KeyboardColors, modifier: Modifier, image: KeyboardBackgroundImage?) {
     val shape = RoundedCornerShape(12.dp)
     Column(
         modifier

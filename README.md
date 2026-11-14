@@ -12,7 +12,7 @@ Lowkey is a slim Android keyboard with on-device voice typing. Speech recognitio
 
 Lowkey is a personal project, available as source and signed APKs. It is not on the Play Store.
 
-The app checks for updates automatically. Use **Settings → Updates → Check now** to check manually. Android may ask you to allow Lowkey to install updates and confirm the installation. Updates keep your settings, dictionary, and downloaded models. Release notes and checksums are on the [releases page](https://github.com/opstudio-eu/lowkey/releases/latest).
+The app checks for updates automatically. Use **Settings → Updates → Check for updates** to check manually. Android may ask you to allow Lowkey to install updates and confirm the installation. Updates keep your settings, dictionary, and downloaded models. Release notes and checksums are on the [releases page](https://github.com/opstudio-eu/lowkey/releases/latest).
 
 ## Features
 

@@ -5,13 +5,10 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rheerkens.androidkeyboard.AppGraph
 import com.rheerkens.androidkeyboard.companion.theme.SlimTheme
-import com.rheerkens.androidkeyboard.companion.theme.applyThemeToWindow
-import com.rheerkens.androidkeyboard.companion.theme.isDarkTheme
 import com.rheerkens.androidkeyboard.updates.Updates
 import com.rheerkens.androidkeyboard.updates.acceptsReleaseUpdates
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,8 +27,6 @@ class MainActivity : ComponentActivity() {
         setContent {
             val settings by AppGraph.settings.settings.collectAsStateWithLifecycle()
             val pending by pendingDestination.collectAsStateWithLifecycle()
-            val dark = isDarkTheme(settings.theme)
-            LaunchedEffect(dark) { applyThemeToWindow(dark, brandSurround = true) }
             SlimTheme(settings.theme) {
                 SlimApp(
                     pendingDestination = pending,

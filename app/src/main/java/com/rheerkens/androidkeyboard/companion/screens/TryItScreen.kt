@@ -16,8 +16,10 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -40,6 +42,8 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.viewinterop.AndroidView
 import android.os.Build
 import android.text.InputType
+import android.text.Editable
+import android.text.TextWatcher
 import android.widget.EditText
 import com.rheerkens.androidkeyboard.companion.SystemImeStatus
 import com.rheerkens.androidkeyboard.ui.SlimIcons
@@ -59,6 +63,8 @@ fun TryItScreen(modifier: Modifier) {
     var search by rememberSaveable { mutableStateOf("") }
     var send by rememberSaveable { mutableStateOf("") }
     var lastAction by rememberSaveable { mutableStateOf<String?>(null) }
+    var androidText by rememberSaveable { mutableStateOf("") }
+    var advancedOpen by rememberSaveable { mutableStateOf(false) }
     val sent = remember { mutableStateListOf<String>() }
     var currentKeyboard by remember { mutableStateOf(SystemImeStatus.read(context)) }
     val windowFocused = LocalWindowInfo.current.isWindowFocused
@@ -85,102 +91,123 @@ fun TryItScreen(modifier: Modifier) {
             )
             TextButton(onClick = { SystemImeStatus.showPicker(context) }) { Text("Switch") }
         }
-        Text("Sample prompts", style = MaterialTheme.typography.labelLarge)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            samplePrompts.forEach { p ->
-                AssistChip(onClick = { message = p }, label = { Text(p) })
-            }
-        }
         OutlinedTextField(
             value = message,
             onValueChange = { message = it },
-            label = { Text("Message (multiline)") },
-            placeholder = { Text("Type or dictate a coding request") },
+            label = { Text("Try it here") },
+            placeholder = { Text("Type, use suggestions, or tap the mic to dictate") },
             minLines = 4,
+            trailingIcon = if (message.isNotEmpty()) ({
+                IconButton(onClick = { message = "" }) { Icon(SlimIcons.Close, "Clear text") }
+            }) else null,
             modifier = Modifier.fillMaxWidth().testTag("tryit_message"),
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Default),
         )
-        // Most apps use Android's EditText, which reports word positions to the keyboard
-        // (slide from Backspace into the text to delete back to a word). Compose text fields don't yet.
-        Text("Android text field (EditText)", style = MaterialTheme.typography.labelLarge)
-        val ink = MaterialTheme.colorScheme.onSurface.toArgb()
-        val hint = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
-        val accent = MaterialTheme.colorScheme.primary
-        AndroidView(
-            factory = { ctx ->
-                EditText(ctx).apply {
-                    inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or
-                        InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-                    minLines = 3
-                    textSize = 18f
-                    this.hint = "Type here, then slide from Backspace into the text"
-                    tag = "tryit_edittext"
-                    contentDescription = "Android text field"
+        Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+            DisclosureRow(
+                "Advanced test fields", advancedOpen, { advancedOpen = !advancedOpen },
+                summary = "Android text field, Search and Send actions, sample prompts",
+            )
+        }
+        if (advancedOpen) {
+            Text("Sample prompts", style = MaterialTheme.typography.labelLarge)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                samplePrompts.forEach { p ->
+                    AssistChip(onClick = { message = p }, label = { Text(p) })
                 }
-            },
-            update = { field ->
-                field.setTextColor(ink)
-                field.setHintTextColor(hint)
-                // The view's context follows the system theme; tint the cursor, selection and
-                // handles with the app theme's accent so they show in the in-app Light or Dark.
-                field.highlightColor = accent.copy(alpha = 0.35f).toArgb()
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    val tint = accent.toArgb()
-                    field.textCursorDrawable?.mutate()?.setTint(tint)
-                    field.textSelectHandle?.mutate()?.setTint(tint)
-                    field.textSelectHandleLeft?.mutate()?.setTint(tint)
-                    field.textSelectHandleRight?.mutate()?.setTint(tint)
-                }
-            },
-            modifier = Modifier.fillMaxWidth().testTag("tryit_edittext"),
-        )
-        OutlinedTextField(
-            value = search,
-            onValueChange = { search = it },
-            label = { Text("Search") },
-            singleLine = true,
-            leadingIcon = { Icon(SlimIcons.Search, null) },
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(onSearch = { lastAction = "Search: “$search”" }),
-            modifier = Modifier.fillMaxWidth().testTag("tryit_search"),
-        )
-        OutlinedTextField(
-            value = send,
-            onValueChange = { send = it },
-            label = { Text("Send a message") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
-            keyboardActions = KeyboardActions(onSend = {
-                if (send.isNotBlank()) {
-                    sent += send
-                    lastAction = "Sent: “$send”"
-                    send = ""
-                }
-            }),
-            trailingIcon = {
-                IconButton(onClick = {
+            }
+            // Most apps use Android's EditText, which reports word positions to the keyboard
+            // (slide from Backspace into the text to delete back to a word). Compose text fields don't yet.
+            Text("Android text field (EditText)", style = MaterialTheme.typography.labelLarge)
+            val ink = MaterialTheme.colorScheme.onSurface.toArgb()
+            val hint = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
+            val accent = MaterialTheme.colorScheme.primary
+            AndroidView(
+                factory = { ctx ->
+                    EditText(ctx).apply {
+                        inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                            InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+                        minLines = 3
+                        textSize = 18f
+                        this.hint = "Type here, then slide from Backspace into the text"
+                        tag = "tryit_edittext"
+                        contentDescription = "Android text field"
+                        addTextChangedListener(object : TextWatcher {
+                            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+                            override fun afterTextChanged(text: Editable?) { androidText = text?.toString().orEmpty() }
+                        })
+                    }
+                },
+                update = { field ->
+                    if (field.text.toString() != androidText) {
+                        field.setText(androidText)
+                        field.setSelection(field.text.length)
+                    }
+                    field.setTextColor(ink)
+                    field.setHintTextColor(hint)
+                    // The view's context follows the system theme; tint the cursor, selection and
+                    // handles with the app theme's accent so they show in the in-app Light or Dark.
+                    field.highlightColor = accent.copy(alpha = 0.35f).toArgb()
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        val tint = accent.toArgb()
+                        field.textCursorDrawable?.mutate()?.setTint(tint)
+                        field.textSelectHandle?.mutate()?.setTint(tint)
+                        field.textSelectHandleLeft?.mutate()?.setTint(tint)
+                        field.textSelectHandleRight?.mutate()?.setTint(tint)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().testTag("tryit_edittext"),
+            )
+            OutlinedTextField(
+                value = search,
+                onValueChange = { search = it },
+                label = { Text("Search") },
+                singleLine = true,
+                leadingIcon = { Icon(SlimIcons.Search, null) },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { lastAction = "Search: “$search”" }),
+                modifier = Modifier.fillMaxWidth().testTag("tryit_search"),
+            )
+            OutlinedTextField(
+                value = send,
+                onValueChange = { send = it },
+                label = { Text("Send a message") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(onSend = {
                     if (send.isNotBlank()) {
                         sent += send
                         lastAction = "Sent: “$send”"
                         send = ""
                     }
-                }) { Icon(SlimIcons.Send, "Send") }
-            },
-            modifier = Modifier.fillMaxWidth().testTag("tryit_send"),
-        )
-        lastAction?.let {
-            Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.secondary)
+                }),
+                trailingIcon = {
+                    IconButton(onClick = {
+                        if (send.isNotBlank()) {
+                            sent += send
+                            lastAction = "Sent: “$send”"
+                            send = ""
+                        }
+                    }) { Icon(SlimIcons.Send, "Send") }
+                },
+                modifier = Modifier.fillMaxWidth().testTag("tryit_send"),
+            )
+            lastAction?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.secondary)
+            }
+            if (sent.isNotEmpty()) {
+                Text("Sent messages", style = MaterialTheme.typography.labelLarge)
+                sent.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
+            }
+            TextButton(onClick = {
+                message = ""
+                androidText = ""
+                search = ""
+                send = ""
+                lastAction = null
+                sent.clear()
+            }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Clear all fields") }
         }
-        if (sent.isNotEmpty()) {
-            Text("Sent messages", style = MaterialTheme.typography.labelLarge)
-            sent.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
-        }
-        OutlinedButton(onClick = {
-            message = ""
-            search = ""
-            send = ""
-            lastAction = null
-            sent.clear()
-        }) { Text("Clear") }
     }
 }
