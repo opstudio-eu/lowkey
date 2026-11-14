@@ -4,7 +4,7 @@ For installation, see the [README](../README.md#install).
 
 ## Dictate text
 
-1. Open **Voice**, allow microphone access and choose **Download & use** for a speech model. A completed download becomes active; choose **Use** to switch to another downloaded model.
+1. Open **Voice** and follow the checklist: allow microphone access, then download a speech model. A completed download becomes active. Open **Change speech model** to choose another model; selecting it alone does not download or activate it.
 2. Open a text field and tap the keyboard's microphone button.
 3. Speak, then tap the **checkmark**. Lowkey transcribes on your phone and inserts the finished text.
 
@@ -16,7 +16,7 @@ Under **Voice → Storage & performance → Keep model loaded**, choose how long
 
 ## Add keyboard languages
 
-English (US) is built in. Dutch, Polish, English (UK), German, French, Spanish, Italian, Portuguese (Brazil and Portugal), Swedish, Danish, Norwegian (Bokmål), Finnish, Czech, Croatian, Slovenian, Romanian, Lithuanian, Latvian and Russian download on request: open **Settings → Languages & layouts** and tap **Download**. Each word list is 0.4–5.2 MB. Lowkey downloads it from the Android Open Source Project at a fixed version, checks it against a known checksum, and converts it on your phone. A downloaded language is turned on at once.
+English (US) is built in. Dutch, Polish, English (UK), German, French, Spanish, Italian, Portuguese (Brazil and Portugal), Swedish, Danish, Norwegian (Bokmål), Finnish, Czech, Croatian, Slovenian, Romanian, Lithuanian, Latvian and Russian download on request: open **Settings → Languages & layouts → Add a language** and tap a language's download icon. Each word list is 0.4–5.2 MB. Lowkey downloads it from the Android Open Source Project at a fixed version, checks it against a known checksum, and converts it on your phone. A downloaded language is turned on at once.
 
 Tap a language's name to switch to it. Lowkey remembers the choice and turns the language on if needed. Turn a language's switch off to remove all its layouts from the keyboard switcher. **English (US) can also be turned off**; its bundled word list stays on the phone. Keep at least one language on. The trash icon beside a downloaded language deletes its word list after confirmation. If it is your last active language, turn on another language first.
 
@@ -32,7 +32,7 @@ Android's input-method menu shows one **Lowkey Keyboard** entry. It opens the la
 
 ## Choose layouts and type accents
 
-Enable layouts under **Settings → Languages & layouts → Keyboard layouts**, then choose **Keyboard in use** on that page to select the one you want. Each language on your phone is listed with its own layout first. Languages written in the Latin alphabet also offer QWERTY, AZERTY, QWERTZ, Dvorak and Colemak. With the language-switch key enabled, tap it to cycle through Lowkey layouts. Hold Space to open Android's picker for keyboard apps.
+Enable layouts under **Settings → Languages & layouts → Layouts**, then choose **Keyboard in use** on that page to select the one you want. Each language on your phone is listed with its own layout first. Languages written in the Latin alphabet also offer QWERTY, AZERTY, QWERTZ, Dvorak and Colemak. With the language-switch key enabled, tap it to cycle through Lowkey layouts. Hold Space to open Android's picker for keyboard apps.
 
 The selected keyboard supplies the primary language for suggestions and autocorrect. Changing the letter layout does not change that language.
 
@@ -108,7 +108,7 @@ The minimized bar shows up to ten recent clips. The full keyboard shows them whe
 
 Clips are captured while Lowkey is the selected keyboard, even when hidden. History lasts until the app process ends. Copied images are cached privately and removed when they leave history or the app restarts. Clips marked sensitive are not saved in history, and history is hidden in password fields.
 
-Recent screenshots are on by default. They appear once Lowkey may read all your photos: use the optional card on Home, or **Settings → Clipboard & images → Recent screenshots**, and choose **Allow all**. Use that switch to turn them off. Up to five screenshots from the last day appear beside your clips. With limited photo access, new screenshots stay hidden; Home and Settings explain how to allow all photos. Choosing **Not now** turns this optional feature off.
+Recent screenshots are on by default. They appear once Lowkey may read all your photos: open **Settings → Clipboard & images → Recent screenshots** and choose **Allow all**. Use that switch to turn them off. Up to five screenshots from the last day appear beside your clips. With limited photo access, new screenshots stay hidden; Settings explains how to allow all photos. Choosing **Not now** turns this optional feature off.
 
 
 ## Edit an image before pasting
@@ -131,10 +131,10 @@ Under **Advanced colors**, every other colour has its own row, grouped by where 
 
 **Background image → Choose image** opens Android's photo picker; Lowkey needs no storage permission. It keeps its own smaller, upright copy without the photo's location or other details, and fills the keyboard with it behind the keys, cropped from the middle. **Dimming** covers the image with the background colour to keep text readable; keys stay solid. **Remove image** goes back to the plain colour. If the copy goes missing, the keyboard uses the background colour. A docked keyboard shows the image across its full width, including one-handed and split layouts; a floating keyboard shows it only inside the floating panel.
 
-The preview shows your draft, including a new image, and the keyboard changes only when you tap **Save**. **Cancel** or going back drops the draft; the saved image stays until you save without it. **Restore default** sets the five colours to the standard ones for the app theme and clears advanced colours. Lowkey lists text that falls below the WCAG AA contrast minimum, with the ratio. Over an image it checks the lightest and darkest parts after dimming, from a small copy of the image, so fine detail is not measured. It offers a fix that changes only the five colours, never your advanced colours, and with an image it can suggest more dimming; you can still save low-contrast themes. Choose **Standard** to return to the standard keyboard; your custom theme is kept for later. The app's own theme does not change.
+The preview shows your draft, including a new image, and the keyboard changes only when you tap **Save theme**. **Cancel** drops the draft. Going back, switching tabs or choosing Standard asks before discarding unsaved changes; choose **Keep editing** to retain them. The saved image stays until you save without it. **Restore default colors** sets the five colours to the standard ones for the app theme and clears advanced colours. Lowkey lists text that falls below the WCAG AA contrast minimum, with the ratio. Over an image it checks the lightest and darkest parts after dimming, from a small copy of the image, so fine detail is not measured. It offers a fix that changes only the five colours, never your advanced colours, and with an image it can suggest more dimming; you can still save low-contrast themes. Choose **Standard** to return to the standard keyboard; your saved custom theme is kept for later. The app's own theme does not change.
 
 ## Try settings and manage updates
 
-Tap the keyboard icon on the keyboard, voice or language pages to open a test field over the current page. Home offers **Try your keyboard** once Lowkey is set up. The draft stays available when you close and reopen the test field. **Settings → Try it** has additional editor types.
+Home offers **Try your keyboard** once Lowkey is set up. The Voice checklist also offers a test after setup. The draft stays available when you close and reopen the test field. **Settings → Try it → Advanced test fields** has additional editor types.
 
-**Settings → Updates** lets you check now or turn automatic checks off. Downloads continue when you leave the app. If Android needs confirmation, tap the ready-to-install notification or **Install** in the Home update banner. Without notification permission, update notices appear in the app.
+**Settings → Updates → Check for updates** checks manually; the same page can turn automatic checks off. Downloads continue when you leave the app. If Android needs confirmation, tap the ready-to-install notification or the update action in the app. Without notification permission, update notices appear in the app.
