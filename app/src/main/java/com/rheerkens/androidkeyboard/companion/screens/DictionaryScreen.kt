@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -25,6 +26,7 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -44,18 +46,39 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rheerkens.androidkeyboard.AppGraph
+import com.rheerkens.androidkeyboard.companion.Destination
+import com.rheerkens.androidkeyboard.companion.settingsIndex
 import com.rheerkens.androidkeyboard.dictionary.DictionaryStore
 import com.rheerkens.androidkeyboard.dictionary.PersonalTerm
 import com.rheerkens.androidkeyboard.dictionary.PhraseRule
 import com.rheerkens.androidkeyboard.ui.SlimIcons
 
+/** The tab labels; settings search entries name them as their section. */
+internal val DICTIONARY_TABS = listOf("My words", "Speech rules")
+
 @Composable
 fun DictionaryScreen(modifier: Modifier) {
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+    var chosenTab by rememberSaveable { mutableIntStateOf(0) }
+    val highlighter = LocalSettingHighlighter.current
+    // A settings search result opens the tab its row is on (the index names the tab).
+    val wanted = highlighter?.target?.let { target ->
+        when (settingsIndex.firstOrNull { it.destination == Destination.DICTIONARY && it.title == target }?.section) {
+            DICTIONARY_TABS[0] -> 0
+            DICTIONARY_TABS[1] -> 1
+            else -> null
+        }
+    }
+    LaunchedEffect(wanted) { if (wanted != null) chosenTab = wanted }
+    val tab = wanted ?: chosenTab
+    fun choose(index: Int) {
+        highlighter?.clear()
+        chosenTab = index
+    }
     Column(modifier) {
         PrimaryTabRow(selectedTabIndex = tab) {
-            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("My words") })
-            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Speech rules") })
+            DICTIONARY_TABS.forEachIndexed { index, label ->
+                Tab(selected = tab == index, onClick = { choose(index) }, text = { Text(label) })
+            }
         }
         if (tab == 0) WordsTab() else RulesTab()
     }
@@ -93,7 +116,10 @@ private fun WordsTab() {
     val shown = filterTerms(state.terms, query)
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
 
-    LazyColumn(Modifier.fillMaxWidth()) {
+    val list = rememberLazyListState()
+    // The dictation setting sits below the whole word list, just before the end spacer.
+    RevealSettingHighlight(list) { (list.layoutInfo.totalItemsCount - 2).takeIf { it >= 0 } }
+    LazyColumn(Modifier.fillMaxWidth(), state = list) {
         item(key = "summary") {
             SummaryWithAction(wordsSummary(shown.size, state.terms.size, query), "Add word") { adding = true }
         }
@@ -250,7 +276,9 @@ private fun RulesTab() {
     val active = settings.applyPhraseRules
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
 
-    LazyColumn(Modifier.fillMaxWidth()) {
+    val list = rememberLazyListState()
+    RevealSettingHighlight(list)
+    LazyColumn(Modifier.fillMaxWidth(), state = list) {
         item(key = "master") {
             SettingsGroup(
                 modifier = Modifier.padding(top = 8.dp),

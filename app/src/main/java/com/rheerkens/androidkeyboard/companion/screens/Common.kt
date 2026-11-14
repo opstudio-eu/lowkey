@@ -68,7 +68,7 @@ fun SwitchRow(
     enabled: Boolean = true,
 ) {
     Row(
-        Modifier
+        settingHighlight(title)
             .fillMaxWidth()
             .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onCheckedChange)
             .padding(horizontal = 16.dp, vertical = 10.dp),
@@ -166,7 +166,7 @@ fun <T> DropdownRow(
 @Composable
 fun LinkRow(title: String, subtitle: String? = null, onClick: () -> Unit) {
     Row(
-        Modifier
+        settingHighlight(title)
             .fillMaxWidth()
             .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 14.dp),
