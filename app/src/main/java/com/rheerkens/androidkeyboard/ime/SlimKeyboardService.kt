@@ -1418,9 +1418,10 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             val fix = when {
                 phrase != null || key == null -> null
                 cachedCorrection?.key == key -> cachedCorrection?.fix
-                // A fast Space must not run a dictionary scan on the input thread. On a
-                // cache miss keep the literal word; never correct it after later edits.
-                else -> null
+                // A fast Space must not run a dictionary scan on the input thread. On a cache
+                // miss apply only what lookups settle (`dont` → `don't`), else keep the literal
+                // word; never correct it after later edits.
+                else -> suggester().quickAutocorrection(word, terms, key.atSentenceStart)
             }
             var applied: Pair<String, String>? = null
             if (phrase != null) {

@@ -6,6 +6,12 @@ import kotlin.math.abs
 data class Correction(val word: String, val distance: Double, val score: Double)
 
 /**
+ * An autocorrection in one language. [certain] fixes come from dictionary rules (a missing
+ * apostrophe or accent, a whitelisted shortcut); others from a spelling search, ranked by [score].
+ */
+data class AutoFix(val word: String, val score: Double, val certain: Boolean)
+
+/**
  * Spelling correction against a [Lexicon], tuned for touch typing on the keyboard's [KeyGrid]
  * (QWERTY unless given): a weighted Damerau-Levenshtein distance where hitting a neighbouring key,
  * leaving out an accent (`zolw` → `żółw`, [Lexicon.folding]), swapping two letters, doubling a
@@ -150,38 +156,112 @@ object Corrector {
      * capitals such as `ViewModel`) are never corrected.
      */
     fun autocorrect(typed: String, lexicon: Lexicon, atSentenceStart: Boolean = true, keys: KeyGrid = KeyGrid.QWERTY,
-        checkActive: () -> Unit = {}): String? {
+        checkActive: () -> Unit = {}): String? = autoFix(typed, lexicon, atSentenceStart, keys, checkActive)?.word
+
+    /** [autocorrect] with how sure it is, so that the fixes of several languages can be compared. */
+    fun autoFix(typed: String, lexicon: Lexicon, atSentenceStart: Boolean = true, keys: KeyGrid = KeyGrid.QWERTY,
+        checkActive: () -> Unit = {}): AutoFix? {
         checkActive()
-        if (!looksLikeAWord(typed)) return null
-        // A capitalized word mid-sentence is most likely a name ("Meet Mira"): leave it.
-        if (typed[0].isUpperCase() && !atSentenceStart) return null
-        // In languages whose word list also has accent-less spellings of common words (Polish
-        // `juz` next to `już`), restore the accents when that spelling is much more frequent.
-        lexicon.accentRestoration(typed)?.let { return Suggester.matchCase(typed, it) }
-        // A word spelled exactly as in the dictionary is never changed ("Bern", "ill").
-        if (lexicon.containsExact(typed)) return null
-        lexicon.whitelist[typed.lowercase()]?.let { return Suggester.matchCase(typed, it) }
-        val nouns = lexicon.rules.capitalizedNouns
-        if (nouns && typed[0].isLowerCase()) {
-            // A more frequent spelling with umlauts or ß comes first: `hauser` is `Häuser` rather
-            // than the surname Hauser, and `strasse` is `Straße`.
-            val own = lexicon.frequency(typed)
-            umlautSpelling(typed.lowercase(), lexicon)?.let { (word, freq) ->
-                if (own == null || freq > own) return Suggester.matchCase(typed, word)
-            }
-            // German nouns: `zeit` is only known as `Zeit`.
-            val spelling = lexicon.spelling(typed)
-            if (spelling != null && spelling[0].isUpperCase() && spelling.substring(1) == typed.substring(1)) return spelling
+        when (val rule = rule(typed, lexicon, atSentenceStart)) {
+            Rule.Keep -> return null
+            is Rule.Replace -> return AutoFix(rule.word, Double.MAX_VALUE, certain = true)
+            Rule.Search -> Unit
         }
-        if (lexicon.contains(typed) || typed.length <= 2) return null
-        // Never turn a lowercase word into a capitalized name ("lol" → "Lil"), except where nouns are capitalized.
-        val ranked = corrections(typed, lexicon, 3, keys, checkActive).filter { nouns || typed[0].isUpperCase() || !it.word[0].isUpperCase() }
+        val nouns = lexicon.rules.capitalizedNouns
+        // Never turn a lowercase word into a capitalized name ("lol" → "Lil"), except where nouns
+        // are capitalized; the pronoun's contractions (`ive` → `I've`) are not names.
+        val ranked = corrections(typed, lexicon, 3, keys, checkActive)
+            .filter { nouns || typed[0].isUpperCase() || !it.word[0].isUpperCase() || isPronounI(it.word) }
         val best = ranked.firstOrNull() ?: return null
         val second = ranked.getOrNull(1)
         if (lexicon.frequency(best.word)?.let { it < MIN_TARGET_FREQUENCY } == true) return null
         if (second != null && best.score - second.score < MIN_MARGIN && second.distance <= best.distance) return null
-        return Suggester.matchCase(typed, best.word)
+        return AutoFix(Suggester.matchCase(typed, best.word), best.score, certain = false)
     }
+
+    /** What dictionary lookups alone decide for a typed word, before any spelling search. */
+    sealed interface Rule {
+        /** Leave the word as typed. */
+        data object Keep : Rule
+        /** Replace it: a missing apostrophe or accent, a whitelisted shortcut, a German noun. */
+        data class Replace(val word: String) : Rule
+        /** Unknown word: only a spelling search can tell. */
+        data object Search : Rule
+    }
+
+    /**
+     * The rules part of [autocorrect]: a handful of hash lookups, cheap enough for the input
+     * thread when Space comes before the background spelling search has finished.
+     */
+    fun rule(typed: String, lexicon: Lexicon, atSentenceStart: Boolean = true): Rule {
+        if (!looksLikeAWord(typed)) {
+            // A shouted contraction (`DONT` → `DON'T`); short all-caps words are often acronyms.
+            val shouted = typed.length >= 4 && typed.all { it.isLetter() && it.isUpperCase() }
+            return contraction(typed, lexicon)?.takeIf { shouted }?.let(Rule::Replace) ?: Rule.Keep
+        }
+        // A capitalized word mid-sentence is most likely a name ("Meet Mira"): leave it.
+        if (typed[0].isUpperCase() && !atSentenceStart) return Rule.Keep
+        // In languages whose word list also has accent-less spellings of common words (Polish
+        // `juz` next to `już`), restore the accents when that spelling is much more frequent.
+        lexicon.accentRestoration(typed)?.let { return Rule.Replace(Suggester.matchCase(typed, it)) }
+        // `dont` → `don't`, and `cant` → `can't` because `cant` is that much rarer.
+        contraction(typed, lexicon)?.let { return Rule.Replace(it) }
+        // A word spelled exactly as in the dictionary is never changed ("Bern", "ill").
+        if (lexicon.containsExact(typed)) return Rule.Keep
+        lexicon.whitelist[typed.lowercase()]?.let { return Rule.Replace(Suggester.matchCase(typed, it)) }
+        if (lexicon.rules.capitalizedNouns && typed[0].isLowerCase()) {
+            // A more frequent spelling with umlauts or ß comes first: `hauser` is `Häuser` rather
+            // than the surname Hauser, and `strasse` is `Straße`.
+            val own = lexicon.frequency(typed)
+            umlautSpelling(typed.lowercase(), lexicon)?.let { (word, freq) ->
+                if (own == null || freq > own) return Rule.Replace(Suggester.matchCase(typed, word))
+            }
+            // German nouns: `zeit` is only known as `Zeit`.
+            val spelling = lexicon.spelling(typed)
+            if (spelling != null && spelling[0].isUpperCase() && spelling.substring(1) == typed.substring(1)) {
+                return Rule.Replace(spelling)
+            }
+        }
+        if (lexicon.contains(typed) || typed.length <= 2) return Rule.Keep
+        return Rule.Search
+    }
+
+    /**
+     * Dictionary words that are [typed] with one apostrophe added (`dont` → `don't`, `ive` →
+     * `I've`, French `cest` → `c'est`), most frequent first, in the typed case. Capitalized forms
+     * (`Japan's`) are left out, except the pronoun I's.
+     */
+    fun apostropheForms(typed: String, lexicon: Lexicon): List<Pair<String, Int>> {
+        if (typed.length < 2 || '\'' in typed) return emptyList()
+        val t = typed.lowercase()
+        val out = ArrayList<Pair<String, Int>>(2)
+        for (i in 1 until t.length) {
+            val variant = t.substring(0, i) + '\'' + t.substring(i)
+            val freq = lexicon.frequency(variant) ?: continue
+            val spelling = lexicon.spelling(variant) ?: continue
+            if (spelling[0].isUpperCase() && !isPronounI(spelling)) continue
+            out += Suggester.matchCase(typed, spelling) to freq
+        }
+        return out.sortedByDescending { it.second }
+    }
+
+    /**
+     * The contraction [typed] is missing an apostrophe of, or null. An unknown word takes its
+     * apostrophe form (`didnt`, `youre`, `itll`, French `jai`). A known word changes only to an
+     * ending contraction that is far more common (`cant`, `wont`, `whats`), so that `its`,
+     * `lets`, `ill` and `were` stay, and so do French words that look like an elision
+     * (`dun` and `dune` are not `d'un` and `d'une`).
+     */
+    fun contraction(typed: String, lexicon: Lexicon): String? {
+        val forms = apostropheForms(typed, lexicon)
+        val own = lexicon.frequency(typed)
+            ?: return forms.firstOrNull()?.takeIf { it.second >= MIN_TARGET_FREQUENCY }?.first
+        return forms.firstOrNull { (word, freq) ->
+            freq >= own + CONTRACTION_MARGIN && ENDINGS.any { word.endsWith(it, ignoreCase = true) }
+        }?.first
+    }
+
+    private fun isPronounI(word: String): Boolean = word.length > 2 && word.startsWith("I'")
 
     /**
      * The most frequent dictionary spelling of [lower] with some of its a, o, u turned into ä, ö,
@@ -230,4 +310,11 @@ object Corrector {
 
     private const val MIN_TARGET_FREQUENCY = 20
     private const val MIN_MARGIN = 0.35
+    /**
+     * How much more common (0–255 scale) a contraction must be than the known word it is typed
+     * as: `wont` 50 → `won't` 158 and `cant` 70 → `can't` 160 change, `lets` 106 → `let's` 145 not.
+     */
+    private const val CONTRACTION_MARGIN = 60
+    /** Endings a known word may gain an apostrophe in (`cant` → `can't`, `whats` → `what's`). */
+    private val ENDINGS = listOf("n't", "'s", "'ll", "'re", "'ve", "'d", "'m")
 }

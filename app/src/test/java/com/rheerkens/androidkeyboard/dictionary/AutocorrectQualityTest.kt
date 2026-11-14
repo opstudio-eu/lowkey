@@ -61,10 +61,48 @@ class AutocorrectQualityTest {
     }
 
     @Test
+    fun contractionsTypedWithoutTheApostropheAreFixed() {
+        val expected = mapOf(
+            "dont" to "don't", "didnt" to "didn't", "doesnt" to "doesn't", "isnt" to "isn't",
+            "wasnt" to "wasn't", "arent" to "aren't", "werent" to "weren't", "havent" to "haven't",
+            "hasnt" to "hasn't", "hadnt" to "hadn't", "couldnt" to "couldn't", "wouldnt" to "wouldn't",
+            "shouldnt" to "shouldn't", "mustnt" to "mustn't", "aint" to "ain't", "im" to "I'm",
+            "ive" to "I've", "youre" to "you're", "theyre" to "they're", "thats" to "that's",
+            "hes" to "he's", "shes" to "she's", "theres" to "there's", "heres" to "here's",
+            "weve" to "we've", "youve" to "you've", "theyve" to "they've", "youll" to "you'll",
+            "theyll" to "they'll", "itll" to "it'll", "wouldve" to "would've", "shouldve" to "should've",
+            "yall" to "y'all",
+            // Known words that are far rarer than their contraction.
+            "cant" to "can't", "wont" to "won't", "whats" to "what's",
+            // Case follows the typed word; a shouted word of four or more letters is fixed too.
+            "Dont" to "Don't", "Ive" to "I've", "DONT" to "DON'T", "DIDNT" to "DIDN'T",
+        )
+        val wrong = expected.mapNotNull { (typed, want) ->
+            val actual = Corrector.autocorrect(typed, lexicon)
+            if (actual == want) null else "$typed -> $actual (want $want)"
+        }
+        assertTrue(wrong.joinToString("\n"), wrong.isEmpty())
+        // Everyday words that are also contractions stay; so do short all-caps acronyms.
+        listOf("its", "lets", "ill", "id", "were", "well", "wed", "shell", "hell", "IM", "CAN").forEach {
+            assertNull(it, Corrector.autocorrect(it, lexicon))
+        }
+    }
+
+    @Test
+    fun contractionsAreSuggestedForEverydayWords() {
+        val suggester = Suggester({ lexicon })
+        assertEquals("it's", suggester.suggest("its", emptyList()).first().text)
+        assertEquals("let's", suggester.suggest("lets", emptyList()).first().text)
+        assertEquals("I'll", suggester.suggest("ill", emptyList()).first().text)
+        assertEquals("can't", suggester.suggest("cant", emptyList()).first().text)
+    }
+
+    @Test
     fun knownCodeAndChatWordsAreLeftAlone() {
         val keep = listOf(
             "their", "form", "from", "kotlin", "gradle", "coroutine", "repo", "github", "ok", "lol", "api",
             "async", "json", "refactor", "viewmodel", "android", "yea", "tailscale", "onnx", "lets", "ill",
+            "ofc", "idk", "ngl", "tho", "asap",
         )
         val changed = keep.mapNotNull { w -> Corrector.autocorrect(w, lexicon)?.let { "$w -> $it" } }
         assertTrue(changed.joinToString(), changed.isEmpty())
