@@ -136,7 +136,7 @@ internal fun <T> ChoiceDialogRow(
     var open by rememberSaveable { mutableStateOf(false) }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Row(
-        Modifier
+        settingHighlight(title)
             .fillMaxWidth()
             .heightIn(min = 56.dp)
             .clickable(enabled = enabled, role = Role.Button, onClickLabel = "Change") { open = true }
