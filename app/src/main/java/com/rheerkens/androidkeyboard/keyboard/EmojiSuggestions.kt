@@ -18,9 +18,9 @@ object EmojiSuggestions {
             "😊" to "happy smile", "😂" to "laugh laughing", "😢" to "sad crying",
             "🙏" to "thanks thank", "👍" to "okay", "🎉" to "party congratulations",
             "☀️" to "sun sunny", "🌧️" to "rain", "🔥" to "fire", "🐶" to "dog", "🐱" to "cat",
-            "🚗" to "car", "💧" to "water", "⚽" to "ball balls", "❄️" to "snow", "🏃" to "running",
+            "💧" to "water", "⚽" to "ball balls", "❄️" to "snow", "🏃" to "running",
             "🍽️" to "food dinner", "💻" to "computer laptop", "🌸" to "flower flowers",
-            "🌙" to "moon",
+            "🌙" to "moon", "📦" to "box boxes", "🎮" to "game games", "🍚" to "rice", "🚗" to "car auto",
         ),
         "nl" to words(
             "👋" to "hoi hallo hey dag doei", "❤️" to "liefde hart", "☕" to "koffie thee",
@@ -41,7 +41,11 @@ object EmojiSuggestions {
         val word = typed.lowercase()
         for (language in languages) {
             val code = language.substringBefore('_')
-            val alias = keywords[code]?.get(word)?.let(catalog::find)
+            val aliases = keywords[code]
+            // English plurals reach the aliases too, so "cars" stays 🚗 rather than a railway car.
+            val alias = (aliases?.get(word) ?: if (code == "en" && word.length >= 4) {
+                EmojiNameIndex.singulars(word).firstNotNullOfOrNull { aliases?.get(it) }
+            } else null)?.let(catalog::find)
             val emoji = alias ?: if (code == "en") catalog.nameIndex.find(word) else null
             if (emoji != null) return Suggestion(emoji.value, emojiName = emoji.name)
         }
@@ -61,20 +65,22 @@ object EmojiSuggestions {
  */
 class EmojiNameIndex(entries: List<EmojiItem>) {
     private val exact = HashMap<String, Ranked>()
-    private val stems = HashMap<String, Ranked>()
+    /** Name words that are plurals, under their possible singulars: thumb for "thumbs up". */
+    private val plurals = HashMap<String, Ranked>()
 
     private data class Ranked(val item: EmojiItem, val rank: Long)
 
     init {
         entries.forEachIndexed { order, item ->
-            if (item.category !in PICTURES) return@forEachIndexed
+            // Mixed skin-tone pairs that have no untoned base are listed as emoji of their own.
+            if (item.category !in PICTURES || item.name.contains("skin tone")) return@forEachIndexed
             val words = item.name.lowercase().split(SEPARATORS).filter { it.isNotEmpty() }
             words.forEachIndexed { position, word ->
                 if (word.length < MIN_LENGTH - 1 || word in COMMON) return@forEachIndexed
                 // Lower is better: name starts with the word, then fewer words, then Unicode order.
                 val ranked = Ranked(item, (if (position == 0) 0L else 1L shl 40) + (words.size.toLong() shl 20) + order)
                 keep(exact, word, ranked)
-                keep(stems, stem(word), ranked)
+                singulars(word).filter { it !in COMMON }.forEach { keep(plurals, it, ranked) }
             }
         }
     }
@@ -82,8 +88,13 @@ class EmojiNameIndex(entries: List<EmojiItem>) {
     fun find(word: String): EmojiItem? {
         val key = word.lowercase()
         if (!usable(key)) return null
-        // "wings" is the wing's plural before it is a word in "money with wings".
-        return listOfNotNull(exact[key], stems[stem(key)]).minByOrNull { it.rank }?.item
+        // A typed plural may name a singular emoji ("cookies"); a typed singular may name a plural
+        // one ("thumb"). The best rank wins, so "wings" is the wing before "money with wings".
+        // A plural reading loses a tie with the word itself, so "house" is 🏠 rather than 🏘️ houses.
+        val singular = singulars(key).filter { it !in COMMON }
+        val viaPlural = (listOf(plurals[key]) + singular.flatMap { listOf(exact[it], plurals[it]) })
+            .filterNotNull().map { it.copy(rank = it.rank + PLURAL_PENALTY) }
+        return (listOfNotNull(exact[key]) + viaPlural).minByOrNull { it.rank }?.item
     }
 
     private fun keep(map: HashMap<String, Ranked>, key: String, ranked: Ranked) {
@@ -99,6 +110,8 @@ class EmojiNameIndex(entries: List<EmojiItem>) {
         )
         /** Shortest typed word to look up; a name's own words may be one letter shorter ("eggs"). */
         private const val MIN_LENGTH = 4
+        /** Below the word-count step (1 shl 20) and above any Unicode order (under 4000 emoji). */
+        private const val PLURAL_PENALTY = 1L shl 19
 
         /** Words in emoji names that are too common or too vague to stand for that emoji. */
         private val COMMON = (
@@ -115,18 +128,24 @@ class EmojiNameIndex(entries: List<EmojiItem>) {
             "light dark medium cold short brief print prints spring springs room rooms evil " +
             "floor volume ground grounds cover score board linked flag stop growing thought " +
             "slightly post polish french american japanese classical sport paper card cards " +
-            "suit struck jean lady handle sweet viewer viewers viewing manual pole"
+            "suit struck jean lady handle sweet viewer viewers viewing manual pole billed capped " +
+            "skin tone modifier modifiers and big but cut die low new not off old one out red see " +
+            "six ten the top two way you mrs aid glass dish dishes frame frames mount decoration " +
+            "decorations decorative pushing arm arms index arrow arrows utility beating incoming " +
+            "convenience shallow tilted tray slash salute dotted"
             ).split(' ').toSet()
 
         private fun usable(word: String) = word.length >= MIN_LENGTH && word !in COMMON
 
-        /** A plural's singular, roughly: thumbs, cherries, glasses become thumb, cherry, glass. */
-        internal fun stem(word: String): String = when {
-            word.length > 4 && word.endsWith("ies") -> word.dropLast(3) + "y"
-            word.length > 4 && (word.endsWith("sses") || word.endsWith("ches") ||
-                word.endsWith("shes") || word.endsWith("xes")) -> word.dropLast(2)
-            word.length > 3 && word.endsWith("s") && !word.endsWith("ss") -> word.dropLast(1)
-            else -> word
+        /**
+         * What [word] may be the plural of, roughly: thumbs → thumb, cherries → cherry or cherrie,
+         * cookies → cooky or cookie, glasses → glass or glasse. Only real name words ever match.
+         */
+        internal fun singulars(word: String): List<String> = buildList {
+            if (word.length > 4 && word.endsWith("ies")) add(word.dropLast(3) + "y")
+            if (word.length > 4 && (word.endsWith("sses") || word.endsWith("ches") ||
+                    word.endsWith("shes") || word.endsWith("xes"))) add(word.dropLast(2))
+            if (word.length > 3 && word.endsWith("s") && !word.endsWith("ss")) add(word.dropLast(1))
         }
     }
 }

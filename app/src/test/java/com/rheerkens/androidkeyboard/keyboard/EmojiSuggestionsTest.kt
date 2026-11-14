@@ -70,6 +70,9 @@ class EmojiSuggestionsTest {
         assertEquals("🥚", en("eggs"))
         // A word's own emoji beats a longer name containing its plural ("money with wings").
         assertEquals("🪽", en("wings"))
+        // The word itself beats a plural reading of another name ("houses").
+        assertEquals("🏠", en("house"))
+        assertEquals("🏘️", en("houses"))
     }
 
     @Test fun aliasesStillComeBeforeEmojiNames() {
@@ -81,7 +84,8 @@ class EmojiSuggestionsTest {
     @Test fun commonWordsShortWordsSymbolsAndFlagsOfferNoEmoji() {
         for (word in listOf("with", "face", "open", "right", "left", "from", "have", "this", "that", "time",
             "good", "make", "people", "hands", "black", "light", "watch", "note", "stop", "back", "short",
-            "jordan", "georgia", "chad", "new", "free", "soon", "top", "cool", "egg", "eye", "dump")) {
+            "glass", "dishes", "jordan", "georgia", "chad", "new", "free", "soon", "top", "cool", "egg", "eye", "dump",
+            "news", "ways", "ones", "sees", "dies", "offs", "billed", "capped", "skin", "tone", "aids")) {
             assertNull(word, en(word))
         }
     }
@@ -95,11 +99,25 @@ class EmojiSuggestionsTest {
         assertNull(EmojiSuggestions.suggest("unicorn", listOf("en_US"), unicode.supported { it != "🦄" }))
     }
 
-    @Test fun pluralsFoldToTheirSingular() {
-        assertEquals("thumb", EmojiNameIndex.stem("thumbs"))
-        assertEquals("cherry", EmojiNameIndex.stem("cherries"))
-        assertEquals("glass", EmojiNameIndex.stem("glasses"))
-        assertEquals("box", EmojiNameIndex.stem("boxes"))
-        assertEquals("grass", EmojiNameIndex.stem("grass"))
+    @Test fun pluralsFindTheirSingular() {
+        assertEquals(listOf("thumb"), EmojiNameIndex.singulars("thumbs"))
+        assertTrue("cookie" in EmojiNameIndex.singulars("cookies"))
+        assertTrue("cherry" in EmojiNameIndex.singulars("cherries"))
+        assertTrue("glass" in EmojiNameIndex.singulars("glasses"))
+        assertTrue("box" in EmojiNameIndex.singulars("boxes"))
+        assertEquals(emptyList<String>(), EmojiNameIndex.singulars("grass"))
+        for ((word, emoji) in listOf("cookies" to "🍪", "zombies" to "🧟", "neckties" to "👔",
+            "cherries" to "🍒", "cherry" to "🍒", "unicorns" to "🦄")) {
+            assertEquals(word, emoji, en(word))
+        }
+    }
+
+    @Test fun pluralsOfAliasesKeepTheAlias() {
+        for ((singular, plural) in listOf("car" to "cars", "computer" to "computers", "moon" to "moons",
+            "water" to "waters", "dog" to "dogs", "flower" to "flowers")) {
+            assertEquals(plural, en(singular), en(plural))
+        }
+        // Dutch aliases do not use English plural rules.
+        assertNull(EmojiSuggestions.suggest("autos", listOf("nl"), unicode))
     }
 }
