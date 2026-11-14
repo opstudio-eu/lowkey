@@ -69,6 +69,10 @@ class EmojiSuggestionsTest {
         assertEquals("🎪", en("circus"))
         assertEquals("🌵", en("cactus"))
         assertEquals("🗺️", en("maps"))
+        // The word names the picture: last in the name, or with only generic words around it.
+        assertEquals("🥩", en("meat"))
+        assertEquals("👏", en("clapping"))
+        assertEquals("🤷", en("shrugging"))
         assertEquals("👆", en("finger"))
         assertEquals("🤔", en("thinking"))
         assertEquals("👓", en("glasses"))
@@ -89,7 +93,7 @@ class EmojiSuggestionsTest {
     @Test fun commonWordsShortWordsSymbolsAndFlagsOfferNoEmoji() {
         for (word in listOf("with", "face", "open", "right", "left", "from", "have", "this", "that", "time",
             "good", "make", "people", "hands", "black", "light", "watch", "note", "stop", "back", "short",
-            "glass", "dishes", "bullets", "shootings", "machines", "fields", "piles", "clauses", "department", "passengers", "ceremony", "mechanical", "rays", "postal", "loudly", "hair", "kitchen", "jordan", "georgia", "chad", "new", "free", "soon", "top", "cool", "egg", "eye", "dump",
+            "glass", "dishes", "bullets", "shootings", "machines", "fields", "piles", "clauses", "department", "passengers", "ceremony", "mechanical", "rays", "postal", "loudly", "hair", "kitchen", "medical", "steam", "cooked", "military", "musical", "electric", "milky", "backhand", "jordan", "georgia", "chad", "new", "free", "soon", "top", "cool", "egg", "eye", "dump",
             "news", "ways", "ones", "sees", "dies", "offs", "billed", "capped", "skin", "tone", "aids")) {
             assertNull(word, en(word))
         }
@@ -102,6 +106,10 @@ class EmojiSuggestionsTest {
 
     @Test fun emojiNamesOnlyOfferEmojiTheDeviceCanShow() {
         assertNull(EmojiSuggestions.suggest("unicorn", listOf("en_US"), unicode.supported { it != "🦄" }))
+        // A keyword whose emoji is missing does not fall through to a weaker name match.
+        val noRock = unicode.supported { it != "🪨" }
+        assertNull(EmojiSuggestions.suggest("stone", listOf("en_US"), noRock))
+        assertNull(EmojiSuggestions.suggest("stones", listOf("en_US"), noRock))
     }
 
     @Test fun pluralsFindTheirSingular() {

@@ -13,17 +13,24 @@ object EmojiSuggestions {
 
     private val keywords = mapOf(
         "en" to words(
-            "👋" to "hi hello hey bye goodbye", "❤️" to "love heart", 
+            "👋" to "hi hello hey bye goodbye", "❤️" to "love heart",
             "🍺" to "beer", "🥂" to "cheers", "🍕" to "pizza", "🎂" to "birthday cake",
             "😊" to "happy smile", "😂" to "laugh laughing", "😢" to "sad crying",
             "🙏" to "thanks thank", "👍" to "okay", "🎉" to "party congratulations",
             "☀️" to "sun sunny", "🌧️" to "rain", "🔥" to "fire", "🐶" to "dog", "🐱" to "cat",
-            "💧" to "water", "⚽" to "ball balls", "❄️" to "snow", "🏃" to "running",
+            "💧" to "water", "⚽" to "ball balls soccer", "❄️" to "snow", "🏃" to "running",
             "🍽️" to "food dinner", "💻" to "computer laptop", "🌸" to "flower flowers",
             "🌙" to "moon", "📦" to "box boxes", "🎮" to "game games", "🍚" to "rice", "🚗" to "car auto",
             "🪨" to "stone stones", "🥜" to "nut nuts", "🏢" to "building buildings", "📹" to "video videos",
             "💎" to "diamond diamonds", "☕" to "coffee tea beverage beverages", "🗺️" to "map maps",
-            "👆" to "finger fingers",
+            "👆" to "finger fingers", "🎪" to "circus", "💰" to "money", "🎄" to "christmas", "🎅" to "santa",
+            "🏖️" to "beach beaches", "🌃" to "night nights", "🏢" to "office offices",
+            "💵" to "dollar dollars", "💶" to "euro euros", "🥅" to "goal goals", "🎣" to "fishing",
+            "🧩" to "puzzle puzzles", "🧀" to "cheese", "🍫" to "chocolate", "🍯" to "honey", "🍷" to "wine wines",
+            "🍸" to "cocktail cocktails", "🤠" to "cowboy cowboys", "👮" to "police", "💑" to "couple couples",
+            "🎬" to "movie movies", "🎞️" to "film films", "👜" to "bag bags",
+            "🛍️" to "shopping", "♟️" to "chess", "🎓" to "graduation", "🌍" to "globe", "⏰" to "alarm alarms",
+            "🌴" to "palm palms",
         ),
         "nl" to words(
             "👋" to "hoi hallo hey dag doei", "❤️" to "liefde hart", "☕" to "koffie thee",
@@ -46,10 +53,12 @@ object EmojiSuggestions {
             val code = language.substringBefore('_')
             val aliases = keywords[code]
             // English plurals reach the aliases too, so "cars" stays 🚗 rather than a railway car.
-            val alias = (aliases?.get(word) ?: if (code == "en" && word.length >= 4) {
+            val alias = aliases?.get(word) ?: if (code == "en" && word.length >= 4) {
                 EmojiNameIndex.singulars(word).firstNotNullOfOrNull { aliases?.get(it) }
-            } else null)?.let(catalog::find)
-            val emoji = alias ?: if (code == "en") catalog.nameIndex.find(word) else null
+            } else null
+            // A keyword's emoji the device cannot show blocks name guesses for that language too:
+            // without 🪨, "stone" must not fall through to a curling stone.
+            val emoji = if (alias != null) catalog.find(alias) else if (code == "en") catalog.nameIndex.find(word) else null
             if (emoji != null) return Suggestion(emoji.value, emojiName = emoji.name)
         }
         return null
@@ -61,10 +70,13 @@ object EmojiSuggestions {
  * pictures count (smileys, people, animals, food, travel, activities and objects); symbols such
  * as "NEW button" and flags such as "flag: Jordan" would answer everyday words and names.
  *
- * Typed words shorter than four letters, and common words that name no picture of their own ("open",
- * "right", "face"), never match; the emoji takes a suggestion slot, so it has to be worth it.
- * Among emoji sharing a word, the one whose name starts with it wins, then the shortest name,
- * then the first in Unicode order ("thumb" picks thumbs up over thumbs down).
+ * A word counts only where it names the picture: as the last word of the name ("cut of meat"),
+ * or anywhere when the rest of the name is generic ("thinking face", "thumbs up", "person
+ * running"). So "medical" does not answer "face with medical mask", nor "steam" a face with steam
+ * from its nose. Typed words shorter than four letters, and common words that name no picture of
+ * their own ("open", "right"), never match; the emoji takes a suggestion slot, so it has to be
+ * worth it. Among emoji sharing a word, the one whose name starts with it wins, then the shortest
+ * name, then the first in Unicode order ("thumb" picks thumbs up over thumbs down).
  */
 class EmojiNameIndex(entries: List<EmojiItem>) {
     private val exact = HashMap<String, Ranked>()
@@ -80,6 +92,9 @@ class EmojiNameIndex(entries: List<EmojiItem>) {
             val words = item.name.lowercase().split(SEPARATORS).filter { it.isNotEmpty() }
             words.forEachIndexed { position, word ->
                 if (word.length < MIN_LENGTH - 1 || word in COMMON) return@forEachIndexed
+                val namesPicture = position == words.lastIndex ||
+                    words.all { it == word || it.length < 2 || it in GENERIC }
+                if (!namesPicture) return@forEachIndexed
                 // Lower is better: name starts with the word, then fewer words, then Unicode order.
                 val ranked = Ranked(item, (if (position == 0) 0L else 1L shl 40) + (words.size.toLong() shl 20) + order)
                 keep(exact, word, ranked)
@@ -117,6 +132,10 @@ class EmojiNameIndex(entries: List<EmojiItem>) {
         /** Below the word-count step (1 shl 20) and above any Unicode order (under 4000 emoji). */
         private const val PLURAL_PENALTY = 1L shl 19
 
+        /** Name words that leave the rest of a name to say what it shows ("thinking face"). */
+        private val GENERIC = setOf("face", "person", "man", "woman", "men", "women", "people", "hand",
+            "hands", "up", "with", "eyes")
+
         /** Words in emoji names that are too common or too vague to stand for that emoji. */
         private val COMMON = (
             "with without from over under behind away back down front left right middle upper " +
@@ -143,7 +162,7 @@ class EmojiNameIndex(entries: List<EmojiItem>) {
             "roller rollers nesting articulated wedge stuffed reminder roasted loudly shaved curl " +
             "performing tropical flying hair hairs motor motors root roots bar bars fallen kitchen " +
             "kitchens triangular clutch clutches revolving pouring hairy bouncing bunny oncoming " +
-            "popping tipping safety"
+            "popping tipping safety speaker speakers increasing decreasing"
             ).split(' ').toSet()
 
         private fun usable(word: String) = word.length >= MIN_LENGTH && word !in COMMON
