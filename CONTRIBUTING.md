@@ -62,6 +62,8 @@ Build the native speech libraries with `scripts/build-sherpa-onnx.sh`. It exclud
 
 CI runs the leak check, unit tests, and release build on pull requests and pushes to `main`. With signing secrets available, it signs the APK and attaches it to the run. Without them, it uploads an unsigned APK that cannot be installed as-is.
 
+Temporary APK artifacts are retained for one day, and failure test reports for three days. After a release is published or an existing release is verified to contain all downloads, CI removes that run's temporary APK. Published release downloads remain available. A failed publication keeps its temporary APK until it expires.
+
 To publish a new version, bump `versionName` and `versionCode` in `app/build.gradle.kts` in the pull request. After merge, a push to `main` publishes the release if its `v<versionName>` release does not exist. It includes `lowkey.apk`, its checksum, and `update.properties` for the in-app updater. Documentation-only changes do not need a version bump.
 
 Keep the application ID and keyboard service name unchanged so updates continue to work.
