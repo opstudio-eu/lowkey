@@ -69,6 +69,7 @@ jobs:
       version-name: ${{ steps.version.outputs.name }}
       version-code: ${{ steps.version.outputs.code }}
       apk-name: ${{ steps.version.outputs.apk }}
+      apk-artifact-id: ${{ steps.apk.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@v7
 
@@ -164,13 +165,14 @@ jobs:
         with:
           name: test-reports
           path: app/build/reports/tests/
-          retention-days: 7
+          retention-days: 3
 
       - uses: actions/upload-artifact@v7
+        id: apk
         with:
           name: apk
           path: ${{ steps.sign.outputs.file }}
-          retention-days: 14
+          retention-days: 1
           compression-level: 0
 
   release:
@@ -180,6 +182,7 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: write
+      actions: write
     # Per version: runs for one version publish once, and different versions never displace each other.
     concurrency:
       group: release-${{ needs.build.outputs.version-name }}
@@ -264,3 +267,19 @@ jobs:
           # Publishing creates the tag. "legacy" marks the highest version as Latest, even when an
           # older version finishes publishing after a newer one (gh would send make_latest=true).
           gh api -X PATCH "repos/$GH_REPO/releases/$ids" -F draft=false -f make_latest=legacy --jq .html_url
+
+      # A release (including an existing one) must contain all downloads before its temporary
+      # build copy is removed. Failed publications keep the artifact for its one-day retention.
+      - name: Remove temporary APK
+        env:
+          ARTIFACT_ID: ${{ needs.build.outputs.apk-artifact-id }}
+        run: |
+          gh api "repos/$GH_REPO/releases/tags/$TAG" \
+            --jq '.draft == false and ((["lowkey.apk", "lowkey.apk.sha256", "update.properties"] - [.assets[] | select(.state == "uploaded" and .size > 0) | .name]) | length == 0)' |
+            grep -qx true
+          if response=$(gh api --method DELETE "repos/$GH_REPO/actions/artifacts/$ARTIFACT_ID" 2>&1); then
+            exit 0
+          fi
+          printf '%s\n' "$response"
+          # Rerunning an already successful release may find the artifact already removed.
+          [[ "$response" == *"(HTTP 404)"* ]]
