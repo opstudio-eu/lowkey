@@ -47,7 +47,13 @@ private val MIN_EMOJI_CELL = 36.dp
  * The bottom key row as it lies under the emoji sheet: its keys, and when the keyboard is split,
  * the key-weight units of one half ([splitUnits]) and the gap between the halves.
  */
-internal data class PeekRow(val keys: List<Key>, val splitUnits: Float? = null, val splitGapDp: Float = 0f)
+internal data class PeekRow(
+    val keys: List<Key>,
+    val splitUnits: Float? = null,
+    val splitGapDp: Float = 0f,
+    /** Emoji were opened by holding a key (the comma), so the tab sits there. */
+    val fromHold: Boolean = false,
+)
 
 /**
  * Uses the active keyboard's frame; no separate popup can escape a narrow or floating panel.
@@ -137,7 +143,7 @@ internal fun EmojiPanel(catalog: EmojiCatalog?, recent: List<String>, height: Dp
 @Composable
 private fun ReturnStrip(peek: PeekRow, onClose: () -> Unit) {
     val c = LocalKeyboardColors.current
-    val tab = emojiReturnIndex(peek.keys)
+    val tab = emojiReturnIndex(peek.keys, peek.fromHold)
     PressTarget("Back to letters", Modifier.fillMaxWidth().height(RETURN_STRIP)
         .keyboardBarSwipe(minimized = false, onToggle = onClose), onTap = onClose) { pressed ->
         BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 3.dp)) {
@@ -189,6 +195,7 @@ private fun ReturnTab(pressed: Boolean, modifier: Modifier) {
         contentAlignment = Alignment.Center) {
         // Both glyphs leave empty space in their 24-unit boxes, so they overlap to fit the tab.
         Icon(SlimIcons.Keyboard, null, tint = c.keyText, modifier = Modifier.offset(y = (-4).dp).size(19.dp))
-        Icon(SlimIcons.ChevronDown, null, tint = c.enter, modifier = Modifier.offset(y = 8.dp).size(16.dp))
+        // keyText is the ink themes keep readable on keyOn; the accent line above is decoration.
+        Icon(SlimIcons.ChevronDown, null, tint = c.keyText, modifier = Modifier.offset(y = 8.dp).size(16.dp))
     }
 }

@@ -28,7 +28,8 @@ sealed interface Key {
     /** Switches between layers; [label] is `?123`, `=\<`, or `ABC`. */
     data class LayerSwitch(val target: Layer, val label: String, override val weight: Float = 1.5f) : Key
     data class Globe(override val weight: Float = 1f) : Key
-    data class Emoji(override val weight: Float = 1f) : Key
+    /** Opens emoji. [fromHold] when sent by holding a key that opens emoji, such as the comma. */
+    data class Emoji(override val weight: Float = 1f, val fromHold: Boolean = false) : Key
     data class Space(override val weight: Float = 4f) : Key
     data class Enter(override val weight: Float = 1.5f) : Key
     /** Flexible spacer used to center the middle letter row. */

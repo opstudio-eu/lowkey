@@ -366,7 +366,7 @@ private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardAction
         gestureKey = key, rollover = rollover, onDown = actions::onKeyDown,
         onTap = { actions.onKey(key) },
         onLongPress = when {
-            key.opensEmojiOnHold -> ({ actions.onKey(Key.Emoji()) })
+            key.opensEmojiOnHold -> ({ actions.onKey(Key.Emoji(fromHold = true)) })
             choices.isEmpty() -> null
             else -> ({ selected = 0 })
         },
