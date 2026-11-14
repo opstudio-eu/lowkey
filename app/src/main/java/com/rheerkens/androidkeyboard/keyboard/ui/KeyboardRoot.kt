@@ -15,10 +15,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -29,7 +26,6 @@ import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.rheerkens.androidkeyboard.keyboard.Key
 import com.rheerkens.androidkeyboard.keyboard.KeyboardLayout
 import com.rheerkens.androidkeyboard.keyboard.KeyboardState
 import com.rheerkens.androidkeyboard.keyboard.splitRows
@@ -82,6 +78,8 @@ data class KeyboardUiState(
     val contentWidthDp: Float = 360f,
     val numberRow: Boolean = false,
     val emojiOpen: Boolean = false,
+    /** The open emoji panel came from holding a key (the comma) rather than the emoji key. */
+    val emojiFromHold: Boolean = false,
     val emojiCatalog: com.rheerkens.androidkeyboard.keyboard.EmojiCatalog? = null,
     val recentEmoji: List<String> = emptyList(),
     /** The enabled, installed keyboards in globe order, offered by holding the emoji key. */
@@ -109,16 +107,6 @@ internal fun KeyboardContent(
     LaunchedEffect(state.inputSession, state.mode, state.minimized, state.toolsOpen, state.emojiOpen,
         state.keyboard.keyboard, state.keyboard.layer, state.keyboards, state.pickerOpen) {
         languageMenu.close()
-    }
-    // Which key opened emoji, so the emoji panel's way back sits on that key.
-    var emojiFromHold by remember { mutableStateOf(false) }
-    val keyActions = remember(actions) {
-        object : KeyboardActions by actions {
-            override fun onKey(key: Key) {
-                if (key is Key.Emoji) emojiFromHold = key.fromHold
-                actions.onKey(key)
-            }
-        }
     }
     val more = { actions.onDismissExpandHint(); languageMenu.close(); actions.onOpenTools() }
     // Holding the microphone toggles the tools panel, so TalkBack names the direction.
@@ -156,16 +144,16 @@ internal fun KeyboardContent(
                     if (state.toolsOpen) {
                         KeyboardTools(state, actions)
                     } else if (state.emojiOpen) {
-                        val peek = remember(state.layout, state.keyboard, state.splitGapDp, emojiFromHold) {
+                        val peek = remember(state.layout, state.keyboard, state.splitGapDp, state.emojiFromHold) {
                             val units = if (state.splitGapDp > 0f) {
                                 splitKeyUnits(splitRows(state.layout, state.keyboard.keyboard, state.keyboard.layer))
                             } else null
-                            PeekRow(state.layout.rows.last(), units, state.splitGapDp, emojiFromHold)
+                            PeekRow(state.layout.rows.last(), units, state.splitGapDp, state.emojiFromHold)
                         }
                         EmojiPanel(state.emojiCatalog, state.recentEmoji,
                             (state.keyRows * state.rowHeightDp + 4).dp, peek, actions)
                     } else {
-                        KeysPanel(state.layout, state.keyboard, state.rowHeightDp, state.enterKind, keyActions, state.splitGapDp, state.keyRows,
+                        KeysPanel(state.layout, state.keyboard, state.rowHeightDp, state.enterKind, actions, state.splitGapDp, state.keyRows,
                             state.keyboards, languageMenu)
                     }
                 } else {

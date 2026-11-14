@@ -125,6 +125,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     private val enterKind = MutableStateFlow(EnterKind.NEWLINE)
     private val pickerOpen = MutableStateFlow(false)
     private val emojiOpen = MutableStateFlow(false)
+    /** Emoji were opened by holding a key (the comma), so their way back sits on that key. */
+    private val emojiFromHold = MutableStateFlow(false)
     private val emojiCatalog = MutableStateFlow<EmojiCatalog?>(null)
     private var backspaceTarget: EditorBridge.Target? = null
     /** An active hold-and-slide Backspace, how much of its text before the cursor is in the field, and its level. */
@@ -315,6 +317,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                 val aim by wordAim.collectAsState()
                 val picker by pickerOpen.collectAsState()
                 val emoji by emojiOpen.collectAsState()
+                val emojiHold by emojiFromHold.collectAsState()
                 val catalog by emojiCatalog.collectAsState()
                 val sensitive by sensitiveField.collectAsState()
                 val physical by physicalKeyboard.collectAsState()
@@ -370,6 +373,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                         background = background,
                         numberRow = s.numberRow,
                         emojiOpen = emoji && m == InputMode.KEYS,
+                        emojiFromHold = emojiHold,
                         emojiCatalog = catalog,
                         recentEmoji = if (sensitive) emptyList() else s.recentEmoji,
                         placement = placement,
@@ -709,6 +713,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             is Key.Globe -> useKeyboard(keyboard.cycleKeyboard(AppGraph.usableKeyboards()))
             is Key.Emoji -> {
                 pickerOpen.value = false
+                emojiFromHold.value = key.fromHold
                 emojiOpen.value = true
             }
             is Key.Space -> typeSpace()
