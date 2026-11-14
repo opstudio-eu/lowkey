@@ -3,6 +3,11 @@ package com.rheerkens.androidkeyboard.companion.screens
 import android.content.Context
 import android.content.pm.PackageManager
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -45,34 +50,27 @@ fun OpStudioCredit(modifier: Modifier = Modifier) {
     val uri = LocalUriHandler.current
     val version = remember { appVersion(context) }
     val dark = MaterialTheme.colorScheme.isDark
-    SlimCard(modifier) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Image(
-                painterResource(opStudioLogo(dark)),
-                contentDescription = "OpStudio logo",
-                modifier = Modifier.size(width = 50.dp, height = 40.dp),
-            )
-            Spacer(Modifier.width(16.dp))
-            Column {
-                Text("Made by OpStudio", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "Lowkey Keyboard $version",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        Spacer(Modifier.height(4.dp))
-        TextButton(
-            onClick = { uri.openUri(OPSTUDIO_URL) },
-            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 8.dp),
-        ) {
-            Text("Visit opstudio.eu")
-        }
-        Text(
-            "The OpStudio name and logo are trademarks of OpStudio. They are not covered by the Apache License.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+    Row(
+        modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .clickable(role = Role.Button, onClickLabel = "Visit opstudio.eu") { uri.openUri(OPSTUDIO_URL) }
+            .padding(horizontal = 4.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Image(
+            painterResource(opStudioLogo(dark)),
+            contentDescription = "OpStudio logo",
+            modifier = Modifier.size(width = 40.dp, height = 32.dp),
         )
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text("Made by OpStudio", style = MaterialTheme.typography.titleSmall)
+            Text(
+                "Lowkey Keyboard $version · opstudio.eu",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }

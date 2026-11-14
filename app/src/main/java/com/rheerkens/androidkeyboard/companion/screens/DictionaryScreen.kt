@@ -6,15 +6,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -62,6 +61,26 @@ fun DictionaryScreen(modifier: Modifier) {
     }
 }
 
+/** The count (or search result) on the left, the tab's main Add action on the right. */
+@Composable
+private fun SummaryWithAction(summary: String, action: String, onAction: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(start = 20.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            summary,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f).padding(end = 8.dp).semantics { liveRegion = LiveRegionMode.Polite },
+        )
+        androidx.compose.material3.Button(onClick = onAction, modifier = Modifier.heightIn(min = 48.dp)) {
+            Icon(SlimIcons.Plus, null, Modifier.padding(end = 6.dp))
+            Text(action)
+        }
+    }
+}
+
 @Composable
 private fun WordsTab() {
     val store = AppGraph.dictionary
@@ -72,75 +91,72 @@ private fun WordsTab() {
     var adding by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<PersonalTerm?>(null) }
     val shown = filterTerms(state.terms, query)
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
 
     LazyColumn(Modifier.fillMaxWidth()) {
-        item(key = "intro") {
-            Note(
-                "Your words keep their exact spelling and capitals in suggestions and autocorrect. " +
-                    "Phrases of several words are fine. They don't train speech recognition.",
-                Modifier.padding(top = 12.dp),
-            )
+        item(key = "summary") {
+            SummaryWithAction(wordsSummary(shown.size, state.terms.size, query), "Add word") { adding = true }
         }
-        item(key = "search") {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
+        if (state.terms.isEmpty()) {
+            item(key = "empty") {
+                EmptyState(
+                    "No words yet",
+                    "Add names, brands or terms. Suggestions and autocorrect keep their exact spelling and capitals.",
+                )
+            }
+        } else {
+            item(key = "search") {
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
-                    label = { Text("Search my words") },
+                    placeholder = { Text("Search my words") },
                     leadingIcon = { Icon(SlimIcons.Search, null) },
                     trailingIcon = if (query.isNotEmpty()) ({
                         IconButton(onClick = { query = "" }) { Icon(SlimIcons.Close, "Clear search") }
                     }) else null,
                     singleLine = true,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 )
-                Button(onClick = { adding = true }) {
-                    Icon(SlimIcons.Plus, null, Modifier.padding(end = 4.dp))
-                    Text("Add")
-                }
             }
         }
-        item(key = "count") {
-            Text(
-                wordsSummary(shown.size, state.terms.size, query),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                    .semantics { liveRegion = LiveRegionMode.Polite },
-            )
-        }
-        if (state.terms.isEmpty()) {
-            item(key = "empty") { Note("Add names, product words or code terms you want spelled exactly as you write them.") }
-        }
-        items(shown, key = { it.id }) { term ->
+        items(shown.size, key = { shown[it].id }) { index ->
+            val term = shown[index]
             Row(
                 Modifier.fillMaxWidth()
                     .clickable(role = Role.Button, onClickLabel = "Edit") { editing = term }
-                    .padding(start = 16.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+                    .padding(start = 20.dp, end = 8.dp)
+                    .heightIn(min = 56.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     term.text,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Medium,
                     style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.weight(1f).padding(vertical = 10.dp),
+                    modifier = Modifier.weight(1f).padding(vertical = 12.dp),
                 )
-                IconButton(onClick = { editing = term }) { Icon(SlimIcons.Edit, "Edit ${term.text}") }
-                IconButton(onClick = { deleting = term }) { Icon(SlimIcons.Trash, "Delete ${term.text}") }
+                IconButton(onClick = { deleting = term }) {
+                    Icon(SlimIcons.Trash, "Delete ${term.text}", tint = muted)
+                }
             }
-            HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
+            HorizontalDivider(Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.outlineVariant)
         }
-        item(key = "dictation") { SectionTitle("When you dictate") }
-        item(key = "case") {
-            SwitchRow(
-                "Match the spelling of my words", settings.matchTermCase,
-                { on -> AppGraph.settings.update { it.copy(matchTermCase = on) } },
-                subtitle = "Dictated text gets the exact capitals of your words, e.g. t3 code → T3 Code",
+        if (state.terms.isNotEmpty()) item(key = "meaning") {
+            Text(
+                "Suggestions and autocorrect keep these exact spellings. Tap a word to edit it.",
+                style = MaterialTheme.typography.bodySmall,
+                color = muted,
+                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp),
             )
+        }
+        item(key = "dictation") {
+            SettingsGroup("When you dictate", Modifier.padding(top = 4.dp)) {
+                SwitchRow(
+                    "Match the spelling of my words", settings.matchTermCase,
+                    { on -> AppGraph.settings.update { it.copy(matchTermCase = on) } },
+                    subtitle = "Dictated text gets the exact capitals of your words, e.g. t3 code → T3 Code. " +
+                        "Speech recognition itself isn't trained.",
+                )
+            }
         }
         item(key = "end") { Spacer(Modifier.height(16.dp)) }
     }
@@ -232,57 +248,45 @@ private fun RulesTab() {
     var adding by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<PhraseRule?>(null) }
     val active = settings.applyPhraseRules
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
 
     LazyColumn(Modifier.fillMaxWidth()) {
         item(key = "master") {
-            SwitchRow(
-                title = "Use speech rules",
-                subtitle = "After you stop dictating, replace what you said with how you write it, e.g. view model → ViewModel. " +
-                    "Live text stays as heard.",
-                checked = active,
-                onCheckedChange = { on -> AppGraph.settings.update { it.copy(applyPhraseRules = on) } },
-            )
-        }
-        if (!active) item(key = "inactive") {
-            Note(
-                "Speech rules are off: dictation is inserted exactly as recognized. Each rule keeps its own on or off choice for when you turn them on.",
-                Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-            )
-        }
-        item(key = "add") {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            SettingsGroup(
+                modifier = Modifier.padding(top = 8.dp),
+                footer = if (active) null else "Off: dictation is inserted exactly as recognized. Each rule keeps its own choice.",
             ) {
-                Text(
-                    rulesSummary(state.rules.size, state.rules.count { it.enabled }, active),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f).padding(end = 8.dp),
+                SwitchRow(
+                    title = "Use speech rules",
+                    subtitle = "After you stop dictating, replace what you said with how you write it. Live text stays as heard.",
+                    checked = active,
+                    onCheckedChange = { on -> AppGraph.settings.update { it.copy(applyPhraseRules = on) } },
                 )
-                Button(onClick = { adding = true }) {
-                    Icon(SlimIcons.Plus, null, Modifier.padding(end = 4.dp))
-                    Text("Add rule")
-                }
             }
         }
-        if (state.rules.isEmpty()) {
-            item(key = "empty") { Note("No speech rules yet. Add one to turn a spoken phrase into the text you want.") }
+        item(key = "add") {
+            SummaryWithAction(rulesSummary(state.rules.size, state.rules.count { it.enabled }, active), "Add rule") { adding = true }
         }
-        items(state.rules, key = { it.id }) { rule ->
+        if (state.rules.isEmpty()) {
+            item(key = "empty") {
+                EmptyState("No speech rules yet", "A rule turns a spoken phrase into the text you want, e.g. view model → ViewModel.")
+            }
+        }
+        items(state.rules.size, key = { state.rules[it].id }) { index ->
+            val rule = state.rules[index]
             Row(
                 Modifier.fillMaxWidth()
                     .clickable(role = Role.Button, onClickLabel = "Edit") { editing = rule }
-                    .padding(start = 16.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+                    .padding(start = 20.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text("Say “${rule.spoken}”", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("Write ${rule.written}", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyLarge)
+                    Text(rule.written, fontWeight = FontWeight.Medium, style = MaterialTheme.typography.bodyLarge)
+                    Text("When you say “${rule.spoken}”", style = MaterialTheme.typography.bodyMedium, color = muted)
                     Text(
                         ruleStatus(rule.enabled, active),
                         style = MaterialTheme.typography.labelMedium,
-                        color = if (rule.enabled && active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (rule.enabled && active) MaterialTheme.colorScheme.primary else muted,
                     )
                 }
                 // Stays usable while speech rules are off, so a rule can be prepared without losing its choice.
@@ -294,9 +298,9 @@ private fun RulesTab() {
                         stateDescription = ruleStatus(rule.enabled, active)
                     },
                 )
-                IconButton(onClick = { deleting = rule }) { Icon(SlimIcons.Trash, "Delete rule ${rule.spoken}") }
+                IconButton(onClick = { deleting = rule }) { Icon(SlimIcons.Trash, "Delete rule ${rule.spoken}", tint = muted) }
             }
-            HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
+            HorizontalDivider(Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.outlineVariant)
         }
         item(key = "end") { Spacer(Modifier.height(16.dp)) }
     }

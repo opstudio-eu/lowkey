@@ -10,6 +10,7 @@
 0fbfff4dce6def7dfa309bc5c97a1d2c323ed1a22ba8534dfffdb08f8e57b8be app/src/main/assets/licenses/sherpa-onnx/kaldifst-bundled-libcxx-basic-filebuf-LICENSE.txt
 43f2391d54a1b711ead93f27e1cbca4d38bf66de9aff05b4e00d957e3acac09a app/src/main/assets/licenses/sherpa-onnx/openfst-AUTHORS.txt
 7706416f99a2dd85c3d2631bd18c1b2f291ab8fe020fa272f2bc7c69bec44faf app/src/main/res/drawable-nodpi/launcher_artwork.png
+118c0013ff8647bb1c2863c5e4e862325eb28e36dae9967a981ba8c51e38bda2 app/src/main/res/drawable-nodpi/welcome_sky.webp
 f2cc5affcb1f44349efa24e040a2b3737812c4b2835104d718e42bc00ad76cb3 app/src/main/res/font/bricolage_semibold.ttf
 17f335c275ead7affd8492babe26a4126f3bb7a1fb3609ef906b479c8a0a379b app/src/test/resources/dict/nl.dict
 e66490eb459d76b48997ac60181427e22689c424036c6630f1dd2a2861566097 app/src/test/resources/dict/pl.dict

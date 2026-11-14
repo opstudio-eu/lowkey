@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,20 +24,24 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -44,7 +51,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -135,10 +144,10 @@ private sealed interface ImageState {
 /**
  * Keyboard theme: the standard palette (following the app theme) or one custom theme of five seed
  * colours, optional overrides for every other role, and an optional background image. Edits,
- * including the image, are a draft until Save; Cancel, Back or leaving the page drops them.
+ * including the image, are a draft until Save. Leaving with changes asks before discarding them.
  */
 @Composable
-fun KeyboardThemeScreen(modifier: Modifier) {
+fun KeyboardThemeScreen(modifier: Modifier, onDirtyChange: (Boolean) -> Unit = {}) {
     val store = AppGraph.keyboardTheme
     val theme by store.theme.collectAsStateWithLifecycle()
     val settings by AppGraph.settings.settings.collectAsStateWithLifecycle()
@@ -157,8 +166,12 @@ fun KeyboardThemeScreen(modifier: Modifier) {
     val busy = importing || saving
     var imageError by rememberSaveable { mutableStateOf<String?>(null) }
     var saveError by rememberSaveable { mutableStateOf<String?>(null) }
+    var confirmingStandard by rememberSaveable { mutableStateOf(false) }
     val shown = draft ?: saved
     val dirty = draft != null && draft != saved
+    val reportDirty by rememberUpdatedState(onDirtyChange)
+    LaunchedEffect(dirty) { reportDirty(dirty) }
+    DisposableEffect(Unit) { onDispose { reportDirty(false) } }
     fun edit(t: CustomKeyboardTheme) { draft = t }
 
     // Holds this draft's image (restored after rotation or process recreation) and deletes image
@@ -214,28 +227,63 @@ fun KeyboardThemeScreen(modifier: Modifier) {
         }
     }
 
-    LazyColumn(modifier.fillMaxWidth()) {
+    fun choose(custom: Boolean) {
+        write({ store.setEnabled(custom, initial = standardSeed) }) {
+            if (!custom) {
+                draft = null
+                store.setDraftImage(null)
+            }
+        }
+    }
+    fun cancel() {
+        draft = null
+        imageError = null
+        saveError = null
+        store.setDraftImage(null)
+    }
+    fun save() {
+        val d = draft ?: return
+        write({ store.save(d) }) {
+            if (draft == d) {
+                draft = null
+            } else {
+                // Edited while it was stored: keep holding what the draft shows now.
+                store.setDraftImage(draft?.image)
+            }
+        }
+    }
+
+    if (confirmingStandard) {
+        DiscardThemeChangesDialog(
+            onDiscard = { confirmingStandard = false; choose(false) },
+            onKeepEditing = { confirmingStandard = false },
+        )
+    }
+
+    Column(modifier.fillMaxWidth()) {
+    LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
         item {
-            ChoiceRow(
-                "Keyboard colors", listOf(false, true), theme.enabled,
-                { if (it) "Custom" else "Standard" },
-                { custom ->
-                    write({ store.setEnabled(custom, initial = standardSeed) }) {
-                        if (!custom) {
-                            draft = null
-                            store.setDraftImage(null)
+            // Not while an image is imported into the draft or a change is being stored.
+            SettingsGroup {
+                Column(Modifier.selectableGroup()) {
+                    ThemeOption(
+                        "Standard",
+                        "OpStudio colors, light or dark with the app theme" +
+                            if (theme.custom != null && !theme.enabled) ". Your custom theme is kept." else "",
+                        selected = !theme.enabled, enabled = !busy,
+                    ) {
+                        if (theme.enabled) {
+                            if (dirty) confirmingStandard = true else choose(false)
                         }
                     }
-                },
-                subtitle = if (theme.enabled) {
-                    "Your colors and image. Switching to Standard keeps them for later."
-                } else {
-                    "OpStudio colors, light or dark with the app theme." +
-                        if (theme.custom != null) " Your custom theme is kept." else ""
-                },
-                // Not while an image is imported into the draft or a change is being stored.
-                enabled = !busy,
-            )
+                    ThemeOption(
+                        "Custom",
+                        if (theme.enabled) "Your colors and image. Standard keeps them for later."
+                        else "Your own colors and an optional background photo",
+                        selected = theme.enabled, enabled = !busy,
+                    ) { if (!theme.enabled) choose(true) }
+                }
+            }
         }
         saveError?.let { error -> item { ErrorNote(error) } }
         if (!theme.enabled) return@LazyColumn
@@ -248,20 +296,14 @@ fun KeyboardThemeScreen(modifier: Modifier) {
                 image = loaded?.let { KeyboardBackgroundImage(it.bitmap, shown.dim) },
             )
         }
-        item {
-            Note(
-                if (dirty) "Unsaved changes. The keyboard keeps its saved theme until you save."
-                else "Save, then tap Test keyboard to try the theme on the real keyboard.",
-            )
-        }
-        item { SectionTitle("Colors") }
+        item { GroupTitle("Colors") }
         item { Swatches(shown.seed, selected.seed) { selectedName = ColorRole.forSeed(it).name } }
         selected.seed?.let { seedRole ->
             item {
                 ColorPicker(seedRole.label, selected, shown.seed[seedRole]) { edit(shown.with(selected, it)) }
             }
         }
-        item { SectionTitle("Background image") }
+        item { GroupTitle("Background image") }
         item {
             ImageSection(
                 shown, imageState, importing, busy, imageError,
@@ -307,49 +349,64 @@ fun KeyboardThemeScreen(modifier: Modifier) {
                 }
             }
         }
+        item { GroupTitle("Contrast") }
         item { ContrastSection(shown, loaded, ::edit) }
         item {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                val restored = shown.copy(seed = standardSeed, overrides = emptyMap())
-                TextButton(onClick = { draft = restored }, enabled = shown != restored && !busy) { Text("Restore default") }
-                Spacer(Modifier.weight(1f))
-                OutlinedButton(
-                    onClick = {
-                        draft = null
-                        imageError = null
-                        saveError = null
-                        store.setDraftImage(null)
-                    },
-                    enabled = dirty && !busy,
-                ) { Text("Cancel") }
-                Button(
-                    onClick = {
-                        val d = draft ?: return@Button
-                        write({ store.save(d) }) {
-                            if (draft == d) {
-                                draft = null
-                            } else {
-                                // Edited while it was stored: keep holding what the draft shows now.
-                                store.setDraftImage(draft?.image)
-                            }
-                        }
-                    },
-                    enabled = dirty && !busy,
-                ) { Text(if (saving) "Saving…" else "Save") }
+            val restored = shown.copy(seed = standardSeed, overrides = emptyMap())
+            Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp)) {
+                TextButton(
+                    onClick = { draft = restored },
+                    enabled = shown != restored && !busy,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text("Restore default colors") }
+                Note("Sets the five colors to the standard ones and clears advanced colors. The image stays. Save to use it.")
             }
         }
-        item {
-            Note(
-                "Restore default sets the five colors to the standard ones for the current app theme and clears " +
-                    "advanced colors; the image stays. Save to use it. To stop using the custom theme, choose " +
-                    "Standard at the top; your theme is kept.",
-            )
-        }
         item { Spacer(Modifier.padding(12.dp)) }
+    }
+    if (theme.enabled) {
+        // Always in reach while editing: the draft only reaches the keyboard on Save.
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                when {
+                    saving -> "Saving…"
+                    dirty -> "Unsaved changes"
+                    else -> "Saved"
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (dirty) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite },
+            )
+            TextButton(onClick = ::cancel, enabled = dirty && !busy, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel") }
+            Button(onClick = ::save, enabled = dirty && !busy, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text(if (saving) "Saving…" else "Save theme")
+            }
+        }
+    }
+    }
+}
+
+/** One of the two keyboard color choices, with what it means. */
+@Composable
+private fun ThemeOption(title: String, description: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = selected, onClick = null, enabled = enabled)
+        Column(Modifier.weight(1f).padding(start = 14.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 

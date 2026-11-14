@@ -101,7 +101,7 @@ fun RowScope.VoiceRow(
         ) {
             when (state) {
                 is VoiceState.Listening -> {
-                    LevelMeter(state.level, c.green)
+                    VoiceLevelMeter(state.level, c.green)
                     if (state.loading) {
                         CircularProgressIndicator(Modifier.size(14.dp), color = c.muted, trackColor = c.busy, strokeWidth = 2.dp)
                         Text("Loading model", color = c.muted, fontSize = 13.sp, maxLines = 1,
@@ -179,7 +179,7 @@ private fun ElapsedTime(startedAtMs: Long, sessionId: Long, clock: () -> Long) {
 }
 
 @Composable
-private fun LevelMeter(level: Float, color: Color) {
+internal fun VoiceLevelMeter(level: Float, color: Color) {
     val factors = remember { floatArrayOf(0.55f, 0.9f, 1f, 0.75f, 0.5f) }
     Row(Modifier.height(20.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
         factors.forEach { f ->

@@ -2,27 +2,35 @@ package com.rheerkens.androidkeyboard.companion.screens
 
 import android.os.StatFs
 import android.text.format.Formatter
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -72,38 +80,45 @@ fun SettingsScreen(modifier: Modifier, focus: SettingsFocus, navigate: (Destinat
             SettingsFocus.CUSTOMIZE -> customizePage(s, update)
             SettingsFocus.KEYBOARDS -> item { KeyboardsSetting(s, packs, update, navigate) }
             SettingsFocus.VOICE -> voicePage(s, models, update, navigate)
-            SettingsFocus.STORAGE -> item { StoragePage(s, models, update) }
+            SettingsFocus.STORAGE -> item { StoragePage(s, models, update, navigate) }
             SettingsFocus.CLIPBOARD -> {
                 item {
-                    SwitchRow(
-                        "Recent screenshots", s.recentScreenshots && photosGranted,
-                        { v ->
-                            if (v && !photosGranted) photos.request()
-                            else update { it.copy(recentScreenshots = v) }
-                        },
-                        subtitle = "Show screenshots from the last day next to copied clips in the minimized bar. " +
-                            if (photosGranted) "Access to all photos is allowed." else "New screenshots need access to all photos.",
-                    )
+                    SettingsGroup("Clipboard") {
+                        SwitchRow(
+                            "Recent screenshots", s.recentScreenshots && photosGranted,
+                            { v ->
+                                if (v && !photosGranted) photos.request()
+                                else update { it.copy(recentScreenshots = v) }
+                            },
+                            subtitle = "Show screenshots from the last day beside copied clips" +
+                                if (photosGranted) "" else ". Needs access to all photos.",
+                        )
+                    }
                 }
                 if (s.recentScreenshots && !photosGranted) item {
-                    PhotoAccessCard(photos, { update { it.copy(recentScreenshots = false) } }, Modifier.padding(horizontal = 16.dp))
-                }
-                item { SectionTitle("Image editor") }
-                item {
-                    ChoiceRow(
-                        "Magnifier position", LoupeCorners.entries, s.loupeCorners, { it.label }, { v -> update { it.copy(loupeCorners = v) } },
-                        subtitle = "Where the magnifier sits while you draw: the top corners, the left ones (for a right hand) or the right ones (for a left hand).",
+                    PhotoAccessCard(
+                        photos, { update { it.copy(recentScreenshots = false) } },
+                        Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                     )
+                }
+                item {
+                    SettingsGroup("Image editor") {
+                        ChoiceDialogRow(
+                            "Magnifier position", LoupeCorners.entries, s.loupeCorners, { it.label },
+                            { v -> update { it.copy(loupeCorners = v) } },
+                            subtitle = "Where the magnifier sits while you draw",
+                            detail = { loupeDetail(it) },
+                        )
+                    }
                 }
             }
-            SettingsFocus.APPEARANCE -> {
-                item {
-                    ChoiceRow(
+            SettingsFocus.APPEARANCE -> item {
+                SettingsGroup {
+                    ChoiceDialogRow(
                         "Theme", ThemeMode.entries, s.theme, { it.label }, { v -> update { it.copy(theme = v) } },
-                        subtitle = "For the app and the keyboard. System follows your phone's dark theme.",
+                        subtitle = "For the app and the keyboard",
+                        detail = { if (it == ThemeMode.SYSTEM) "Follows your phone's dark theme" else null },
                     )
-                }
-                item(key = "keyboard-theme") {
                     LinkRow("Keyboard theme", keyboardThemeSummary(keyboardTheme.enabled)) {
                         navigate(Destination.KEYBOARD_THEME)
                     }
@@ -123,155 +138,178 @@ private fun LazyListScope.topPage(
     navigate: (Destination) -> Unit,
 ) {
     item(key = "keyboard") {
-        LinkRow("Keyboard", "Size, position, typing and key feedback") { navigate(Destination.SETTINGS_KEYBOARD) }
-    }
-    item(key = "languages") {
-        LinkRow("Languages & layouts", AppGraph.currentKeyboard(s).fullLabel) { navigate(Destination.LANGUAGES) }
-    }
-    item(key = "voice") {
-        LinkRow("Voice", "Opens the Voice tab · " + (models.activeModel?.name ?: "not set up")) { navigate(Destination.MODELS) }
-    }
-    item(key = "clipboard") {
-        LinkRow("Clipboard & images", "Recent screenshots ${onOff(s.recentScreenshots && photosGranted)} · image editor") {
-            navigate(Destination.SETTINGS_CLIPBOARD)
+        SettingsGroup("Keyboard") {
+            LinkRow("Keyboard", "Size, number row, typing and key feedback") { navigate(Destination.SETTINGS_KEYBOARD) }
+            LinkRow("Languages & layouts", AppGraph.currentKeyboard(s).fullLabel) { navigate(Destination.LANGUAGES) }
+            val keyboard = if (customKeyboardTheme) " · custom keyboard colors" else ""
+            LinkRow("Appearance", "Theme: ${s.theme.label}$keyboard") { navigate(Destination.SETTINGS_APPEARANCE) }
+            LinkRow("Clipboard & images", "Recent screenshots ${onOff(s.recentScreenshots && photosGranted)}") {
+                navigate(Destination.SETTINGS_CLIPBOARD)
+            }
         }
     }
-    item(key = "appearance") {
-        val keyboard = if (customKeyboardTheme) " · custom keyboard colors" else ""
-        LinkRow("Appearance", "Theme: ${s.theme.label}$keyboard") { navigate(Destination.SETTINGS_APPEARANCE) }
+    item(key = "voice") {
+        SettingsGroup("Voice") {
+            LinkRow("Voice typing", models.activeModel?.name ?: "Not set up") { navigate(Destination.MODELS) }
+        }
     }
-    item(key = "updates") {
-        LinkRow("Updates", if (acceptsReleaseUpdates(BuildConfig.APPLICATION_ID)) "Automatic checks ${onOff(s.checkForUpdates)}" else "Manual APK updates for this preview") { navigate(Destination.SETTINGS_UPDATES) }
+    item(key = "app") {
+        SettingsGroup("App") {
+            LinkRow(
+                "Updates",
+                if (acceptsReleaseUpdates(BuildConfig.APPLICATION_ID)) "Automatic checks ${onOff(s.checkForUpdates)}"
+                else "Preview build · install updates by hand",
+            ) { navigate(Destination.SETTINGS_UPDATES) }
+            LinkRow("Try it", "Test typing and dictation") { navigate(Destination.TRY_IT) }
+            LinkRow("Diagnostics", "Crash reports and voice sessions") { navigate(Destination.DIAGNOSTICS) }
+            LinkRow("About", "Version ${BuildConfig.VERSION_NAME} · privacy and licenses") { navigate(Destination.ABOUT) }
+        }
     }
-    item(key = "help") { SectionTitle("Help and info") }
-    item(key = "try") { LinkRow("Try it", "Type and dictate in a test field") { navigate(Destination.TRY_IT) } }
-    item(key = "diagnostics") { LinkRow("Diagnostics", "Voice session log and audio input") { navigate(Destination.DIAGNOSTICS) } }
-    item(key = "about") { LinkRow("About and licenses") { navigate(Destination.ABOUT) } }
     item(key = "credit") { OpStudioCredit(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) }
 }
 
 private fun LazyListScope.keyboardPage(s: Settings, update: Update, navigate: (Destination) -> Unit, resizeKeyboard: () -> Unit) {
     item {
-        LinkRow("Size and position", "Resize and move the keyboard directly", resizeKeyboard)
-    }
-    item {
-        LinkRow("Reset size and position", "Restore default sizes and positions; keep your keyboard modes") {
-            update { it.copy(placement = it.placement.resetGeometry()) }
+        var confirmReset by rememberSaveable { mutableStateOf(false) }
+        SettingsGroup("Size and position") {
+            LinkRow("Resize and move", "Adjust it directly on the keyboard", resizeKeyboard)
+            SwitchRow(
+                "Split on large screens", s.placement.automaticSplit,
+                { value -> update { it.copy(placement = it.placement.withAutomaticSplit(value)) } },
+                "Your manual choice is remembered",
+            )
+            ActionRow("Reset size and position") { confirmReset = true }
+        }
+        if (confirmReset) {
+            AlertDialog(
+                onDismissRequest = { confirmReset = false },
+                title = { Text("Reset size and position?") },
+                text = { Text("The keyboard returns to its default sizes and positions. Your keyboard modes stay.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        update { it.copy(placement = it.placement.resetGeometry()) }
+                        confirmReset = false
+                    }) { Text("Reset") }
+                },
+                dismissButton = { TextButton(onClick = { confirmReset = false }) { Text("Cancel") } },
+            )
         }
     }
     item {
-        SwitchRow("Automatically split on large screens", s.placement.automaticSplit,
-            { value -> update { it.copy(placement = it.placement.withAutomaticSplit(value)) } },
-            "Use split by default on large screens; remember manual choices")
-    }
-    item {
-        SwitchRow("Number row", s.numberRow, { value -> update { it.copy(numberRow = value) } },
-            "Show a dedicated 1–0 row above the letters")
-    }
-    item {
-        ChoiceRow("Key beside Space", BottomKey.entries, s.bottomKey, { it.label },
-            { value -> update { it.copy(bottomKey = value) } })
-    }
-    item {
-        LinkRow("Typing", "Capitals ${onOff(s.autoCapitalize)} · autocorrect ${onOff(s.autocorrect)} · suggestions ${onOff(s.suggestionStrip)}") {
-            navigate(Destination.SETTINGS_TYPING)
+        SettingsGroup("Keys") {
+            SwitchRow("Number row", s.numberRow, { value -> update { it.copy(numberRow = value) } }, "A 1–0 row above the letters")
+            ChoiceDialogRow(
+                "Key beside Space", BottomKey.entries, s.bottomKey, { it.label },
+                { value -> update { it.copy(bottomKey = value) } },
+                detail = { bottomKeyDetail(it) },
+            )
         }
     }
-    item { LinkRow("Key feedback", "Vibration ${onOff(s.vibrateOnKeyPress)}") { navigate(Destination.SETTINGS_CUSTOMIZE) } }
-    item { SectionTitle("Physical keyboard") }
     item {
-        SwitchRow(
-            "Show with physical keyboard", s.showWithPhysicalKeyboard, { v -> update { it.copy(showWithPhysicalKeyboard = v) } },
-            subtitle = "Keep the keyboard on screen so voice apps like Wispr Flow can appear. It opens minimized; tap the keyboard button to expand it.",
-        )
+        SettingsGroup("Typing and feedback") {
+            LinkRow("Typing", "Capitals ${onOff(s.autoCapitalize)} · autocorrect ${onOff(s.autocorrect)} · suggestions ${onOff(s.suggestionStrip)}") {
+                navigate(Destination.SETTINGS_TYPING)
+            }
+            LinkRow("Key feedback", "Vibration ${onOff(s.vibrateOnKeyPress)}") { navigate(Destination.SETTINGS_CUSTOMIZE) }
+        }
+    }
+    item {
+        SettingsGroup("Physical keyboard") {
+            SwitchRow(
+                "Show with a physical keyboard", s.showWithPhysicalKeyboard, { v -> update { it.copy(showWithPhysicalKeyboard = v) } },
+                subtitle = "Stays on screen, minimized, so voice input remains at hand. Tap the keyboard button to expand it.",
+            )
+        }
     }
 }
 
 private fun LazyListScope.typingPage(s: Settings, update: Update, navigate: (Destination) -> Unit) {
     item {
-        SwitchRow(
-            "Auto-capitalize", s.autoCapitalize, { v -> update { it.copy(autoCapitalize = v) } },
-            subtitle = "Capitalize the start of sentences and of dictated text",
-        )
+        SettingsGroup {
+            SwitchRow(
+                "Auto-capitalize", s.autoCapitalize, { v -> update { it.copy(autoCapitalize = v) } },
+                subtitle = "Capitals at the start of sentences and dictated text",
+            )
+            SwitchRow(
+                "Autocorrect", s.autocorrect, { v -> update { it.copy(autocorrect = v) } },
+                subtitle = "When you press space, fix common typos and restore the spelling of your saved words",
+            )
+            SwitchRow(
+                "Suggestion strip", s.suggestionStrip, { v -> update { it.copy(suggestionStrip = v) } },
+                subtitle = "Word suggestions above the keys",
+            )
+        }
     }
     item {
-        SwitchRow(
-            "Autocorrect", s.autocorrect, { v -> update { it.copy(autocorrect = v) } },
-            subtitle = "When you press space, fix common typos and restore the exact spelling of your saved words",
-        )
+        SettingsGroup {
+            LinkRow("My words", "Words that keep their exact spelling") { navigate(Destination.DICTIONARY) }
+        }
     }
-    item {
-        SwitchRow(
-            "Suggestion strip", s.suggestionStrip, { v -> update { it.copy(suggestionStrip = v) } },
-            subtitle = "Show word suggestions above the keys",
-        )
-    }
-    item { LinkRow("My words", "Words that keep their exact spelling · Dictionary tab") { navigate(Destination.DICTIONARY) } }
 }
 
 private fun LazyListScope.customizePage(s: Settings, update: Update) {
     item {
-        SwitchRow(
-            "Vibrate on key press", s.vibrateOnKeyPress, { v -> update { it.copy(vibrateOnKeyPress = v) } },
-            subtitle = "A short vibration for each key you tap",
-        )
+        SettingsGroup {
+            SwitchRow(
+                "Vibrate on key press", s.vibrateOnKeyPress, { v -> update { it.copy(vibrateOnKeyPress = v) } },
+                subtitle = "A short vibration for each key you tap",
+            )
+        }
     }
 }
 
 private fun LazyListScope.voicePage(s: Settings, models: ModelStoreState, update: Update, navigate: (Destination) -> Unit) {
     val keysFirst = s.keyboardFirstDictation
-    item { SectionTitle("Starting dictation") }
     item {
-        SwitchRow(
-            "Dictate from the keys", keysFirst, { v -> update { it.copy(keyboardFirstDictation = v) } },
-            subtitle = "The keyboard opens with keys. Tap the mic to record; the keys come back once the text is in. " +
-                "Off: the mic opens a separate voice mode.",
-        )
+        SettingsGroup("Starting") {
+            SwitchRow(
+                "Dictate from the keys", keysFirst, { v -> update { it.copy(keyboardFirstDictation = v) } },
+                subtitle = if (keysFirst) "The mic records right on the keyboard; the keys return when the text is in"
+                else "The mic opens a separate voice mode",
+            )
+        }
     }
     item {
-        SwitchRow(
-            "Start recording right away", s.autoStartVoice, { v -> update { it.copy(autoStartVoice = v) } },
-            subtitle = if (keysFirst) "Tapping the mic already starts recording. ${keptChoiceNote(s.autoStartVoice)}"
-                else "Start listening as soon as voice mode opens",
-            enabled = !keysFirst,
-        )
+        SettingsGroup(
+            "Separate voice mode",
+            footer = if (keysFirst) "Used when Dictate from the keys is off. Your choices here are kept." else null,
+        ) {
+            SwitchRow(
+                "Start recording right away", s.autoStartVoice, { v -> update { it.copy(autoStartVoice = v) } },
+                subtitle = "Listen as soon as voice mode opens",
+                enabled = !keysFirst,
+            )
+            SwitchRow(
+                "Remember keys or voice", s.rememberLastMode, { v -> update { it.copy(rememberLastMode = v) } },
+                subtitle = "Reopen in the mode you used last",
+                enabled = !keysFirst,
+            )
+            SwitchRow(
+                "Keep dictating", s.continuousDictation, { v -> update { it.copy(continuousDictation = v) } },
+                subtitle = "Start a new recording after each insert",
+                enabled = !keysFirst,
+            )
+        }
     }
     item {
-        SwitchRow(
-            "Remember keys or voice", s.rememberLastMode, { v -> update { it.copy(rememberLastMode = v) } },
-            subtitle = if (keysFirst) "The keyboard always opens with keys. ${keptChoiceNote(s.rememberLastMode)}"
-                else "Reopen the keyboard in keys or voice mode, whichever you used last",
-            enabled = !keysFirst,
-        )
+        SettingsGroup("While you speak") {
+            SwitchRow(
+                "Show words as you speak", s.liveTextInEditor, { v -> update { it.copy(liveTextInEditor = v) } },
+                subtitle = "Provisional words appear underlined until the final text replaces them",
+            )
+            ChoiceDialogRow(
+                "Stop after silence", AutoStop.entries, s.autoStop, { it.label }, { v -> update { it.copy(autoStop = v) } },
+                detail = { if (it == AutoStop.OFF) "You stop recording yourself" else "Stops by itself after this much silence" },
+            )
+        }
     }
+    item { SettingsGroup("Language") { VoiceLanguage(s, models, update) } }
     item {
-        SwitchRow(
-            "Keep dictating", s.continuousDictation, { v -> update { it.copy(continuousDictation = v) } },
-            subtitle = if (keysFirst) "Each recording ends when the text is in. ${keptChoiceNote(s.continuousDictation)}"
-                else "Start a new recording after each insert",
-            enabled = !keysFirst,
-        )
+        SettingsGroup("Related") {
+            LinkRow("Dictionary", "Speech rules and the spelling of your words") { navigate(Destination.DICTIONARY) }
+            LinkRow("Storage & performance", "Model memory and space on this device") { navigate(Destination.SETTINGS_STORAGE) }
+        }
     }
-    item { SectionTitle("While you speak") }
-    item {
-        SwitchRow(
-            "Show words as you speak", s.liveTextInEditor, { v -> update { it.copy(liveTextInEditor = v) } },
-            subtitle = "Provisional words appear underlined in the text field until the final text replaces them",
-        )
-    }
-    item {
-        ChoiceRow(
-            "Stop after silence", AutoStop.entries, s.autoStop, { it.label }, { v -> update { it.copy(autoStop = v) } },
-            subtitle = "Recording stops by itself after this much silence. Off: stop it yourself.",
-        )
-    }
-    item { SectionTitle("Language") }
-    item { VoiceLanguage(s, models, update) }
-    item { SectionTitle("Related") }
-    item {
-        LinkRow("Dictionary", "Speech rules and the spelling of your words · Dictionary tab") { navigate(Destination.DICTIONARY) }
-    }
-    item { LinkRow("Storage & performance", "Model memory and space on this device") { navigate(Destination.SETTINGS_STORAGE) } }
 }
 
 @Composable
@@ -283,15 +321,15 @@ private fun VoiceLanguage(s: Settings, models: ModelStoreState, update: Update) 
         val follow = SpeechLanguage(Settings.FOLLOW_KEYBOARD, "Same as keyboard")
         // What following the keyboard gives with this model now, e.g. "German".
         val followed = active.resolveLanguage(speechLanguageCode(Settings.FOLLOW_KEYBOARD, keyboardLanguage))
-        DropdownRow(
+        ChoiceDialogRow(
             "Voice language", listOf(follow) + active.languages,
             if (s.speechLanguage == Settings.FOLLOW_KEYBOARD) follow else chosen,
             { if (it == follow) "${it.label} (${followed?.label ?: chosen.label})" else it.label },
             { v -> update { it.copy(speechLanguage = v.code) } },
-            subtitle = "For ${active.name}. Same as keyboard follows the globe key and reloads the model.",
+            subtitle = "For ${active.name}. Same as keyboard follows the language you type in; switching reloads the model.",
         )
     } else {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
             Text("Voice language", style = MaterialTheme.typography.bodyLarge)
             Text(
                 if (active == null) "Set by the speech model. Choose one on the Voice tab."
@@ -304,122 +342,153 @@ private fun VoiceLanguage(s: Settings, models: ModelStoreState, update: Update) 
 }
 
 @Composable
-private fun StoragePage(s: Settings, models: ModelStoreState, update: Update) {
+private fun StoragePage(s: Settings, models: ModelStoreState, update: Update, navigate: (Destination) -> Unit) {
     val context = LocalContext.current
     // Recomputed whenever models are installed, deleted, or downloads change.
     val freeBytes = remember(models.installed, models.downloads.keys, models.errors) {
         StatFs(context.filesDir.absolutePath).availableBytes
     }
-    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    var memoryDetails by rememberSaveable { mutableStateOf(false) }
+    var downloadDetails by rememberSaveable { mutableStateOf(false) }
     Column {
-        SectionTitle("Model memory")
-        ModelMemoryCard(Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
-        DropdownRow(
-            "Keep model loaded", ModelRetention.entries, s.modelRetention, { it.label },
-            { v -> update { it.copy(modelRetention = v) } },
-            subtitle = "Counts from the end of a dictation, even with keys open. Longer saves loading time but uses memory. " +
-                "Android may release it sooner when memory runs low, and closing the app always releases it.",
-        )
-        SectionTitle("Space on this device")
-        Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                "Speech models: ${models.usedMb} MB · ${countLabel(models.installed.size, "model", "models")} downloaded",
-                style = MaterialTheme.typography.bodyLarge,
+        ModelMemoryCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp))
+        SettingsGroup("Model memory") {
+            ChoiceDialogRow(
+                "Keep model loaded", ModelRetention.entries, s.modelRetention, { it.label },
+                { v -> update { it.copy(modelRetention = v) } },
+                subtitle = "Longer starts faster but uses more memory",
             )
-            Text("Free space: ${Formatter.formatShortFileSize(context, freeBytes)}", style = MaterialTheme.typography.bodyLarge)
-            Text(
-                "Models download from Hugging Face, pinned to exact versions and checked with SHA-256 checksums. " +
-                    "They are stored privately in the app, not in the APK. Each model's source and license are under " +
-                    "Details on the Voice tab; delete models you don't use there.",
-                style = MaterialTheme.typography.bodySmall,
-                color = muted,
-                modifier = Modifier.padding(top = 6.dp),
-            )
+            DisclosureRow("How this works", memoryDetails, { memoryDetails = !memoryDetails })
+            if (memoryDetails) {
+                GroupText(
+                    "The time counts from the end of a dictation, even with the keys open. Android may release " +
+                        "the model sooner when memory runs low, and closing the app always releases it.",
+                )
+            }
+        }
+        SettingsGroup("Space on this device") {
+            InfoRow("Speech models", "${models.usedMb} MB · ${countLabel(models.installed.size, "model", "models")}")
+            InfoRow("Free space", Formatter.formatShortFileSize(context, freeBytes))
+            LinkRow("Manage speech models", "Change or delete models on the Voice tab") { navigate(Destination.MODELS) }
+            DisclosureRow("About model downloads", downloadDetails, { downloadDetails = !downloadDetails })
+            if (downloadDetails) {
+                GroupText(
+                    "Models download from Hugging Face, pinned to exact versions and checked with SHA-256 checksums. " +
+                        "They are stored privately in the app, not in the APK. Each model's source and license are " +
+                        "listed when you choose a model on the Voice tab.",
+                )
+            }
         }
     }
 }
 
+/** A label with its value, for read-only facts. */
+@Composable
+private fun InfoRow(title: String, value: String) {
+    BoxWithConstraints(
+        Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 16.dp, vertical = 12.dp)
+            .semantics(mergeDescendants = true) {},
+    ) {
+        if (maxWidth / LocalDensity.current.fontScale < 300.dp) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(title, style = MaterialTheme.typography.bodyLarge)
+                Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+/** A row that runs a command (it doesn't open a page), so it has no chevron. */
+@Composable
+private fun ActionRow(title: String, onClick: () -> Unit) {
+    Text(
+        title,
+        style = MaterialTheme.typography.bodyLarge,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+    )
+}
+
 /**
  * The languages on the phone, each with a chip per letter layout: its own first, then (for
- * Latin-script languages) the alternatives. Every chip that's on is one stop of the globe key's
- * cycle (in the order shown) and a row of the space bar's long-press chooser. Chips sit in a fixed
- * grid, so a checkmark appearing never moves the others. More languages download on their own page.
+ * Latin-script languages) the alternatives. Every chip that's on is one stop of the language
+ * switcher (in the order shown). Chips sit in a fixed grid, so a checkmark appearing never moves
+ * the others. More languages download on their own page.
  */
 @Composable
 private fun KeyboardsSetting(s: Settings, packs: LanguagePackState, update: Update, navigate: (Destination) -> Unit) {
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val fontScale = LocalDensity.current.fontScale
-    // A lazy item stacks its children, so the grid and the link share one column.
+    // A lazy item stacks its children, so the groups share one column.
     Column {
-    val installed = remember(packs.installed) { AppGraph.installedKeyboards() }
-    val usableIds = installed.map { it.id }
-    DropdownRow(
-        "Keyboard in use", installed.filter { it.id in s.enabledKeyboards }, AppGraph.currentKeyboard(s),
-        { it.fullLabel }, { keyboard -> update { it.selectKeyboard(keyboard.id, usableIds) } },
-        subtitle = "Your choice is remembered. Turn layouts on or off below.",
-    )
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
-        Text(
-            "Turn on the layouts you type with, then choose Keyboard in use above to switch. " +
-                "You can also tap the globe key or long-press the space bar while typing. " +
-                "Long-press the globe key to switch to another keyboard app.",
-            style = MaterialTheme.typography.bodySmall,
-            color = muted,
-        )
+        val installed = remember(packs.installed) { AppGraph.installedKeyboards() }
+        val usableIds = installed.map { it.id }
         val onlyOne = usableIds.count { it in s.enabledKeyboards } == 1
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val columns = when {
-                fontScale >= 1.6f -> 1
-                fontScale >= 1.2f -> 2
-                maxWidth >= 560.dp -> KeyArrangement.entries.size
-                else -> 3
-            }
-            Column {
-                installed.groupBy { it.language.id }.values.forEach { options ->
-                    val language = options.first().language
-                    Text(language.name, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 12.dp, bottom = 2.dp))
-                    options.chunked(columns).forEach { row ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            row.forEach { keyboard ->
-                                val on = keyboard.id in s.enabledKeyboards
-                                val required = on && onlyOne
-                                FilterChip(
-                                    selected = on,
-                                    onClick = { update { it.toggleKeyboard(keyboard.id, usableIds) } },
-                                    enabled = !required,
-                                    // The chip's description names the language too; don't read the label twice.
-                                    label = { Text(keyboard.layoutLabel, Modifier.clearAndSetSemantics {}, maxLines = 1) },
-                                    leadingIcon = if (on) ({ Icon(SlimIcons.Check, null, Modifier.size(FilterChipDefaults.IconSize)) }) else null,
-                                    modifier = Modifier.weight(1f).semantics {
-                                        contentDescription = "${language.name}, ${keyboard.layoutLabel}"
-                                        if (required) stateDescription = "On, required: the last layout that's on"
-                                    },
-                                )
+        SettingsGroup(footer = switchHint(s.bottomKey).takeUnless { onlyOne }) {
+            ChoiceDialogRow(
+                "Keyboard in use", installed.filter { it.id in s.enabledKeyboards }, AppGraph.currentKeyboard(s),
+                { it.fullLabel }, { keyboard -> update { it.selectKeyboard(keyboard.id, usableIds) } },
+            )
+        }
+        SettingsGroup(
+            "Layouts you switch between",
+            footer = (if (onlyOne) "Keep at least one layout on. " else "") +
+                "Layouts change only the letter keys; suggestions and autocorrect follow the language.",
+        ) {
+            BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                val columns = when {
+                    fontScale >= 1.6f -> 1
+                    fontScale >= 1.2f -> 2
+                    maxWidth >= 560.dp -> KeyArrangement.entries.size
+                    else -> 3
+                }
+                Column {
+                    installed.groupBy { it.language.id }.values.forEach { options ->
+                        val language = options.first().language
+                        Text(
+                            language.name, style = MaterialTheme.typography.labelLarge, color = muted,
+                            modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
+                        )
+                        options.chunked(columns).forEach { row ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                row.forEach { keyboard ->
+                                    val on = keyboard.id in s.enabledKeyboards
+                                    val required = on && onlyOne
+                                    FilterChip(
+                                        selected = on,
+                                        onClick = { update { it.toggleKeyboard(keyboard.id, usableIds) } },
+                                        enabled = !required,
+                                        // The chip's description names the language too; don't read the label twice.
+                                        label = { Text(keyboard.layoutLabel, Modifier.clearAndSetSemantics {}, maxLines = 1) },
+                                        leadingIcon = if (on) ({ Icon(SlimIcons.Check, null, Modifier.size(FilterChipDefaults.IconSize)) }) else null,
+                                        modifier = Modifier.weight(1f).semantics {
+                                            contentDescription = "${language.name}, ${keyboard.layoutLabel}"
+                                            if (required) stateDescription = "On, required: the last layout that's on"
+                                        },
+                                    )
+                                }
+                                repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                             }
-                            repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                         }
                     }
                 }
             }
         }
-        if (onlyOne) {
-            Text("Keep at least one layout on.", style = MaterialTheme.typography.bodySmall, color = muted, modifier = Modifier.padding(top = 4.dp))
+        SettingsGroup {
+            LinkRow(
+                "Keyboard languages",
+                moreLanguagesSummary(AppGraph.languages.languages.filter { !it.bundled && it.id !in packs.installed }.map { it.englishName }),
+            ) { navigate(Destination.LANGUAGES) }
         }
-        Text(
-            "Current keyboard: ${AppGraph.currentKeyboard(s).fullLabel}",
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(top = 10.dp),
-        )
-        Text(
-            "Layouts change only the letter keys; suggestions and autocorrect follow the language.",
-            style = MaterialTheme.typography.bodySmall,
-            color = muted,
-        )
-    }
-    LinkRow(
-        "More languages",
-        moreLanguagesSummary(AppGraph.languages.languages.filter { !it.bundled && it.id !in packs.installed }.map { it.englishName }),
-    ) { navigate(Destination.LANGUAGES) }
     }
 }
 
@@ -440,3 +509,23 @@ internal fun moreLanguagesSummary(available: List<String>): String = when {
 /** The Keyboard theme link's summary on the Appearance page. */
 internal fun keyboardThemeSummary(custom: Boolean): String =
     if (custom) "Custom colors" else "Standard colors, following the app theme"
+
+/**
+ * How to switch keyboard languages while typing, for the key beside Space: holding the emoji key
+ * opens the language menu; the language-switch (globe) key moves to the next one on a tap.
+ */
+internal fun switchHint(bottomKey: BottomKey): String = when (bottomKey) {
+    BottomKey.EMOJI -> "While typing, hold the emoji key to switch between the layouts that are on."
+    BottomKey.LANGUAGE -> "While typing, tap the globe key to switch between the layouts that are on."
+}
+
+private fun bottomKeyDetail(key: BottomKey): String = when (key) {
+    BottomKey.EMOJI -> "Tap for emoji; hold to switch language"
+    BottomKey.LANGUAGE -> "A globe key; tap to switch language"
+}
+
+private fun loupeDetail(corners: LoupeCorners): String = when (corners) {
+    LoupeCorners.TOP -> "Clear of either hand"
+    LoupeCorners.LEFT -> "For drawing with your right hand"
+    LoupeCorners.RIGHT -> "For drawing with your left hand"
+}

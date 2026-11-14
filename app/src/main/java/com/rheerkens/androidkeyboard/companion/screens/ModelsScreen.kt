@@ -1,138 +1,173 @@
 package com.rheerkens.androidkeyboard.companion.screens
 
 import android.Manifest
-import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rheerkens.androidkeyboard.AppGraph
 import com.rheerkens.androidkeyboard.companion.Destination
-import com.rheerkens.androidkeyboard.models.DeleteResult
+import com.rheerkens.androidkeyboard.companion.theme.isDark
 import com.rheerkens.androidkeyboard.models.ModelCatalog
-import com.rheerkens.androidkeyboard.models.ModelInfo
-import com.rheerkens.androidkeyboard.models.ModelStoreState
+import com.rheerkens.androidkeyboard.ui.SlimIcons
 
 @Composable
-fun ModelsScreen(modifier: Modifier, navigate: (Destination) -> Unit) {
+fun ModelsScreen(modifier: Modifier, navigate: (Destination) -> Unit, tryKeyboard: () -> Unit) {
     val context = LocalContext.current
+    val activity = LocalActivity.current
     val store = AppGraph.models
     val state by store.state.collectAsStateWithLifecycle()
     var hasMic by remember { mutableStateOf(AppGraph.hasMicPermission(context)) }
     var deniedForever by rememberSaveable { mutableStateOf(false) }
-    var message by remember { mutableStateOf<String?>(null) }
-    LifecycleResumeEffect(Unit) { hasMic = AppGraph.hasMicPermission(context); onPauseOrDispose { } }
+    var denied by rememberSaveable { mutableStateOf(false) }
+    var pickerOpen by rememberSaveable { mutableStateOf(false) }
+    var selectedId by rememberSaveable {
+        mutableStateOf(state.downloads.keys.firstOrNull { ModelCatalog.byId(it) != null }
+            ?: state.activeModel?.takeIf { it.id in state.installed }?.id
+            ?: ModelCatalog.models.first { it.recommended }.id)
+    }
+    LifecycleResumeEffect(Unit) {
+        hasMic = AppGraph.hasMicPermission(context)
+        if (hasMic) { denied = false; deniedForever = false }
+        onPauseOrDispose { }
+    }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         hasMic = granted
-        deniedForever = !granted && context is Activity &&
-            !ActivityCompat.shouldShowRequestPermissionRationale(context, Manifest.permission.RECORD_AUDIO)
+        denied = !granted
+        deniedForever = !granted && activity != null &&
+            !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.RECORD_AUDIO)
     }
-    LazyColumn(modifier.fillMaxWidth()) {
-        item { Note("Dictate on your device. Typing works without voice setup.", Modifier.padding(top = 12.dp)) }
-        if (!hasMic) item {
-            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Allow the microphone", style = MaterialTheme.typography.titleMedium)
-                Text("Needed only for voice typing. Audio is processed on this device.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val model = ModelCatalog.byId(selectedId) ?: ModelCatalog.models.first { it.recommended }
+    val installed = model.id in state.installed
+    val setup = VoiceSetupProgress(hasMic, state, model)
+    val modelReady = setup.modelReady
+    val step = setup.step
+    val showModelManagement = state.installed.isNotEmpty() || state.downloads.isNotEmpty() || state.errors.isNotEmpty()
+    val progress = state.downloads[model.id]
+    val colors = MaterialTheme.colorScheme
+    LazyColumn(modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        item {
+            Text(if (step == 3) "Voice is ready" else "Set up voice",
+                style = MaterialTheme.typography.titleLarge.copy(fontSize = 22.sp, lineHeight = 28.sp),
+                modifier = Modifier.padding(bottom = 6.dp).semantics { heading() })
+        }
+        item {
+            VoiceSetupStep(1, if (hasMic) "Microphone" else "Allow microphone", hasMic, step == 1,
+                if (hasMic) "Allowed" else null) {
+                Text(when {
+                    deniedForever -> "Microphone is off. Turn it on in Android settings."
+                    denied -> "Microphone is off. You can try again."
+                    else -> "Used only while you dictate."
+                }, color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
                 Button(onClick = {
-                    if (deniedForever) context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)))
+                    if (deniedForever) context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.fromParts("package", context.packageName, null)))
                     else permission.launch(Manifest.permission.RECORD_AUDIO)
-                }) { Text(if (deniedForever) "Open app settings" else "Allow microphone") }
+                }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                    Text(when { deniedForever -> "Open settings"; denied -> "Try again"; else -> "Allow microphone" })
+                }
             }
         }
-        message?.let { msg -> item { Note(msg) } }
-        val active = state.activeModel
-        item { SectionTitle(if (active == null) "Choose a speech model" else "Active speech model") }
-        if (active != null) item(key = "active-${active.id}") { ModelRow(active, state) { message = it } }
-        else item { Note("Download a model to start. It becomes active when the download finishes. English-only models cannot transcribe other languages.") }
-        item { LinkRow("Dictation settings", "Language, starting and stopping") { navigate(Destination.SETTINGS_VOICE) } }
-        val alternatives = ModelCatalog.models.filter { it.id != active?.id }
-        val multilingual = alternatives.filter { it.languages.isNotEmpty() }
-        val english = alternatives.filter { it.languages.isEmpty() }
-        if (multilingual.isNotEmpty()) {
-            item { SectionTitle("Multilingual models") }
-            items(multilingual, key = { it.id }) { model -> ModelRow(model, state) { message = it } }
+        item {
+            VoiceSetupStep(2, if (modelReady) "Speech model" else "Download speech model", modelReady,
+                step == 2 || (hasMic && setup.changingModel) || progress != null,
+                setup.activeModel?.let { "${it.name} active" }) {
+                Text(model.name + if (installed) "" else " \u00b7 ${model.sizeShort}", fontWeight = FontWeight.Medium,
+                    style = MaterialTheme.typography.bodyMedium)
+                if (progress != null) {
+                    LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("${(model.installedBytes * progress / 1_000_000).toInt()} MB of ${model.sizeShort}",
+                            modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
+                        Text("${(progress * 100).toInt()}%", style = MaterialTheme.typography.labelMedium)
+                    }
+                    TextButton(onClick = { store.cancelDownload(model.id) }) { Text("Cancel") }
+                } else {
+                    Text(if (installed) "Downloaded on this phone." else "Works offline after download.",
+                        color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                    state.errors[model.id]?.let {
+                        Text("Download failed: $it", color = colors.error, style = MaterialTheme.typography.bodyMedium)
+                    }
+                    Button(onClick = {
+                        if (installed) store.setActive(model.id) else store.download(model.id)
+                    }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                        Text(when {
+                            installed -> "Use this model"
+                            model.id in state.errors -> "Retry \u00b7 ${model.sizeShort}"
+                            else -> "Download \u00b7 ${model.sizeShort}"
+                        })
+                    }
+                    if (!showModelManagement) TextButton(onClick = { pickerOpen = true }) { Text("Other models") }
+                }
+            }
         }
-        if (english.isNotEmpty()) {
-            item { SectionTitle("English-only models") }
-            items(english, key = { it.id }) { model -> ModelRow(model, state) { message = it } }
+        item {
+            VoiceSetupStep(3, "Ready to dictate", step == 3, step == 3) {
+                Text("Tap the mic on the keyboard.", color = colors.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium)
+                Button(onClick = tryKeyboard, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                    Text("Try the keyboard")
+                }
+            }
         }
-        item { LinkRow("Storage & performance", "${state.usedMb} MB on this device · model memory") { navigate(Destination.SETTINGS_STORAGE) } }
-        item { Note("Download on Wi-Fi. Models are stored privately on this device. Larger models can be slower; speed depends on your device.", Modifier.padding(bottom = 20.dp)) }
+        if (showModelManagement) {
+            item { TextButton(onClick = { pickerOpen = true }) { Text(if (modelReady) "Change speech model" else "Other models") } }
+            item { LinkRow("Dictation settings", "Language, starting and stopping") { navigate(Destination.SETTINGS_VOICE) } }
+            item { LinkRow("Storage & performance", "${state.usedMb} MB on this device") { navigate(Destination.SETTINGS_STORAGE) } }
+        } else item {
+            Text("Typing works without voice.", color = colors.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 24.dp, bottom = 16.dp))
+        }
     }
+    if (pickerOpen) SpeechModelPicker(model.id, state,
+        onSelect = { selectedId = it; pickerOpen = false }, onDismiss = { pickerOpen = false })
 }
 
 @Composable
-private fun ModelRow(model: ModelInfo, state: ModelStoreState, onMessage: (String?) -> Unit) {
-    val store = AppGraph.models
-    val installed = model.id in state.installed
-    val active = model.id == state.activeId
-    val progress = state.downloads[model.id]
-    var details by rememberSaveable(model.id) { mutableStateOf(false) }
-    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (model.recommended) Text("Recommended starting point", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-        Text(model.name, style = MaterialTheme.typography.titleMedium)
-        Text("${model.sizeLabel} · ${model.language}" + if (installed) " · Downloaded" else "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (active) Text("Active for voice typing", color = MaterialTheme.colorScheme.primary)
-        state.errors[model.id]?.let { error ->
-            Text("Download failed: $error", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+private fun VoiceSetupStep(number: Int, title: String, complete: Boolean, current: Boolean,
+    status: String? = null, content: @Composable ColumnScope.() -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val success = if (colors.isDark) Color(0xFF5CD193) else Color(0xFF1E7A4C)
+    Row(Modifier.fillMaxWidth().background(if (current) colors.surfaceContainerLow else Color.Transparent,
+        RoundedCornerShape(20.dp)).padding(16.dp).semantics {
+            stateDescription = when { complete -> "Done"; current -> "Current step"; else -> "Not started" }
+        }, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        Box(Modifier.size(28.dp).background(when { complete -> success; current -> colors.primary; else -> colors.surfaceContainer }, CircleShape),
+            contentAlignment = Alignment.Center) {
+            if (complete) Icon(SlimIcons.Check, null, Modifier.size(16.dp), tint = if (colors.isDark) colors.surface else Color.White)
+            else Text(number.toString(), color = if (current) colors.onPrimary else colors.onSurfaceVariant,
+                style = MaterialTheme.typography.labelLarge)
         }
-        if (progress != null) {
-            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
-            Text("${(progress * 100).toInt()}% downloaded", style = MaterialTheme.typography.labelMedium)
-        }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            when {
-                progress != null -> TextButton(onClick = { store.cancelDownload(model.id); onMessage("Download cancelled.") }) { Text("Cancel download") }
-                !installed -> Button(
-                    onClick = { store.download(model.id); onMessage(null) },
-                    modifier = Modifier.semantics { contentDescription = "Download ${model.name}" },
-                ) { Text(if (state.errors.containsKey(model.id)) "Retry download & use" else "Download & use") }
-                !active -> Button(onClick = { store.setActive(model.id); onMessage("${model.name} is now active.") }) { Text("Use") }
-            }
-            TextButton(onClick = { details = !details }) { Text(if (details) "Hide details" else "Details") }
-        }
-        if (details) {
-            Text(model.description, style = MaterialTheme.typography.bodyMedium)
-            Text("${model.source}. License: ${model.license}. Downloads use pinned versions and verified SHA-256 checksums.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (installed) {
-                if (active) Text("Choose another model before deleting this one.", style = MaterialTheme.typography.bodySmall)
-                else TextButton(onClick = {
-                    when (store.delete(model.id)) {
-                        DeleteResult.Deleted -> onMessage("${model.name} deleted.")
-                        DeleteResult.ActiveModelProtected -> onMessage("The active model cannot be deleted.")
-                        DeleteResult.NotInstalled -> Unit
-                    }
-                }) { Text("Delete model", color = MaterialTheme.colorScheme.error) }
-            }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, fontWeight = if (current || complete) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (current || complete) colors.onSurface else colors.onSurfaceVariant,
+                style = MaterialTheme.typography.titleMedium)
+            if (status != null) Text(status, color = success, style = MaterialTheme.typography.bodyMedium)
+            if (current) content()
         }
     }
-    HorizontalDivider(Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.outlineVariant)
 }

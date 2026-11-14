@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
@@ -33,6 +34,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -58,9 +62,15 @@ fun UpdateBanner(modifier: Modifier = Modifier) {
 @Composable
 fun UpdatesSection() {
     if (!acceptsReleaseUpdates(BuildConfig.APPLICATION_ID)) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Version ${BuildConfig.VERSION_NAME} · UI Preview", style = MaterialTheme.typography.titleMedium)
-            Text("Install preview updates manually. Production updates belong to the regular Lowkey app.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        SettingsGroup {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Version ${BuildConfig.VERSION_NAME} · UI Preview", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "Install preview updates by hand. Automatic updates belong to the regular Lowkey app.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         return
     }
@@ -82,48 +92,48 @@ fun UpdatesSection() {
             )
         }
     }
+    val checking = state.status is UpdateStatus.Checking
+    val canCheck = !state.busy && state.status !is UpdateStatus.Installing &&
+        state.status !is UpdateStatus.AwaitingConfirmation
+    fun check() { scope.launch { AppGraph.updates.check(userStarted = true) } }
 
     Column {
-        SwitchRow(
-            "Check for updates automatically", settings.checkForUpdates,
-            { v -> AppGraph.settings.update { it.copy(checkForUpdates = v) } },
-            subtitle = "About once a day, Lowkey asks its GitHub releases page for the newest version number. " +
-                "Nothing about you is sent. The update itself downloads only when you tap Update.",
-        )
-        if (settings.checkForUpdates && !canNotify && Build.VERSION.SDK_INT >= 33) {
-            Row(Modifier.fillMaxWidth().padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Note("Notifications are off, so new versions show only on the Home page.", Modifier.weight(1f))
-                TextButton(onClick = { notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }) {
-                    Text("Allow")
-                }
-            }
-        }
-        Row(
-            Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
+            Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 4.dp)
+                .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
         ) {
-            Column(Modifier.weight(1f)) {
-                Text("Version ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodyLarge)
-                Text(
-                    statusLine(state),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            if (state.status is UpdateStatus.Checking) {
-                CircularProgressIndicator(Modifier.padding(12.dp).size(20.dp), strokeWidth = 2.dp)
-            } else {
-                TextButton(
-                    onClick = { scope.launch { AppGraph.updates.check(userStarted = true) } },
-                    enabled = !state.busy && state.status !is UpdateStatus.Installing &&
-                        state.status !is UpdateStatus.AwaitingConfirmation,
-                ) { Text("Check now") }
-            }
+            Text("Version ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleMedium)
+            Text(statusLine(state), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (state.update != null) {
-            SlimCard(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) { UpdateActions(state) }
-        } else if (state.status is UpdateStatus.Failed) {
-            Note((state.status as UpdateStatus.Failed).message)
+            // The update itself is the main action; checking again stays quiet.
+            SlimCard(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) { UpdateActions(state) }
+            TextButton(
+                onClick = ::check, enabled = canCheck && !checking,
+                modifier = Modifier.padding(horizontal = 8.dp).heightIn(min = 48.dp),
+            ) { Text(if (checking) "Checking…" else "Check again") }
+        } else {
+            MainAction(if (checking) "Checking…" else "Check for updates", ::check, enabled = canCheck && !checking)
+            if (state.status is UpdateStatus.Failed) {
+                Note((state.status as UpdateStatus.Failed).message, Modifier.padding(horizontal = 4.dp))
+            }
+        }
+        SettingsGroup("Automatic checks") {
+            SwitchRow(
+                "Check for updates automatically", settings.checkForUpdates,
+                { v -> AppGraph.settings.update { it.copy(checkForUpdates = v) } },
+                subtitle = "About once a day, Lowkey asks its GitHub releases page for the newest version number. " +
+                    "Nothing about you is sent. An update downloads only when you tap Update.",
+            )
+            if (settings.checkForUpdates && !canNotify && Build.VERSION.SDK_INT >= 33) {
+                Row(Modifier.fillMaxWidth().padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Note("Notifications are off, so new versions show only on Home.", Modifier.weight(1f))
+                    TextButton(
+                        onClick = { notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) },
+                        modifier = Modifier.heightIn(min = 48.dp),
+                    ) { Text("Allow") }
+                }
+            }
         }
     }
 }
