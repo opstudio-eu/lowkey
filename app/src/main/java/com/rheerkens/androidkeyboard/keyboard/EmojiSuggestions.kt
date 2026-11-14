@@ -22,7 +22,8 @@ object EmojiSuggestions {
             "🍽️" to "food dinner", "💻" to "computer laptop", "🌸" to "flower flowers",
             "🌙" to "moon", "📦" to "box boxes", "🎮" to "game games", "🍚" to "rice", "🚗" to "car auto",
             "🪨" to "stone stones", "🥜" to "nut nuts", "🏢" to "building buildings", "📹" to "video videos",
-            "💎" to "diamond diamonds", "☕" to "coffee tea beverage beverages",
+            "💎" to "diamond diamonds", "☕" to "coffee tea beverage beverages", "🗺️" to "map maps",
+            "👆" to "finger fingers",
         ),
         "nl" to words(
             "👋" to "hoi hallo hey dag doei", "❤️" to "liefde hart", "☕" to "koffie thee",
@@ -137,7 +138,12 @@ class EmojiNameIndex(entries: List<EmojiItem>) {
             "decorations decorative pushing arm arms index arrow arrows utility beating incoming " +
             "convenience shallow tilted tray slash salute dotted bullet bullets shooting shootings " +
             "machine machines field fields pile piles engine engines worker workers club clubs pool " +
-            "pools gesture gestures folding claus"
+            "pools gesture gestures folding claus department departments passenger passengers " +
+            "ceremony ceremonies mechanical suspension suspensions optical aerial ray rays postal " +
+            "roller rollers nesting articulated wedge stuffed reminder roasted loudly shaved curl " +
+            "performing tropical flying hair hairs motor motors root roots bar bars fallen kitchen " +
+            "kitchens triangular clutch clutches revolving pouring hairy bouncing bunny oncoming " +
+            "popping tipping safety"
             ).split(' ').toSet()
 
         private fun usable(word: String) = word.length >= MIN_LENGTH && word !in COMMON
@@ -154,8 +160,12 @@ class EmojiNameIndex(entries: List<EmojiItem>) {
             if (word.length > 3 && word.endsWith("s") && !word.endsWith("ss")) add(word.dropLast(1))
         }
 
-        /** The likely singular of a plural name word (cherries → cherry, glasses → glass), or null. */
+        /**
+         * The likely singular of a plural name word (cherries → cherry, glasses → glass), or null.
+         * Singular words ending in s (circus, cactus, tennis, anxious) are not plurals.
+         */
         private fun singular(word: String): String? = when {
+            word.endsWith("us") || word.endsWith("is") -> null
             word.length > 4 && word.endsWith("ies") -> word.dropLast(3) + "y"
             word.length > 4 && (word.endsWith("sses") || word.endsWith("ches") ||
                 word.endsWith("shes") || word.endsWith("xes")) -> word.dropLast(2)

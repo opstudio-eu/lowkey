@@ -66,6 +66,10 @@ class EmojiSuggestionsTest {
         assertEquals("🍒", en("cherries"))
         assertEquals("🦄", en("unicorn"))
         assertEquals("🪨", en("stones"))
+        assertEquals("🎪", en("circus"))
+        assertEquals("🌵", en("cactus"))
+        assertEquals("🗺️", en("maps"))
+        assertEquals("👆", en("finger"))
         assertEquals("🤔", en("thinking"))
         assertEquals("👓", en("glasses"))
         assertEquals("🥚", en("eggs"))
@@ -85,7 +89,7 @@ class EmojiSuggestionsTest {
     @Test fun commonWordsShortWordsSymbolsAndFlagsOfferNoEmoji() {
         for (word in listOf("with", "face", "open", "right", "left", "from", "have", "this", "that", "time",
             "good", "make", "people", "hands", "black", "light", "watch", "note", "stop", "back", "short",
-            "glass", "dishes", "bullets", "shootings", "machines", "fields", "piles", "clauses", "jordan", "georgia", "chad", "new", "free", "soon", "top", "cool", "egg", "eye", "dump",
+            "glass", "dishes", "bullets", "shootings", "machines", "fields", "piles", "clauses", "department", "passengers", "ceremony", "mechanical", "rays", "postal", "loudly", "hair", "kitchen", "jordan", "georgia", "chad", "new", "free", "soon", "top", "cool", "egg", "eye", "dump",
             "news", "ways", "ones", "sees", "dies", "offs", "billed", "capped", "skin", "tone", "aids")) {
             assertNull(word, en(word))
         }
@@ -124,7 +128,7 @@ class EmojiSuggestionsTest {
     @Test fun onlyRealSingularsOfNameWordsBecomeKeywords() {
         // "fries" and "glasses" and "cherries" must not turn "frie", "glasse" or "cherrie" into keywords,
         // or typing "friend" would offer fries on the way.
-        for (word in listOf("frie", "glasse", "cherrie", "friend", "cooky")) assertNull(word, en(word))
+        for (word in listOf("frie", "glasse", "cherrie", "friend", "cooky", "circu", "ferri", "cactu", "tenni", "anxiou")) assertNull(word, en(word))
     }
 
     @Test fun pluralsOfAliasesKeepTheAlias() {
