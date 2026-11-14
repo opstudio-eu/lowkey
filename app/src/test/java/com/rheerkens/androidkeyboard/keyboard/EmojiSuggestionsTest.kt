@@ -116,8 +116,8 @@ class EmojiSuggestionsTest {
         val noRock = unicode.supported { it != "🪨" }
         assertNull(EmojiSuggestions.suggest("stone", listOf("en_US"), noRock))
         assertNull(EmojiSuggestions.suggest("stones", listOf("en_US"), noRock))
-        val older = unicode.supported { it != "🪽" && it != "🛞" }
-        for (word in listOf("wing", "wings", "wheel", "wheels")) {
+        val older = unicode.supported { it != "🪽" && it != "🛞" && it != "🫧" }
+        for (word in listOf("wing", "wings", "wheel", "wheels", "bubble", "bubbles")) {
             assertNull(word, EmojiSuggestions.suggest(word, listOf("en_US"), older))
         }
     }
