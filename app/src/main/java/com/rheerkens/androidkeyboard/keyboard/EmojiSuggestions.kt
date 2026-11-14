@@ -32,6 +32,7 @@ object EmojiSuggestions {
             "🛍️" to "shopping", "♟️" to "chess", "🎓" to "graduation", "🌍" to "globe", "⏰" to "alarm alarms",
             "🌴" to "palm palms", "👕" to "shirt shirts", "👟" to "shoe shoes", "🏮" to "lantern lanterns",
             "🧢" to "cap caps", "💃" to "dancer dancers", "😷" to "mask masks",
+            "🪽" to "wing wings", "🛞" to "wheel wheels",
         ),
         "nl" to words(
             "👋" to "hoi hallo hey dag doei", "❤️" to "liefde hart", "☕" to "koffie thee",
