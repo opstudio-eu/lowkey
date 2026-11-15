@@ -134,7 +134,10 @@ internal fun EmojiPanel(catalog: EmojiCatalog?, recent: List<String>, height: Dp
                     }
                 }
             }
-            LettersTab(below, actions::onCloseEmoji, Modifier.align(Alignment.BottomStart).offset(y = below).height(tabHeight + below))
+            // Unbounded, so a tall reach below a raised keyboard never squeezes the label: the tab
+            // keeps its full height above the panel's bottom edge and hangs down from there.
+            LettersTab(below, actions::onCloseEmoji, Modifier.align(Alignment.BottomStart).offset(y = below)
+                .wrapContentHeight(Alignment.Bottom, unbounded = true).height(tabHeight + below))
         }
     }
 }
