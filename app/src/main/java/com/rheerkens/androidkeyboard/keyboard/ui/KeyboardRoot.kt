@@ -77,6 +77,11 @@ data class KeyboardUiState(
     val contentWidthDp: Float = 360f,
     val numberRow: Boolean = false,
     val emojiOpen: Boolean = false,
+    /**
+     * Keyboard below this panel, in dp: the drag handle of a floating keyboard. The emoji panel's
+     * corner tab reaches down over it to the keyboard's edge.
+     */
+    val belowPanelDp: Float = 0f,
     val emojiCatalog: com.rheerkens.androidkeyboard.keyboard.EmojiCatalog? = null,
     val recentEmoji: List<String> = emptyList(),
     /** The enabled, installed keyboards in globe order, offered by holding the emoji key. */
@@ -142,7 +147,7 @@ internal fun KeyboardContent(
                         KeyboardTools(state, actions)
                     } else if (state.emojiOpen) {
                         EmojiPanel(state.emojiCatalog, state.recentEmoji,
-                            (state.keyRows * state.rowHeightDp + 4).dp, actions)
+                            (state.keyRows * state.rowHeightDp + 4).dp, state.belowPanelDp.dp, actions)
                     } else {
                         KeysPanel(state.layout, state.keyboard, state.rowHeightDp, state.enterKind, actions, state.splitGapDp, state.keyRows,
                             state.keyboards, languageMenu)
