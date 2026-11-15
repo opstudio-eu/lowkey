@@ -10,6 +10,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -62,7 +63,8 @@ fun KeyboardRoot(state: KeyboardUiState, clock: () -> Long, actions: KeyboardAct
     val panelHeight = frame.height - if (floatingHandle) 24f else 0f
     val displayed = state.copy(rowHeightDp = frame.rowHeight.roundToInt(), minimized = minimized,
         toolsOpen = menu, toolsReturnToMinimized = state.minimized,
-        placement = placement, splitGapDp = frame.splitGap, contentWidthDp = frame.width)
+        placement = placement, splitGapDp = frame.splitGap, contentWidthDp = frame.width,
+        belowPanelDp = if (floatingHandle) 24f else 0f)
 
     fun save(value: KeyboardPlacement) { actions.onSavePlacement(state.profile, value); draft = null }
     val routed = object : KeyboardActions by actions {
@@ -106,7 +108,8 @@ fun KeyboardRoot(state: KeyboardUiState, clock: () -> Long, actions: KeyboardAct
                     if (leftRail) SideControls()
                     Column(Modifier.width(frame.width.dp)
                         .then(if (floating) Modifier.keyboardBackground(colors, state.background) else Modifier)) {
-                        Box(Modifier.height(panelHeight.dp).fillMaxWidth()) {
+                        // Above the drag handle, so the emoji panel's corner tab can reach over it.
+                        Box(Modifier.height(panelHeight.dp).fillMaxWidth().zIndex(1f)) {
                             Box(if (editing) Modifier.clearAndSetSemantics {} else Modifier) {
                                 KeyboardContent(displayed, clock, routed, drawBackground = false)
                             }
