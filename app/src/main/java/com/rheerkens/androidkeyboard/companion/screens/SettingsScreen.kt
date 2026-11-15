@@ -402,7 +402,7 @@ private fun VoiceLanguage(s: Settings, models: ModelStoreState, update: Update) 
         Column(settingHighlight("Voice language").fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
             Text("Voice language", style = MaterialTheme.typography.bodyLarge)
             Text(
-                if (active == null) "Set by the speech model. Choose one on the Voice tab."
+                if (active == null) "Set by the speech model. Choose one under Voice › Speech models."
                 else "${active.language}, set by the model. Multilingual models let you choose here.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -439,13 +439,13 @@ private fun StoragePage(s: Settings, models: ModelStoreState, update: Update, na
         SettingsGroup("Space on this device") {
             InfoRow("Speech models", "${models.usedMb} MB · ${countLabel(models.installed.size, "model", "models")}")
             InfoRow("Free space", Formatter.formatShortFileSize(context, freeBytes))
-            LinkRow("Manage speech models", "Change or delete models on the Voice tab") { navigate(Destination.MODELS) }
+            LinkRow("Manage speech models", "Choose, download or delete models") { navigate(Destination.SPEECH_MODELS) }
             DisclosureRow("About model downloads", downloadDetails, { downloadDetails = !downloadDetails })
             if (downloadDetails) {
                 GroupText(
                     "Models download from Hugging Face, pinned to exact versions and checked with SHA-256 checksums. " +
                         "They are stored privately in the app, not in the APK. Each model's source and license are " +
-                        "listed when you choose a model on the Voice tab.",
+                        "listed on the Speech models page.",
                 )
             }
         }

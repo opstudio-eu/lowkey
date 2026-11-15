@@ -1238,7 +1238,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
 
     override fun onOpenDictionary() = openCompanion(Destination.DICTIONARY)
     override fun onOpenVoiceSettings() = openCompanion(Destination.SETTINGS_VOICE)
-    override fun onOpenModels() = openCompanion(Destination.MODELS)
+    override fun onOpenModels() = openCompanion(Destination.SPEECH_MODELS)
     override fun onOpenSetup() = openCompanion(Destination.HOME)
 
     override fun onDismissExpandHint() {

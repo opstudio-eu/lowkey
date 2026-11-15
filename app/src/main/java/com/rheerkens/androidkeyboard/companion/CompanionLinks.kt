@@ -24,11 +24,13 @@ enum class Destination(val title: String, val isTab: Boolean = false) {
     ABOUT("About and licenses"),
     LANGUAGES("Keyboard languages"),
     KEYBOARD_THEME("Keyboard theme"),
+    SPEECH_MODELS("Speech models"),
 }
 
 /** A canonical back path also makes externally opened settings predictable. */
 fun destinationPath(destination: Destination): List<Destination> = when (destination) {
-    Destination.SETTINGS_VOICE, Destination.SETTINGS_STORAGE -> listOf(Destination.MODELS, destination)
+    Destination.SETTINGS_VOICE, Destination.SETTINGS_STORAGE, Destination.SPEECH_MODELS ->
+        listOf(Destination.MODELS, destination)
     Destination.SETTINGS_KEYBOARD, Destination.SETTINGS_CLIPBOARD,
     Destination.SETTINGS_APPEARANCE, Destination.SETTINGS_UPDATES,
     Destination.LANGUAGES, Destination.ABOUT -> listOf(Destination.SETTINGS, destination)

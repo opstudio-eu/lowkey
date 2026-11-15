@@ -43,12 +43,6 @@ fun ModelsScreen(modifier: Modifier, navigate: (Destination) -> Unit, tryKeyboar
     var hasMic by remember { mutableStateOf(AppGraph.hasMicPermission(context)) }
     var deniedForever by rememberSaveable { mutableStateOf(false) }
     var denied by rememberSaveable { mutableStateOf(false) }
-    var pickerOpen by rememberSaveable { mutableStateOf(false) }
-    var selectedId by rememberSaveable {
-        mutableStateOf(state.downloads.keys.firstOrNull { ModelCatalog.byId(it) != null }
-            ?: state.activeModel?.takeIf { it.id in state.installed }?.id
-            ?: ModelCatalog.models.first { it.recommended }.id)
-    }
     LifecycleResumeEffect(Unit) {
         hasMic = AppGraph.hasMicPermission(context)
         if (hasMic) { denied = false; deniedForever = false }
@@ -60,7 +54,11 @@ fun ModelsScreen(modifier: Modifier, navigate: (Destination) -> Unit, tryKeyboar
         deniedForever = !granted && activity != null &&
             !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.RECORD_AUDIO)
     }
-    val model = ModelCatalog.byId(selectedId) ?: ModelCatalog.models.first { it.recommended }
+    // Step 2 offers the recommended model, or follows a download started on the Speech models page,
+    // including one that failed, so its error and Retry stay visible.
+    val model = state.downloads.keys.firstNotNullOfOrNull { ModelCatalog.byId(it) }
+        ?: state.errors.keys.firstNotNullOfOrNull { id -> ModelCatalog.byId(id)?.takeIf { id !in state.installed } }
+        ?: ModelCatalog.models.first { it.recommended }
     val installed = model.id in state.installed
     val setup = VoiceSetupProgress(hasMic, state, model)
     val modelReady = setup.modelReady
@@ -94,7 +92,7 @@ fun ModelsScreen(modifier: Modifier, navigate: (Destination) -> Unit, tryKeyboar
         }
         item {
             VoiceSetupStep(2, if (modelReady) "Speech model" else "Download speech model", modelReady,
-                step == 2 || (hasMic && setup.changingModel) || progress != null,
+                step == 2 || progress != null,
                 setup.activeModel?.let { "${it.name} active" }) {
                 Text(model.name + if (installed) "" else " \u00b7 ${model.sizeShort}", fontWeight = FontWeight.Medium,
                     style = MaterialTheme.typography.bodyMedium)
@@ -121,7 +119,11 @@ fun ModelsScreen(modifier: Modifier, navigate: (Destination) -> Unit, tryKeyboar
                             else -> "Download \u00b7 ${model.sizeShort}"
                         })
                     }
-                    if (!showModelManagement) TextButton(onClick = { pickerOpen = true }) { Text("Other models") }
+                    TextButton(onClick = { navigate(Destination.SPEECH_MODELS) },
+                        modifier = Modifier.heightIn(min = 48.dp)) {
+                        Text("Choose another model")
+                        Icon(SlimIcons.ChevronRight, null, Modifier.padding(start = 4.dp).size(18.dp))
+                    }
                 }
             }
         }
@@ -135,7 +137,10 @@ fun ModelsScreen(modifier: Modifier, navigate: (Destination) -> Unit, tryKeyboar
             }
         }
         if (showModelManagement) {
-            item { TextButton(onClick = { pickerOpen = true }) { Text(if (modelReady) "Change speech model" else "Other models") } }
+            item(key = "speech-models") {
+                LinkRow("Speech models", listOfNotNull(setup.activeModel?.let { "${it.name} active" },
+                    "${state.installed.size} on this phone").joinToString(" \u00b7 ")) { navigate(Destination.SPEECH_MODELS) }
+            }
             item { LinkRow("Dictation settings", "Language, starting and stopping") { navigate(Destination.SETTINGS_VOICE) } }
             item { LinkRow("Storage & performance", "${state.usedMb} MB on this device") { navigate(Destination.SETTINGS_STORAGE) } }
         } else item {
@@ -143,8 +148,6 @@ fun ModelsScreen(modifier: Modifier, navigate: (Destination) -> Unit, tryKeyboar
                 style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 24.dp, bottom = 16.dp))
         }
     }
-    if (pickerOpen) SpeechModelPicker(model.id, state,
-        onSelect = { selectedId = it; pickerOpen = false }, onDismiss = { pickerOpen = false })
 }
 
 @Composable

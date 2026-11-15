@@ -4,7 +4,7 @@ For installation, see the [README](../README.md#install).
 
 ## Dictate text
 
-1. Open **Voice** and follow the checklist: allow microphone access, then download a speech model. A completed download becomes active. Open **Change speech model** to choose another model; selecting it alone does not download or activate it.
+1. Open **Voice** and follow the checklist: allow microphone access, then download a speech model. A completed download becomes active. Open **Voice → Speech models** to see which models are on your phone, switch with **Use**, download others, or delete ones you no longer need. The active model can't be deleted until you choose another.
 2. Open a text field and tap the keyboard's microphone button.
 3. Speak, then tap the **checkmark**. Lowkey transcribes on your phone and inserts the finished text.
 

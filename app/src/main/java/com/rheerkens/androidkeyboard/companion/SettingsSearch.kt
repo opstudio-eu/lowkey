@@ -76,7 +76,8 @@ val settingsIndex: List<SettingEntry> = listOfNotNull(
     row("Recent screenshots", Destination.SETTINGS_CLIPBOARD, "screenshot", "photos", "images", "clipboard", "photo access"),
     row("Magnifier position", Destination.SETTINGS_CLIPBOARD, "loupe", "zoom", "image editor", "draw", "markup"),
     // Voice
-    page("Voice typing", Destination.MODELS, "speech model", "whisper", "download model", "speech recognition", "voice", "microphone", "mic"),
+    page("Voice typing", Destination.MODELS, "speech recognition", "voice", "microphone", "mic"),
+    page("Speech models", Destination.SPEECH_MODELS, "speech model", "whisper", "download model", "delete model", "change model", "offline"),
     page("Dictation", Destination.SETTINGS_VOICE, "dictation settings", "voice settings", "speech", "microphone"),
     row("Dictate from the keys", Destination.SETTINGS_VOICE, "keyboard-first", "mic", "microphone", "voice mode"),
     row("Start recording right away", Destination.SETTINGS_VOICE, "auto-start", "autostart", "listen", "voice mode"),
@@ -85,7 +86,7 @@ val settingsIndex: List<SettingEntry> = listOfNotNull(
     row("Show words as you speak", Destination.SETTINGS_VOICE, "live text", "preview", "provisional", "underline"),
     row("Stop after silence", Destination.SETTINGS_VOICE, "auto stop", "silence", "timeout", "pause"),
     row("Voice language", Destination.SETTINGS_VOICE, "speech language", "dictation language", "same as keyboard"),
-    page("Storage & performance", Destination.SETTINGS_STORAGE, "space", "free space", "disk", "speech models"),
+    page("Storage & performance", Destination.SETTINGS_STORAGE, "space", "free space", "disk"),
     row("Keep model loaded", Destination.SETTINGS_STORAGE, "memory", "ram", "unload", "model memory", "speed", "faster"),
     // Dictionary
     page("My words", Destination.DICTIONARY, "dictionary", "personal dictionary", "custom words", "names", "add word"),
