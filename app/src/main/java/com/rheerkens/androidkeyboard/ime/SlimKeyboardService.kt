@@ -246,6 +246,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                     val paint = android.graphics.Paint()
                     EmojiCatalog.parse(assets.open("emoji/emoji-test.txt").bufferedReader().use { it.readText() })
                         .supported(paint::hasGlyph)
+                        .also { it.nameIndex } // Index emoji names here, not on the first keystroke.
                 }.getOrElse { EmojiCatalog(emptyList()) }
             }
             if (inputViewActive && mode.value == InputMode.KEYS) refreshStrip()
