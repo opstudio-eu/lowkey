@@ -37,8 +37,7 @@ private val categoryIcons = mapOf(
     "Objects" to "💡", "Symbols" to "🔣", "Flags" to "🏳️", RECENT to "◷",
 )
 
-/** Emoji cells share the grid's height in whole rows, but are not smaller than this. */
-private val MIN_EMOJI_CELL = 36.dp
+private val EMOJI_CELL = 44.dp
 private val EMOJI_HEADER = 48.dp
 private val SECTION_HEADER = 24.dp
 
@@ -61,7 +60,8 @@ private data class EmojiSection(val name: String, val items: List<EmojiItem>, va
 /**
  * Uses the active keyboard's frame; no separate popup can escape a narrow or floating panel.
  * All emoji scroll in one grid, Recent first; a category icon jumps to its section. A keyboard key
- * sits exactly where the key that opened emoji was, so the same spot leads back to letters.
+ * sits exactly where the key that opened emoji was, so the same spot leads back to letters. The
+ * grid runs on behind the rest of that row, so the key costs no emoji rows.
  */
 @Composable
 internal fun EmojiPanel(catalog: EmojiCatalog?, recent: List<String>, height: Dp, peek: PeekRow, actions: KeyboardActions) {
@@ -116,22 +116,22 @@ internal fun EmojiPanel(catalog: EmojiCatalog?, recent: List<String>, height: Dp
                 Icon(SlimIcons.Backspace, null, tint = c.keyText, modifier = Modifier.align(Alignment.Center).size(22.dp))
             }
         }
-        BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
-            val rows = (maxHeight / MIN_EMOJI_CELL).toInt().coerceAtLeast(1)
-            val cell = maxHeight / rows
+        Box(Modifier.fillMaxWidth().weight(1f)) {
+            // The last row can scroll up clear of the keyboard key.
+            val padding = PaddingValues(start = 4.dp, end = 4.dp, bottom = peek.rowHeight + 4.dp)
             val shown = variants
             if (catalog == null || sections.isEmpty()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(Modifier.fillMaxSize().padding(bottom = peek.rowHeight), contentAlignment = Alignment.Center) {
                     Text(if (catalog == null) "Loading emoji…" else "No emoji available", color = c.muted, fontSize = 13.sp)
                 }
             } else if (shown != null) {
-                LazyVerticalGrid(columns = GridCells.Adaptive(48.dp), modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp)) {
+                LazyVerticalGrid(columns = GridCells.Adaptive(48.dp), modifier = Modifier.fillMaxSize(), contentPadding = padding) {
                     items(shown.variants.mapNotNull { catalog.find(it.value) }, key = { it.value }) { item ->
-                        EmojiCell(item, cell, hasVariants = false, actions, onChosen = { variants = null }, onVariants = {})
+                        EmojiCell(item, hasVariants = false, actions, onChosen = { variants = null }, onVariants = {})
                     }
                 }
             } else {
-                LazyVerticalGrid(columns = GridCells.Adaptive(48.dp), state = grid, modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp)) {
+                LazyVerticalGrid(columns = GridCells.Adaptive(48.dp), state = grid, modifier = Modifier.fillMaxSize(), contentPadding = padding) {
                     sections.forEach { section ->
                         item(key = "header/${section.name}", span = { GridItemSpan(maxLineSpan) }, contentType = "header") {
                             Text(section.name, color = c.muted, fontSize = 12.sp, maxLines = 1,
@@ -140,43 +140,43 @@ internal fun EmojiPanel(catalog: EmojiCatalog?, recent: List<String>, height: Dp
                         }
                         // Recent repeats emoji from other sections, so keys carry the section too.
                         items(section.items, key = { "${section.name}/${it.value}" }, contentType = { "emoji" }) { item ->
-                            EmojiCell(item, cell, hasVariants = item.variants.size > 1, actions, onChosen = {}, onVariants = { variants = item })
+                            EmojiCell(item, hasVariants = item.variants.size > 1, actions, onChosen = {}, onVariants = { variants = item })
                         }
                     }
                 }
             }
+            ReturnRow(peek, actions::onCloseEmoji, Modifier.align(Alignment.BottomCenter))
         }
-        ReturnRow(peek, actions::onCloseEmoji)
     }
 }
 
 @Composable
-private fun EmojiCell(item: EmojiItem, height: Dp, hasVariants: Boolean, actions: KeyboardActions,
+private fun EmojiCell(item: EmojiItem, hasVariants: Boolean, actions: KeyboardActions,
                       onChosen: () -> Unit, onVariants: () -> Unit) {
     val c = LocalKeyboardColors.current
     PressTarget(item.name + if (hasVariants) ". Hold for skin tones" else "",
-        Modifier.fillMaxWidth().height(height), gestureKey = item.value,
+        Modifier.fillMaxWidth().height(EMOJI_CELL), gestureKey = item.value,
         onDown = actions::onKeyDown,
         onTap = { actions.onChooseEmoji(item.value); onChosen() },
         onLongPress = if (hasVariants) onVariants else null) { pressed ->
         Box(Modifier.fillMaxSize().padding(2.dp)
             .background(if (pressed) c.keyPressed else c.key, RoundedCornerShape(8.dp)),
             contentAlignment = Alignment.Center) {
-            Text(item.value, fontSize = if (height < 44.dp) 24.sp else 27.sp, maxLines = 1, overflow = TextOverflow.Clip)
+            Text(item.value, fontSize = 26.sp, maxLines = 1, overflow = TextOverflow.Clip)
         }
     }
 }
 
 /**
  * The bottom row as [KeysPanel] lays it out, but empty except for one keyboard key where the key
- * that opened emoji sits, so the way back is under the same finger.
+ * that opened emoji sits, so the way back is under the same finger. The empty slots take no
+ * touches, so the emoji behind them stay tappable and scrollable.
  */
 @Composable
-private fun ReturnRow(peek: PeekRow, onClose: () -> Unit) {
+private fun ReturnRow(peek: PeekRow, onClose: () -> Unit, modifier: Modifier) {
     val c = LocalKeyboardColors.current
     val tab = emojiReturnIndex(peek.keys, peek.fromHold)
-    BoxWithConstraints(Modifier.fillMaxWidth().padding(start = 3.dp, end = 3.dp, bottom = 4.dp).height(peek.rowHeight)
-        .keyboardBarSwipe(minimized = false, onToggle = onClose)) {
+    BoxWithConstraints(modifier.fillMaxWidth().padding(start = 3.dp, end = 3.dp, bottom = 4.dp).height(peek.rowHeight)) {
         val unit = peek.splitUnits?.let { ((maxWidth - peek.splitGapDp.dp) / (2 * it)).coerceAtLeast(1.dp) }
         Row(Modifier.fillMaxSize()) {
             peek.keys.forEachIndexed { index, key ->
