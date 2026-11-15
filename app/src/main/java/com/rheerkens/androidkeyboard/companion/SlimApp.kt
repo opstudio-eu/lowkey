@@ -207,6 +207,7 @@ fun SlimApp(pendingDestination: Destination?, onDestinationConsumed: () -> Unit)
                         Destination.ABOUT -> AboutScreen(modifier)
                         Destination.LANGUAGES -> LanguagesScreen(modifier, ::navigate)
                         Destination.KEYBOARD_THEME -> KeyboardThemeScreen(modifier, onDirtyChange = { themeHasChanges = it })
+                        Destination.SPEECH_MODELS -> SpeechModelsScreen(modifier)
                     } }
                 }
             }
