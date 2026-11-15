@@ -144,11 +144,13 @@ internal fun KeyboardContent(
                     if (state.toolsOpen) {
                         KeyboardTools(state, actions)
                     } else if (state.emojiOpen) {
-                        val peek = remember(state.layout, state.keyboard, state.splitGapDp, state.emojiFromHold) {
+                        val peek = remember(state.layout, state.keyboard, state.splitGapDp, state.emojiFromHold, state.keyRows, state.rowHeightDp) {
                             val units = if (state.splitGapDp > 0f) {
                                 splitKeyUnits(splitRows(state.layout, state.keyboard.keyboard, state.keyboard.layer))
                             } else null
-                            PeekRow(state.layout.rows.last(), units, state.splitGapDp, state.emojiFromHold)
+                            // KeysPanel's row height, so the keyboard key lands on the emoji key.
+                            val rowHeight = (state.rowHeightDp * state.keyRows.toFloat() / state.layout.rows.size).dp
+                            PeekRow(state.layout.rows.last(), rowHeight, units, state.splitGapDp, state.emojiFromHold)
                         }
                         EmojiPanel(state.emojiCatalog, state.recentEmoji,
                             (state.keyRows * state.rowHeightDp + 4).dp, peek, actions)
