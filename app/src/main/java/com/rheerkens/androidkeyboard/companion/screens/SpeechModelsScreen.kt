@@ -26,6 +26,9 @@ import com.rheerkens.androidkeyboard.models.ModelCatalog
 import com.rheerkens.androidkeyboard.models.ModelInfo
 import com.rheerkens.androidkeyboard.models.ModelStoreState
 import com.rheerkens.androidkeyboard.ui.SlimIcons
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 /**
  * Every speech model in one list, grouped by language support. Each row says whether the model is
@@ -36,10 +39,16 @@ import com.rheerkens.androidkeyboard.ui.SlimIcons
 fun SpeechModelsScreen(modifier: Modifier) {
     val context = LocalContext.current
     val state by AppGraph.models.state.collectAsStateWithLifecycle()
-    // Refreshed as models are added or removed, and every 5% of a download's progress.
+    // Re-read when models are added or removed and every 5% of a download's progress. Deleted files are
+    // removed in the background, so a few later reads pick up the space they free.
     val downloadSteps = state.downloads.mapValues { (it.value * 20).toInt() }
-    val freeBytes = remember(state.installed, state.usedMb, downloadSteps, state.errors) {
-        StatFs(context.filesDir.absolutePath).availableBytes
+    val freeSpace = { StatFs(context.filesDir.absolutePath).availableBytes }
+    var freeBytes by remember { mutableLongStateOf(freeSpace()) }
+    LaunchedEffect(state.installed, state.usedMb, downloadSteps, state.errors) {
+        repeat(4) { attempt ->
+            if (attempt > 0) delay(1_000)
+            freeBytes = withContext(Dispatchers.IO) { freeSpace() }
+        }
     }
     var deleting by rememberSaveable { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
