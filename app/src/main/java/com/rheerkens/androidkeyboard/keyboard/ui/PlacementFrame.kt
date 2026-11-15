@@ -64,7 +64,7 @@ fun KeyboardRoot(state: KeyboardUiState, clock: () -> Long, actions: KeyboardAct
     val displayed = state.copy(rowHeightDp = frame.rowHeight.roundToInt(), minimized = minimized,
         toolsOpen = menu, toolsReturnToMinimized = state.minimized,
         placement = placement, splitGapDp = frame.splitGap, contentWidthDp = frame.width,
-        belowPanelDp = if (floating) (if (floatingHandle) 24f else 0f) else (height - frame.top - frame.height + nav).coerceAtLeast(0f))
+        belowPanelDp = if (floatingHandle) 24f else 0f)
 
     fun save(value: KeyboardPlacement) { actions.onSavePlacement(state.profile, value); draft = null }
     val routed = object : KeyboardActions by actions {

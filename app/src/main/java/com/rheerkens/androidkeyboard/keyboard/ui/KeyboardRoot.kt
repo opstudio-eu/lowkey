@@ -78,8 +78,8 @@ data class KeyboardUiState(
     val numberRow: Boolean = false,
     val emojiOpen: Boolean = false,
     /**
-     * Keyboard background below this panel, in dp: the navigation bar when docked, or the drag
-     * handle when floating. The emoji panel's corner tab reaches down through it to the edge.
+     * Keyboard below this panel, in dp: the drag handle of a floating keyboard. The emoji panel's
+     * corner tab reaches down over it to the keyboard's edge.
      */
     val belowPanelDp: Float = 0f,
     val emojiCatalog: com.rheerkens.androidkeyboard.keyboard.EmojiCatalog? = null,

@@ -134,8 +134,8 @@ internal fun EmojiPanel(catalog: EmojiCatalog?, recent: List<String>, height: Dp
                     }
                 }
             }
-            // Unbounded, so a tall reach below a raised keyboard never squeezes the label: the tab
-            // keeps its full height above the panel's bottom edge and hangs down from there.
+            // Unbounded, so the reach over a floating keyboard's handle never squeezes the label:
+            // the tab keeps its full height above the panel's bottom edge and hangs down from there.
             LettersTab(below, actions::onCloseEmoji, Modifier.align(Alignment.BottomStart).offset(y = below)
                 .wrapContentHeight(Alignment.Bottom, unbounded = true).height(tabHeight + below))
         }
@@ -164,7 +164,7 @@ private val lettersTabShape = RoundedCornerShape(topEnd = 12.dp)
 /**
  * The way back to letters: a tab joined to the keyboard's left and bottom edges, its label level
  * with the bottom key row, at least as wide as that row's ?123 key and wider when large text needs
- * it. It reaches down through [below], so it meets the edge under a docked or floating keyboard.
+ * it. On a floating keyboard it reaches down over the drag handle ([below]) to the edge.
  * Only the tab takes touches; emoji beside it stay usable.
  */
 @Composable
