@@ -28,7 +28,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rheerkens.androidkeyboard.keyboard.KeyboardLayout
 import com.rheerkens.androidkeyboard.keyboard.KeyboardState
-import com.rheerkens.androidkeyboard.keyboard.splitRows
 import com.rheerkens.androidkeyboard.keyboard.KEYBOARD_GRIP_SPACE_DP
 import com.rheerkens.androidkeyboard.models.ModelStoreState
 import com.rheerkens.androidkeyboard.settings.InputMode
@@ -78,8 +77,6 @@ data class KeyboardUiState(
     val contentWidthDp: Float = 360f,
     val numberRow: Boolean = false,
     val emojiOpen: Boolean = false,
-    /** The open emoji panel came from holding a key (the comma) rather than the emoji key. */
-    val emojiFromHold: Boolean = false,
     val emojiCatalog: com.rheerkens.androidkeyboard.keyboard.EmojiCatalog? = null,
     val recentEmoji: List<String> = emptyList(),
     /** The enabled, installed keyboards in globe order, offered by holding the emoji key. */
@@ -144,16 +141,10 @@ internal fun KeyboardContent(
                     if (state.toolsOpen) {
                         KeyboardTools(state, actions)
                     } else if (state.emojiOpen) {
-                        val peek = remember(state.layout, state.keyboard, state.splitGapDp, state.emojiFromHold, state.keyRows, state.rowHeightDp) {
-                            val units = if (state.splitGapDp > 0f) {
-                                splitKeyUnits(splitRows(state.layout, state.keyboard.keyboard, state.keyboard.layer))
-                            } else null
-                            // KeysPanel's row height, so the keyboard key lands on the emoji key.
-                            val rowHeight = (state.rowHeightDp * state.keyRows.toFloat() / state.layout.rows.size).dp
-                            PeekRow(state.layout.rows.last(), rowHeight, units, state.splitGapDp, state.emojiFromHold)
-                        }
+                        // One key row as KeysPanel lays it out, so the corner tab is as tall as the bottom row.
+                        val rowHeight = (state.rowHeightDp * state.keyRows.toFloat() / state.layout.rows.size).dp
                         EmojiPanel(state.emojiCatalog, state.recentEmoji,
-                            (state.keyRows * state.rowHeightDp + 4).dp, peek, actions)
+                            (state.keyRows * state.rowHeightDp + 4).dp, rowHeight, actions)
                     } else {
                         KeysPanel(state.layout, state.keyboard, state.rowHeightDp, state.enterKind, actions, state.splitGapDp, state.keyRows,
                             state.keyboards, languageMenu)

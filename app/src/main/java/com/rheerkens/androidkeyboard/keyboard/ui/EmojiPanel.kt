@@ -16,17 +16,17 @@ import androidx.compose.material3.Icon
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rheerkens.androidkeyboard.keyboard.EmojiCatalog
 import com.rheerkens.androidkeyboard.keyboard.EmojiItem
-import com.rheerkens.androidkeyboard.keyboard.Key
-import com.rheerkens.androidkeyboard.keyboard.emojiReturnIndex
 import com.rheerkens.androidkeyboard.ui.SlimIcons
 import kotlinx.coroutines.launch
 
@@ -41,30 +41,17 @@ private val EMOJI_CELL = 44.dp
 private val EMOJI_HEADER = 48.dp
 private val SECTION_HEADER = 24.dp
 
-/**
- * The bottom key row the emoji panel replaces: its keys, the height of one row, and when the
- * keyboard is split, the key-weight units of one half ([splitUnits]) and the gap between the halves.
- */
-internal data class PeekRow(
-    val keys: List<Key>,
-    val rowHeight: Dp,
-    val splitUnits: Float? = null,
-    val splitGapDp: Float = 0f,
-    /** Emoji were opened by holding a key (the comma), so the way back sits there. */
-    val fromHold: Boolean = false,
-)
-
 /** One category in the emoji list, and where its header sits among the grid's items. */
 private data class EmojiSection(val name: String, val items: List<EmojiItem>, val start: Int)
 
 /**
  * Uses the active keyboard's frame; no separate popup can escape a narrow or floating panel.
- * All emoji scroll in one grid, Recent first; a category icon jumps to its section. A keyboard key
- * sits exactly where the key that opened emoji was, so the same spot leads back to letters. The
- * grid runs on behind the rest of that row, so the key costs no emoji rows.
+ * All emoji scroll in one grid, Recent first; a category icon jumps to its section. A tab joined to
+ * the panel's bottom-left corner leads back to letters, wherever the keyboard is placed. The grid
+ * runs on behind it, so the tab costs no emoji rows. [rowHeight] is one key row's height.
  */
 @Composable
-internal fun EmojiPanel(catalog: EmojiCatalog?, recent: List<String>, height: Dp, peek: PeekRow, actions: KeyboardActions) {
+internal fun EmojiPanel(catalog: EmojiCatalog?, recent: List<String>, height: Dp, rowHeight: Dp, actions: KeyboardActions) {
     val c = LocalKeyboardColors.current
     var variants by remember(catalog) { mutableStateOf<EmojiItem?>(null) }
     val sections = remember(catalog, recent) {
@@ -117,11 +104,12 @@ internal fun EmojiPanel(catalog: EmojiCatalog?, recent: List<String>, height: Dp
             }
         }
         Box(Modifier.fillMaxWidth().weight(1f)) {
-            // The last row can scroll up clear of the keyboard key.
-            val padding = PaddingValues(start = 4.dp, end = 4.dp, bottom = peek.rowHeight + 4.dp)
+            // The last row can scroll up clear of the corner tab.
+            val tabHeight = rowHeight + 4.dp
+            val padding = PaddingValues(start = 4.dp, end = 4.dp, bottom = tabHeight)
             val shown = variants
             if (catalog == null || sections.isEmpty()) {
-                Box(Modifier.fillMaxSize().padding(bottom = peek.rowHeight), contentAlignment = Alignment.Center) {
+                Box(Modifier.fillMaxSize().padding(bottom = tabHeight), contentAlignment = Alignment.Center) {
                     Text(if (catalog == null) "Loading emoji…" else "No emoji available", color = c.muted, fontSize = 13.sp)
                 }
             } else if (shown != null) {
@@ -145,7 +133,7 @@ internal fun EmojiPanel(catalog: EmojiCatalog?, recent: List<String>, height: Dp
                     }
                 }
             }
-            ReturnRow(peek, actions::onCloseEmoji, Modifier.align(Alignment.BottomCenter))
+            LettersTab(actions::onCloseEmoji, Modifier.align(Alignment.BottomStart).height(tabHeight))
         }
     }
 }
@@ -167,35 +155,21 @@ private fun EmojiCell(item: EmojiItem, hasVariants: Boolean, actions: KeyboardAc
     }
 }
 
+private val lettersTabShape = RoundedCornerShape(topEnd = 12.dp)
+
 /**
- * The bottom row as [KeysPanel] lays it out, but empty except for one keyboard key where the key
- * that opened emoji sits, so the way back is under the same finger. The empty slots take no
- * touches, so the emoji behind them stay tappable and scrollable.
+ * The way back to letters: a tab joined to the panel's left and bottom edges, as tall as the bottom
+ * key row and about as wide as its ?123 key. Only the tab takes touches; emoji beside it stay usable.
  */
 @Composable
-private fun ReturnRow(peek: PeekRow, onClose: () -> Unit, modifier: Modifier) {
+private fun LettersTab(onClose: () -> Unit, modifier: Modifier) {
     val c = LocalKeyboardColors.current
-    val tab = emojiReturnIndex(peek.keys, peek.fromHold)
-    BoxWithConstraints(modifier.fillMaxWidth().padding(start = 3.dp, end = 3.dp, bottom = 4.dp).height(peek.rowHeight)) {
-        val unit = peek.splitUnits?.let { ((maxWidth - peek.splitGapDp.dp) / (2 * it)).coerceAtLeast(1.dp) }
-        Row(Modifier.fillMaxSize()) {
-            peek.keys.forEachIndexed { index, key ->
-                // The same widths as the full-width bottom row in KeysPanel, split or not.
-                val width = when {
-                    unit == null -> Modifier.weight(key.weight)
-                    key is Key.Space -> Modifier.weight(1f)
-                    else -> Modifier.width(unit * key.weight)
-                }
-                if (index == tab) {
-                    PressTarget("Back to letters", width.fillMaxHeight(), onTap = onClose) { pressed ->
-                        KeyCap(if (pressed) c.keyPressed else c.keyOn) {
-                            Icon(SlimIcons.Keyboard, null, tint = c.keyText, modifier = Modifier.size(21.dp))
-                        }
-                    }
-                } else {
-                    Spacer(width)
-                }
-            }
+    PressTarget("Back to letters", modifier.width(68.dp).shadow(2.dp, lettersTabShape, clip = false), onTap = onClose) { pressed ->
+        Row(Modifier.fillMaxSize().background(if (pressed) c.keyPressed else c.keyOn, lettersTabShape),
+            horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+            Icon(SlimIcons.Keyboard, null, tint = c.keyText, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(4.dp))
+            Text("ABC", color = c.keyText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
         }
     }
 }
