@@ -146,10 +146,8 @@ internal fun KeyboardContent(
                     if (state.toolsOpen) {
                         KeyboardTools(state, actions)
                     } else if (state.emojiOpen) {
-                        // One key row as KeysPanel lays it out, so the corner tab is as tall as the bottom row.
-                        val rowHeight = (state.rowHeightDp * state.keyRows.toFloat() / state.layout.rows.size).dp
                         EmojiPanel(state.emojiCatalog, state.recentEmoji,
-                            (state.keyRows * state.rowHeightDp + 4).dp, rowHeight, state.belowPanelDp.dp, actions)
+                            (state.keyRows * state.rowHeightDp + 4).dp, state.belowPanelDp.dp, actions)
                     } else {
                         KeysPanel(state.layout, state.keyboard, state.rowHeightDp, state.enterKind, actions, state.splitGapDp, state.keyRows,
                             state.keyboards, languageMenu)

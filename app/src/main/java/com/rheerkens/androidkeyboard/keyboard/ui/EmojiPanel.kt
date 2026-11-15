@@ -48,11 +48,11 @@ private data class EmojiSection(val name: String, val items: List<EmojiItem>, va
  * Uses the active keyboard's frame; no separate popup can escape a narrow or floating panel.
  * All emoji scroll in one grid, Recent first; a category icon jumps to its section. A tab joined to
  * the panel's bottom-left corner leads back to letters, wherever the keyboard is placed. The grid
- * runs on behind it, so the tab costs no emoji rows. [rowHeight] is one key row's height, and
- * [below] the keyboard background under the panel that the tab reaches down through.
+ * runs on behind it, so the tab costs no emoji rows. [below] is the keyboard under the panel that
+ * the tab reaches down over (a floating keyboard's drag handle).
  */
 @Composable
-internal fun EmojiPanel(catalog: EmojiCatalog?, recent: List<String>, height: Dp, rowHeight: Dp, below: Dp, actions: KeyboardActions) {
+internal fun EmojiPanel(catalog: EmojiCatalog?, recent: List<String>, height: Dp, below: Dp, actions: KeyboardActions) {
     val c = LocalKeyboardColors.current
     var variants by remember(catalog) { mutableStateOf<EmojiItem?>(null) }
     val sections = remember(catalog, recent) {
@@ -106,7 +106,7 @@ internal fun EmojiPanel(catalog: EmojiCatalog?, recent: List<String>, height: Dp
         }
         Box(Modifier.fillMaxWidth().weight(1f)) {
             // The last row can scroll up clear of the corner tab.
-            val tabHeight = rowHeight + 4.dp
+            val tabHeight = LETTERS_TAB_HEIGHT
             val padding = PaddingValues(start = 4.dp, end = 4.dp, bottom = tabHeight)
             val shown = variants
             if (catalog == null || sections.isEmpty()) {
@@ -159,24 +159,25 @@ private fun EmojiCell(item: EmojiItem, hasVariants: Boolean, actions: KeyboardAc
     }
 }
 
-private val lettersTabShape = RoundedCornerShape(topEnd = 12.dp)
+private val LETTERS_TAB_HEIGHT = 32.dp
+private val lettersTabShape = RoundedCornerShape(topEnd = 10.dp)
 
 /**
- * The way back to letters: a tab joined to the keyboard's left and bottom edges, its label level
- * with the bottom key row, at least as wide as that row's ?123 key and wider when large text needs
- * it. On a floating keyboard it reaches down over the drag handle ([below]) to the edge.
+ * The way back to letters: a small tab joined to the keyboard's left and bottom edges, wider when
+ * large text needs it. On a floating keyboard it reaches down over the drag handle ([below]) to
+ * the edge.
  * Only the tab takes touches; emoji beside it stay usable.
  */
 @Composable
 private fun LettersTab(below: Dp, onClose: () -> Unit, modifier: Modifier) {
     val c = LocalKeyboardColors.current
     PressTarget("Back to letters", modifier.shadow(2.dp, lettersTabShape, clip = false), onTap = onClose) { pressed ->
-        Row(Modifier.fillMaxHeight().widthIn(min = 68.dp).background(if (pressed) c.keyPressed else c.keyOn, lettersTabShape)
-            .padding(start = 10.dp, end = 10.dp, bottom = below),
+        Row(Modifier.fillMaxHeight().widthIn(min = 56.dp).background(if (pressed) c.keyPressed else c.keyOn, lettersTabShape)
+            .padding(start = 8.dp, end = 8.dp, bottom = below),
             horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-            Icon(SlimIcons.Keyboard, null, tint = c.keyText, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(4.dp))
-            Text("ABC", color = c.keyText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Icon(SlimIcons.Keyboard, null, tint = c.keyText, modifier = Modifier.size(15.dp))
+            Spacer(Modifier.width(3.dp))
+            Text("ABC", color = c.keyText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
         }
     }
 }
