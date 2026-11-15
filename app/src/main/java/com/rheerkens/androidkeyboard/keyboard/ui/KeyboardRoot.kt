@@ -77,6 +77,11 @@ data class KeyboardUiState(
     val contentWidthDp: Float = 360f,
     val numberRow: Boolean = false,
     val emojiOpen: Boolean = false,
+    /**
+     * Keyboard background below this panel, in dp: the navigation bar when docked, or the drag
+     * handle when floating. The emoji panel's corner tab reaches down through it to the edge.
+     */
+    val belowPanelDp: Float = 0f,
     val emojiCatalog: com.rheerkens.androidkeyboard.keyboard.EmojiCatalog? = null,
     val recentEmoji: List<String> = emptyList(),
     /** The enabled, installed keyboards in globe order, offered by holding the emoji key. */
@@ -144,7 +149,7 @@ internal fun KeyboardContent(
                         // One key row as KeysPanel lays it out, so the corner tab is as tall as the bottom row.
                         val rowHeight = (state.rowHeightDp * state.keyRows.toFloat() / state.layout.rows.size).dp
                         EmojiPanel(state.emojiCatalog, state.recentEmoji,
-                            (state.keyRows * state.rowHeightDp + 4).dp, rowHeight, actions)
+                            (state.keyRows * state.rowHeightDp + 4).dp, rowHeight, state.belowPanelDp.dp, actions)
                     } else {
                         KeysPanel(state.layout, state.keyboard, state.rowHeightDp, state.enterKind, actions, state.splitGapDp, state.keyRows,
                             state.keyboards, languageMenu)
