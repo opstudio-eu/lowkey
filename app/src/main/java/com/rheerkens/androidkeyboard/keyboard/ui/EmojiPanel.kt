@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -93,7 +94,7 @@ internal fun EmojiPanel(catalog: EmojiCatalog?, recent: List<String>, height: Dp
                             Box(Modifier.fillMaxSize().padding(3.dp)
                                 .background(if (pressed || selected) c.keyPressed else Color.Transparent, RoundedCornerShape(8.dp)),
                                 contentAlignment = Alignment.Center) {
-                                Text(categoryIcons[section.name] ?: section.name.take(1), fontSize = 24.sp, color = c.keyText)
+                                Text(categoryIcons[section.name] ?: section.name.take(1), fontSize = emojiSize(24.dp), color = c.keyText)
                             }
                         }
                     }
@@ -105,12 +106,13 @@ internal fun EmojiPanel(catalog: EmojiCatalog?, recent: List<String>, height: Dp
             }
         }
         Box(Modifier.fillMaxWidth().weight(1f)) {
-            // The last row can scroll up clear of the corner tab.
-            val tabHeight = LETTERS_TAB_HEIGHT
-            val padding = PaddingValues(start = 4.dp, end = 4.dp, bottom = tabHeight)
+            // The tab's touch area is at least 48 dp tall; what of it lies above the panel's bottom
+            // edge is kept clear, so the last row scrolls fully above the tab and its touch area.
+            val touchHeight = maxOf(MIN_TOUCH, LETTERS_TAB_HEIGHT + below)
+            val padding = PaddingValues(start = 4.dp, end = 4.dp, bottom = touchHeight - below)
             val shown = variants
             if (catalog == null || sections.isEmpty()) {
-                Box(Modifier.fillMaxSize().padding(bottom = tabHeight), contentAlignment = Alignment.Center) {
+                Box(Modifier.fillMaxSize().padding(bottom = touchHeight - below), contentAlignment = Alignment.Center) {
                     Text(if (catalog == null) "Loading emoji…" else "No emoji available", color = c.muted, fontSize = 13.sp)
                 }
             } else if (shown != null) {
@@ -124,7 +126,7 @@ internal fun EmojiPanel(catalog: EmojiCatalog?, recent: List<String>, height: Dp
                     sections.forEach { section ->
                         item(key = "header/${section.name}", span = { GridItemSpan(maxLineSpan) }, contentType = "header") {
                             Text(section.name, color = c.muted, fontSize = 12.sp, maxLines = 1,
-                                modifier = Modifier.fillMaxWidth().height(SECTION_HEADER).wrapContentHeight(Alignment.Bottom)
+                                modifier = Modifier.fillMaxWidth().heightIn(min = SECTION_HEADER).wrapContentHeight(Alignment.Bottom)
                                     .padding(start = 6.dp, bottom = 4.dp))
                         }
                         // Recent repeats emoji from other sections, so keys carry the section too.
@@ -137,7 +139,7 @@ internal fun EmojiPanel(catalog: EmojiCatalog?, recent: List<String>, height: Dp
             // Unbounded, so the reach over a floating keyboard's handle never squeezes the label:
             // the tab keeps its full height above the panel's bottom edge and hangs down from there.
             LettersTab(below, actions::onCloseEmoji, Modifier.align(Alignment.BottomStart).offset(y = below)
-                .wrapContentHeight(Alignment.Bottom, unbounded = true).height(tabHeight + below))
+                .wrapContentHeight(Alignment.Bottom, unbounded = true).height(touchHeight))
         }
     }
 }
@@ -154,30 +156,40 @@ private fun EmojiCell(item: EmojiItem, hasVariants: Boolean, actions: KeyboardAc
         Box(Modifier.fillMaxSize().padding(2.dp)
             .background(if (pressed) c.keyPressed else c.key, RoundedCornerShape(8.dp)),
             contentAlignment = Alignment.Center) {
-            Text(item.value, fontSize = 26.sp, maxLines = 1, overflow = TextOverflow.Clip)
+            Text(item.value, fontSize = emojiSize(26.dp), maxLines = 1, overflow = TextOverflow.Clip)
         }
     }
 }
 
+/** Emoji are pictures in fixed cells: they follow screen density, not the system text size. */
+@Composable
+private fun emojiSize(size: Dp) = with(LocalDensity.current) { size.toSp() }
+
 private val LETTERS_TAB_HEIGHT = 32.dp
+private val MIN_TOUCH = 48.dp
 private val lettersTabShape = RoundedCornerShape(topEnd = 10.dp)
 
 /**
- * The way back to letters: a small tab joined to the keyboard's left and bottom edges, wider when
- * large text needs it. On a floating keyboard it reaches down over the drag handle ([below]) to
- * the edge.
- * Only the tab takes touches; emoji beside it stay usable.
+ * The way back to letters: a small tab joined to the keyboard's left and bottom edges, a little
+ * wider when large text needs it. On a floating keyboard it reaches down over the drag handle ([below]) to
+ * the edge. Its touch area, the height [modifier] gives it, may reach a little above the visible
+ * tab so it is at least 48 dp tall. Only that area takes touches; emoji beside it stay usable.
  */
 @Composable
 private fun LettersTab(below: Dp, onClose: () -> Unit, modifier: Modifier) {
     val c = LocalKeyboardColors.current
-    PressTarget("Back to letters", modifier.shadow(2.dp, lettersTabShape, clip = false), onTap = onClose) { pressed ->
-        Row(Modifier.fillMaxHeight().widthIn(min = 56.dp).background(if (pressed) c.keyPressed else c.keyOn, lettersTabShape)
+    PressTarget("Back to letters", modifier, onTap = onClose) { pressed ->
+        Row(Modifier.align(Alignment.BottomStart).height(LETTERS_TAB_HEIGHT + below).widthIn(min = 56.dp)
+            .shadow(2.dp, lettersTabShape, clip = false)
+            .background(if (pressed) c.keyPressed else c.keyOn, lettersTabShape)
             .padding(start = 8.dp, end = 8.dp, bottom = below),
             horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
             Icon(SlimIcons.Keyboard, null, tint = c.keyText, modifier = Modifier.size(15.dp))
             Spacer(Modifier.width(3.dp))
-            Text("ABC", color = c.keyText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            // The label follows the system text size up to 1.3x, so it always fits the small tab.
+            val scale = LocalDensity.current.fontScale
+            Text("ABC", color = c.keyText, fontSize = (12f * minOf(scale, 1.3f) / scale).sp,
+                fontWeight = FontWeight.SemiBold, maxLines = 1)
         }
     }
 }
