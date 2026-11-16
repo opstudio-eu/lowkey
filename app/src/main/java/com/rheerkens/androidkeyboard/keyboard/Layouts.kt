@@ -42,6 +42,29 @@ enum class Layer { LETTERS, SYMBOLS, SYMBOLS_2 }
 /** Four rows of keys. */
 data class KeyboardLayout(val rows: List<List<Key>>)
 
+/** A key as drawn, plus the empty space [before] and [after] it that its touch area also covers. */
+data class TouchKey(val key: Key, val before: Float = 0f, val after: Float = 0f) {
+    /** Share of the row width the touch area takes. */
+    val weight: Float get() = key.weight + before + after
+}
+
+/**
+ * [row] as touch areas: a gap that centres a short row belongs to the letter beside it, so that a
+ * tap left of A or right of L on QWERTY still types that letter. A gap goes to the letter after
+ * it, or else to the one before it; the row keeps its width.
+ */
+fun touchRow(row: List<Key>): List<TouchKey> {
+    val out = ArrayList<TouchKey>(row.size)
+    var ahead = 0f
+    for ((i, key) in row.withIndex()) when {
+        key is Key.Gap && row.getOrNull(i + 1) is Key.Char -> ahead += key.weight
+        key is Key.Gap && out.lastOrNull()?.key is Key.Char -> out[out.lastIndex] = out.last().let { it.copy(after = it.after + key.weight) }
+        key is Key.Char -> { out += TouchKey(key, before = ahead); ahead = 0f }
+        else -> out += TouchKey(key)
+    }
+    return out
+}
+
 object Layouts {
     private fun chars(s: String): List<Key> = s.split(' ').filter { it.isNotEmpty() }.map { Key.Char(it) }
 

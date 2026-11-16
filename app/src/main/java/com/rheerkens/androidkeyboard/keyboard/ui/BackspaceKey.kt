@@ -134,8 +134,11 @@ fun BackspaceKey(
     sliderInPopup: Boolean = false,
     fan: FanSpec? = null,
     onSwipeDown: (() -> Unit)? = null,
+    /** Runs when a finger touches the key, before it deletes anything. */
+    onPress: () -> Unit = {},
 ) {
     val latest by rememberUpdatedState(actions)
+    val latestPress by rememberUpdatedState(onPress)
     val latestFan by rememberUpdatedState(fan)
     val latestSwipeDown by rememberUpdatedState(onSwipeDown)
     val c = LocalKeyboardColors.current
@@ -222,6 +225,7 @@ fun BackspaceKey(
                     }
                     pressed = true
                     fingerY = down.position.y
+                    latestPress()
                     latest.onKeyDown()
                     latest.onBackspaceHoldStarted()
                     // A tap deletes one character on release. Holding shows the slider (or the fan)

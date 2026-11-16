@@ -43,7 +43,9 @@ private class KeyTouch(var active: Boolean = true, var long: Boolean = false, va
  * repeats after a short delay until release (backspace). With [onLongPressMove], a finger that
  * has long-pressed keeps its press while it slides off the key and reports each position.
  * With [rollover], touching the next typing key accepts a pending tap before its hold timer;
- * hold until the popup opens first when combining an accent gesture with another finger.
+ * hold until the popup opens first when combining an accent gesture with another finger. A
+ * rollover key also keeps its tap when the finger slides off it before lifting; other keys
+ * cancel then.
  */
 @Composable
 fun PressTarget(
@@ -139,10 +141,20 @@ fun PressTarget(
                                     val tracking = touch.long && touch.active && !change.isConsumed && longMove != null
                                     if (tracking) {
                                         longMove?.invoke(change.position)
-                                    } else if (change.isConsumed || !inside(change.position.x, change.position.y, viewConfiguration.touchSlop)) {
+                                    } else if (change.isConsumed) {
                                         touch.active = false
                                         rollover?.cancel(touch)
                                         touch.job?.cancel()
+                                    } else if (touch.active && !inside(change.position.x, change.position.y, viewConfiguration.touchSlop)) {
+                                        if (rollover != null && !touch.long) {
+                                            // A typing key keeps its tap when a fast thumb slides off it. Its
+                                            // hold popup needs the finger on the key, so that no longer opens.
+                                            touch.job?.cancel()
+                                        } else {
+                                            touch.active = false
+                                            rollover?.cancel(touch)
+                                            touch.job?.cancel()
+                                        }
                                     }
                                     if (!change.pressed) {
                                         touches.remove(change.id)
