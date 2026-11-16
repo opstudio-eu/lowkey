@@ -30,6 +30,8 @@ public final class ClipboardFixtureActivity extends Activity {
     private TextView status;
     private ImageView preview;
     private boolean images;
+    /** Which editor is configured, for the marker clip: plain, password or private. */
+    private String field = "plain";
     private boolean rejectImages;
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -72,6 +74,11 @@ public final class ClipboardFixtureActivity extends Activity {
         button(copy, "Copy text", () -> clipboard().setPrimaryClip(ClipData.newPlainText("Fixture", SAMPLE)));
         button(copy, "Copy image", () -> clipboard().setPrimaryClip(ClipData.newUri(getContentResolver(), "Fixture image", ClipboardFixtureProvider.IMAGE)));
         button(copy, "Clear clip", () -> clipboard().clearPrimaryClip());
+        LinearLayout hygiene = row(root);
+        // A probe passes a run id, so a clip left from an earlier run never counts.
+        String run = getIntent().getStringExtra("run") == null ? "" : " " + getIntent().getStringExtra("run");
+        button(hygiene, "Copy marker", () -> clipboard().setPrimaryClip(ClipData.newPlainText("Fixture", "marker from " + field + " field" + run)));
+        button(hygiene, "Copy long text", () -> clipboard().setPrimaryClip(ClipData.newPlainText("Fixture", "long fixture" + run + " " + new String(new char[30_000]).replace((char) 0, (char) 120))));
         LinearLayout fields = row(root);
         button(fields, "Plain editor", () -> configure(false, false, false));
         button(fields, "Image editor", () -> configure(true, false, false));
@@ -105,6 +112,7 @@ public final class ClipboardFixtureActivity extends Activity {
         button.setOnClickListener(view -> { action.run(); focusEditor(); });
     }
     private void configure(boolean acceptImages, boolean password, boolean privateField) {
+        field = password ? "password" : privateField ? "private" : "plain";
         images = acceptImages; rejectImages = false; editor.setText("");
         editor.setInputType(password ? InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD :
             InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);

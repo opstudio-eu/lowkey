@@ -74,6 +74,7 @@ val settingsIndex: List<SettingEntry> = listOfNotNull(
     themePart("Restore default colors", "reset colors", "standard colors"),
     // Clipboard
     page("Clipboard & images", Destination.SETTINGS_CLIPBOARD, "copy", "paste", "clips"),
+    row("Keep copied clips", Destination.SETTINGS_CLIPBOARD, "clipboard history", "expire", "forget", "clips", "privacy"),
     row("Recent screenshots", Destination.SETTINGS_CLIPBOARD, "screenshot", "photos", "images", "clipboard", "photo access"),
     row("Magnifier position", Destination.SETTINGS_CLIPBOARD, "loupe", "zoom", "image editor", "draw", "markup"),
     // Voice

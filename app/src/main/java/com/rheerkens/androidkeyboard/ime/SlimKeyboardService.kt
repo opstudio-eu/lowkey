@@ -44,6 +44,7 @@ import com.rheerkens.androidkeyboard.editor.Attachment
 import com.rheerkens.androidkeyboard.editor.ImageEditorActivity
 import com.rheerkens.androidkeyboard.editor.PendingAttachment
 import com.rheerkens.androidkeyboard.clipboard.ClipboardReader
+import com.rheerkens.androidkeyboard.clipboard.asSensitive
 import com.rheerkens.androidkeyboard.companion.CompanionLinks
 import com.rheerkens.androidkeyboard.companion.Destination
 import com.rheerkens.androidkeyboard.dictionary.DictionaryStore
@@ -165,6 +166,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     private lateinit var clipboardManager: ClipboardManager
     private lateinit var clipboardReader: ClipboardReader
     private var clipboardJob: Job? = null
+    private var clipPruneJob: Job? = null
     private var inputViewActive = false
     private lateinit var clipHistory: ClipboardHistory
     /** Clipboard history for the minimized bar, empty in sensitive fields. */
@@ -191,8 +193,14 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
     private val clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
         refreshClipboard()
-        recordClipboard()
+        recordClipboard(changed = true)
     }
+
+    /**
+     * Clips copied while a password or private field had focus, by [privateClipKey]. They stay out
+     * of the history and show without a preview, like clips an app marks sensitive.
+     */
+    private val privateClips: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
 
     /** The clip history, system clip and screenshot cut-off from before a Clear clips. */
     private class ClearedClips(val entries: List<ClipEntry>, val primary: ClipData?, val clearedAtBefore: Long)
@@ -234,8 +242,11 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         clipboardManager = getSystemService(ClipboardManager::class.java)
         clipboardReader = ClipboardReader(contentResolver)
         clipboardManager.addPrimaryClipChangedListener(clipboardListener)
-        clipHistory = ClipboardHistory(this)
-        clipHistory.entries.onEach { refreshClipChips() }.launchIn(scope)
+        clipHistory = ClipboardHistory(this, maxAgeMs = { settings.current.clipExpiry.millis })
+        clipHistory.entries.onEach {
+            scheduleClipPrune()
+            refreshClipChips()
+        }.launchIn(scope)
         screenshots = RecentScreenshots(this)
         recentShots.onEach { refreshClipChips() }.launchIn(scope)
         contentResolver.registerContentObserver(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, true, mediaObserver)
@@ -591,6 +602,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         inputViewActive = true
         emojiOpen.value = false
         sensitiveField.value = bridge.isSensitiveField
+        // Also applies a changed Keep copied clips setting.
+        scheduleClipPrune()
         refreshClipChips()
         resizeOnOpen = info.privateImeOptions?.contains("lowkey.resize") == true
         placementBounds = null
@@ -628,7 +641,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             refreshStrip()
         }
         refreshClipboard()
-        recordClipboard()
+        recordClipboard(changed = false)
         refreshScreenshots()
     }
 
@@ -1158,6 +1171,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         lastCorrection = null
         autoSpaced = false
         markOwnEdit()
+        clipHistory.markUsed(entry)
         val pasted = try {
             when (entry) {
                 is ClipEntry.Text -> bridge.pasteText(target, entry.text)
@@ -1536,9 +1550,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             !settings.current.suggestionStrip) return
         val target = bridge.captureTarget() ?: return
         clipboardJob = scope.launch {
-            val content = withContext(Dispatchers.IO) {
-                try { clipboardReader.read(clipboardManager.primaryClip) } catch (_: RuntimeException) { null }
-            }
+            val content = withContext(Dispatchers.IO) { readClip() }?.takeUnless { clipExpired(it.copiedAtMs) }
             if (!inputViewActive || !bridge.isCurrent(target) || bridge.isSensitiveField) return@launch
             strip.value = strip.value.copy(
                 clipboard = content,
@@ -1547,15 +1559,52 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         }
     }
 
-    /** Adds the current system clip to the history (also while the keyboard is hidden). */
-    private fun recordClipboard() {
-        scope.launch(Dispatchers.IO) {
-            val content = try { clipboardReader.read(clipboardManager.primaryClip) } catch (_: RuntimeException) { null }
-            if (content != null) {
-                clipHistory.record(content)
-                // Something new on the clipboard: Clear clips takes Undo clear's place again.
-                withContext(Dispatchers.Main) { forgetClear() }
+    /** A clip copied at [copiedAtMs] is older than the history keeps clips. */
+    private fun clipExpired(copiedAtMs: Long): Boolean {
+        val age = settings.current.clipExpiry.millis ?: return false
+        return copiedAtMs > 0 && copiedAtMs <= System.currentTimeMillis() - age
+    }
+
+    /** Forgets expired clips now, and again each time the next one expires. */
+    private fun scheduleClipPrune() {
+        clipPruneJob?.cancel()
+        clipPruneJob = scope.launch {
+            while (true) {
+                val next = withContext(Dispatchers.IO) { clipHistory.prune() } ?: break
+                delay((next - System.currentTimeMillis()).coerceAtLeast(0) + CLIP_PRUNE_SLACK_MS)
             }
+        }
+    }
+
+    /** The current system clip, marked sensitive if it was copied in a password or private field. Call on IO. */
+    private fun readClip(): ClipboardContent? {
+        val content = try { clipboardReader.read(clipboardManager.primaryClip) } catch (_: RuntimeException) { null }
+        return if (content != null && privateClipKey(content) in privateClips) content.asSensitive() else content
+    }
+
+    private fun privateClipKey(content: ClipboardContent) = "${content.copiedAtMs}:" + when (content) {
+        is ClipboardContent.Text -> content.text.hashCode()
+        is ClipboardContent.Image -> content.uri
+    }
+
+    /**
+     * Adds the current system clip to the history (also while the keyboard is hidden). A clip
+     * that [changed] while a password or private field has focus is remembered as private instead,
+     * so it stays out of the history when a normal field opens later.
+     */
+    private fun recordClipboard(changed: Boolean) {
+        val privateFocus = currentInputStarted && EditorBridge.isSensitive(currentInputEditorInfo)
+        if (privateFocus && !changed) return
+        scope.launch(Dispatchers.IO) {
+            val content = readClip() ?: return@launch
+            if (privateFocus) {
+                if (privateClips.size >= MAX_PRIVATE_CLIPS) privateClips.clear()
+                privateClips += privateClipKey(content)
+            } else {
+                clipHistory.record(content)
+            }
+            // Something new on the clipboard: Clear clips takes Undo clear's place again.
+            withContext(Dispatchers.Main) { forgetClear() }
         }
     }
 
@@ -1576,7 +1625,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             return
         }
         val shots = recentShots.value.filter { it.timeMs > clipsClearedAt }
-        clipChips.value = ClipboardHistory.merge(clipHistory.entries.value, shots, MAX_CLIP_CHIPS).map {
+        clipChips.value = ClipboardHistory.merge(clipHistory.current(), shots, MAX_CLIP_CHIPS).map {
             val mime = when (it) {
                 is ClipEntry.Text -> null
                 is ClipEntry.Image -> it.mimeType
@@ -1774,6 +1823,10 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         const val AIMED = -2
         const val WIDE_PX = 100_000f
         const val MAX_CLIP_CHIPS = 12
+        /** Prune a moment after a clip expires, so one pass catches it. */
+        private const val CLIP_PRUNE_SLACK_MS = 1_000L
+        /** Private clips remembered; only the current system clip matters, so a few suffice. */
+        private const val MAX_PRIVATE_CLIPS = 32
         const val PREVIEW_PX = 720
         const val OWN_EDIT_WINDOW_MS = 250L
         const val MAX_TERM_CHARS = 48

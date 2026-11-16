@@ -51,6 +51,7 @@ public final class KeyboardTouchProbe extends Instrumentation {
             ui.setServiceInfo(info);
             if (arguments.getString("probe", "burst").equals("latency")) { latency(result); return; }
             if (arguments.getString("probe", "burst").equals("clipboard")) { clipboard(result); return; }
+            if (arguments.getString("probe", "burst").equals("clip-hygiene")) { clipHygiene(result); return; }
             startActivitySync(new Intent().setClassName(getTargetContext(), "com.rheerkens.androidkeyboard.companion.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             AccessibilityNodeInfo launch = waitLabel("Try your keyboard");
             while (launch != null && !launch.performAction(AccessibilityNodeInfo.ACTION_CLICK)) launch = launch.getParent();
@@ -249,6 +250,99 @@ public final class KeyboardTouchProbe extends Instrumentation {
         screenshot("clipboard-text-preview.png");
         result.putString("stream", "probe=clipboard PASS: idle/typing transitions, live clip changes, literal text, image thumbnail, image commit with URI permission, unsupported/rejected editors, sensitive clips, password/private fields, clipboard clear\n");
         finish(0,result);
+    }
+    /**
+     * Copies a marker while a password field, a private field and a plain field have focus, plus
+     * a 30,000-character text, then reads which of them the minimized bar offers to paste.
+     */
+    private void clipHygiene(Bundle result) throws Exception {
+        startActivitySync(new Intent().setClassName(getTargetContext(),
+            "com.rheerkens.androidkeyboard.companion.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        String run = "r" + SystemClock.uptimeMillis();
+        getTargetContext().startActivity(new Intent().setClassName(
+            "com.rheerkens.androidkeyboard.test", "com.rheerkens.androidkeyboard.test.ClipboardFixtureActivity")
+            .putExtra("run", run)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
+        waitLabel("Clipboard integration fixture");
+        waitLabel("Switch to voice typing");
+        keyboardAction("Show keyboard");
+        clickLabel("Plain editor");
+        clickLabel("Clear clip");
+        clickLabel("Password editor");
+        clickLabel("Copy marker");
+        SystemClock.sleep(600);
+        clickLabel("Private editor");
+        clickLabel("Copy marker");
+        SystemClock.sleep(600);
+        clickLabel("Plain editor");
+        SystemClock.sleep(800);
+        // The private field's clip is still the system clip: the strip may offer it, without a preview.
+        boolean previewed = descriptionContains("marker from private field " + run);
+        boolean hidden = nodes().stream().anyMatch(n -> "Paste copied text".equals(String.valueOf(n.getContentDescription())));
+        screenshot("clip-strip-private.png");
+        clickLabel("Copy long text");
+        SystemClock.sleep(600);
+        clickLabel("Copy marker");
+        SystemClock.sleep(600);
+        // A plain clip is still offered with its preview (as the system clip or a history chip), and pastes.
+        AccessibilityNodeInfo plain = null;
+        for (int i = 0; i < 40 && plain == null; i++) {
+            for (AccessibilityNodeInfo n : nodes()) {
+                String d = String.valueOf(n.getContentDescription());
+                if (d.equals("Paste clipboard text: marker from plain field " + run) || d.equals("Paste copied text: marker from plain field " + run)) plain = n;
+            }
+            if (plain == null) SystemClock.sleep(100);
+        }
+        if (plain == null) throw new AssertionError("Plain clip not offered in the strip");
+        tap(bounds(plain));
+        SystemClock.sleep(500);
+        if (!editorText().equals("marker from plain field " + run)) throw new AssertionError("Plain clip paste: " + editorText());
+        setEditorText("");
+        java.util.Set<String> offered = new java.util.TreeSet<>();
+        try {
+            if (!keyboardAction("Minimize keyboard")) throw new AssertionError("No Minimize keyboard action");
+            screenshot("clip-hygiene.png");
+            for (int page = 0; page < 4; page++) {
+                AccessibilityNodeInfo scroller = null;
+                for (AccessibilityNodeInfo n : nodes()) {
+                    String d = String.valueOf(n.getContentDescription());
+                    if (d.startsWith("Paste copied text: ")) offered.add(d.substring("Paste copied text: ".length()));
+                    if (n.isScrollable() && n.getChildCount() > 0 && String.valueOf(n.getChild(0).getContentDescription()).startsWith("Paste")) scroller = n;
+                }
+                if (scroller == null || !scroller.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) break;
+                SystemClock.sleep(300);
+            }
+        } finally {
+            keyboardAction("Show keyboard");
+        }
+        StringBuilder report = new StringBuilder("probe=clip-hygiene\n");
+        report.append("private clip previewed in a plain field's strip: ").append(previewed ? "yes" : "no")
+            .append(" expected=no; offered without preview: ").append(hidden ? "yes" : "no").append('\n');
+        report.append("plain clip offered in the strip and pasted: yes\n");
+        String[][] clips = {{"marker from password field", "no"}, {"marker from private field", "no"},
+            {"long fixture", "no"}, {"marker from plain field", "yes"}};
+        boolean ok = !previewed;
+        for (String[] clip : clips) {
+            boolean kept = offered.stream().anyMatch(o -> o.startsWith(clip[0] + " " + run));
+            ok &= kept == clip[1].equals("yes");
+            report.append(clip[0].trim()).append(": offered=").append(kept ? "yes" : "no")
+                .append(" expected=").append(clip[1]).append('\n');
+        }
+        result.putString("stream", report.toString());
+        if (!ok) throw new AssertionError(report.toString());
+        finish(0, result);
+    }
+    /** Performs the keyboard's accessibility action [label], if offered. */
+    private boolean keyboardAction(String label) {
+        for (AccessibilityNodeInfo n : nodes()) {
+            for (AccessibilityNodeInfo.AccessibilityAction action : n.getActionList()) {
+                if (label.contentEquals(String.valueOf(action.getLabel())) && n.performAction(action.getId())) {
+                    SystemClock.sleep(1000);
+                    return true;
+                }
+            }
+        }
+        return false;
     }
     private void clickLabel(String label) {
         AccessibilityNodeInfo node = waitLabel(label);
