@@ -31,6 +31,21 @@ class NumberRowTest {
         }
     }
 
+    @Test fun onlyTheDedicatedNumberRowIsShaded() {
+        for (keyboard in keyboards) {
+            val shaded = Layouts.forLayer(Layer.LETTERS, keyboard, numberRow = true).rows
+            assertTrue(shaded.first().filterIsInstance<Key.Char>().all { it.numberRow })
+            assertTrue(shaded.drop(1).flatten().filterIsInstance<Key.Char>().none { it.numberRow })
+            val plain = Layouts.forLayer(Layer.LETTERS, keyboard, numberRow = true, shadeNumberRow = false)
+            assertTrue(plain.rows.flatten().filterIsInstance<Key.Char>().none { it.numberRow })
+            assertEquals(shaded.first().map { (it as Key.Char).output }, plain.rows.first().map { (it as Key.Char).output })
+        }
+        for (layer in Layer.entries.filter { it != Layer.LETTERS }) {
+            val keys = Layouts.forLayer(layer, keyboards.first(), numberRow = true).rows.flatten().filterIsInstance<Key.Char>()
+            assertTrue(keys.none { it.numberRow })
+        }
+    }
+
     @Test fun symbolLayersKeepTheirExistingNumbersAndSymbols() {
         for (layer in listOf(Layer.SYMBOLS, Layer.SYMBOLS_2)) {
             assertEquals(Layouts.forLayer(layer, keyboards.first()), Layouts.forLayer(layer, keyboards.first(), numberRow = true))

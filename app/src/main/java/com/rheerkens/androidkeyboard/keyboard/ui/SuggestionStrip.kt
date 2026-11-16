@@ -35,10 +35,18 @@ import com.rheerkens.androidkeyboard.ui.SlimIcons
 /**
  * Clipboard history when idle (led by the masked current clip when it is sensitive, or the current
  * clip alone if the history is empty), word suggestions while typing, or temporary prompts and
- * notes. History also works with word suggestions disabled.
+ * notes. History also works with word suggestions disabled. Beside the history, Clear clips empties
+ * it (as the minimized bar's Backspace fan does); after that, Undo clear brings it back until
+ * something new is copied ([undoClear]).
  */
 @Composable
-fun RowScope.SuggestionStrip(strip: StripState, clips: List<ClipChip>, session: Int, actions: KeyboardActions) {
+fun RowScope.SuggestionStrip(
+    strip: StripState,
+    clips: List<ClipChip>,
+    session: Int,
+    actions: KeyboardActions,
+    undoClear: Boolean = false,
+) {
     val c = LocalKeyboardColors.current
     Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
         when {
@@ -51,6 +59,7 @@ fun RowScope.SuggestionStrip(strip: StripState, clips: List<ClipChip>, session: 
                     }
                 }
                 ClipHistoryRow(clips, session, actions, Modifier.weight(1f).fillMaxHeight(), chipHeight = 34.dp)
+                StripIconButton(SlimIcons.Trash, "Clear clipboard history", onTap = actions::onClearClipHistory)
             }
             strip.note != null -> Text(
                 strip.note.text,
@@ -82,6 +91,12 @@ fun RowScope.SuggestionStrip(strip: StripState, clips: List<ClipChip>, session: 
                 StripIconButton(SlimIcons.Close, "Dismiss", onTap = actions::onDismissStripPrompt)
             }
             !strip.enabled -> Spacer(Modifier.fillMaxSize())
+            !strip.typingWord && undoClear -> Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                    ClipboardChip(strip.clipboard, strip.imagePasteSupported, actions)
+                }
+                StripIconButton(SlimIcons.Undo, "Undo clearing the clipboard history", onTap = actions::onUndoClearClipHistory)
+            }
             !strip.typingWord -> ClipboardChip(strip.clipboard, strip.imagePasteSupported, actions)
             else -> Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
                 strip.slots.forEachIndexed { i, s ->

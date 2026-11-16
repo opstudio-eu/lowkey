@@ -146,6 +146,10 @@ fun SettingsScreen(
                     LinkRow("Keyboard theme", keyboardThemeSummary(keyboardTheme.enabled)) {
                         navigate(Destination.KEYBOARD_THEME)
                     }
+                    SwitchRow(
+                        "Shaded number row", s.shadeNumberRow, { value -> update { it.copy(shadeNumberRow = value) } },
+                        numberRowShadeSummary(keyboardTheme.enabled),
+                    )
                 }
             }
             SettingsFocus.UPDATES -> item { UpdatesSection() }
@@ -575,6 +579,11 @@ internal fun moreLanguagesSummary(available: List<String>): String = when {
     available.size <= 4 -> "Download ${available.dropLast(1).joinToString(", ")} or ${available.last()}, or delete languages"
     else -> "Download ${available.take(3).joinToString(", ")} and ${available.size - 3} more, or delete languages"
 }
+
+/** What Shaded number row does; with custom colors, where its color is set. */
+internal fun numberRowShadeSummary(customTheme: Boolean): String =
+    if (customTheme) "Sets the 1–0 row apart from the letters, in the Number row color of Advanced colors"
+    else "Gives the 1–0 row the function-key color, to set it apart from the letters"
 
 /** The Keyboard theme link's summary on the Appearance page. */
 internal fun keyboardThemeSummary(custom: Boolean): String =

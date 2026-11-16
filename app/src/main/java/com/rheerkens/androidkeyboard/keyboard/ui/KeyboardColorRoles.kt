@@ -30,6 +30,7 @@ enum class ColorRole(
 
     KEY(RoleGroup.KEYS, "Keys", SeedRole.KEYS, { it.key }),
     KEY_MOD(RoleGroup.KEYS, "Function keys", SeedRole.FUNCTION_KEYS, { it.keyMod }),
+    NUMBER_KEY(RoleGroup.KEYS, "Number row", read = { it.numberKey }),
     KEY_PRESSED(RoleGroup.KEYS, "Pressed keys and buttons", read = { it.keyPressed }),
     KEY_ON(RoleGroup.KEYS, "Active keys (Shift on)", read = { it.keyOn }),
     KEY_TEXT(RoleGroup.KEYS, "Text and icons", SeedRole.TEXT, { it.keyText }),
@@ -82,6 +83,7 @@ fun keyboardColorsOf(color: (ColorRole) -> Color) = KeyboardColors(
     divider = color(ColorRole.DIVIDER),
     key = color(ColorRole.KEY),
     keyMod = color(ColorRole.KEY_MOD),
+    numberKey = color(ColorRole.NUMBER_KEY),
     keyPressed = color(ColorRole.KEY_PRESSED),
     keyOn = color(ColorRole.KEY_ON),
     keyText = color(ColorRole.KEY_TEXT),

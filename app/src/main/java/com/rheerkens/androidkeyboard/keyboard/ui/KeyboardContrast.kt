@@ -77,7 +77,8 @@ fun keyboardContrastChecks(c: KeyboardColors, image: LuminanceRange? = null): Li
     val keyText = "Key text"
     val muted = "Secondary text"
     for ((bg, role) in listOf(
-        "keys" to ColorRole.KEY, "function keys" to ColorRole.KEY_MOD, "pressed keys" to ColorRole.KEY_PRESSED,
+        "keys" to ColorRole.KEY, "function keys" to ColorRole.KEY_MOD, "the number row" to ColorRole.NUMBER_KEY,
+        "pressed keys" to ColorRole.KEY_PRESSED,
         "active keys" to ColorRole.KEY_ON, "the model button" to ColorRole.PILL, "popups" to ColorRole.POPUP,
         "the keyboard button" to ColorRole.TOGGLE_VOICE_BG,
     )) pair(keyText, ColorRole.KEY_TEXT, bg, role)
