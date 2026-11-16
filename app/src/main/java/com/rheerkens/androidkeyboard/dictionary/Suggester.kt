@@ -1,5 +1,7 @@
 package com.rheerkens.androidkeyboard.dictionary
 
+import java.util.WeakHashMap
+
 /** One suggestion slot. [isPersonal] marks saved terms; [isLiteral] marks the typed word itself. */
 data class Suggestion(
     val text: String,
@@ -23,6 +25,26 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
     private val dictionariesReady: Boolean = true) {
     /** A suggester over a fixed word list, most frequent first (tests and fallbacks). */
     constructor(words: List<String>) : this(constant(Lexicon.fromWords(words)))
+
+    /**
+     * Spelling searches already done, per word list by lowercase word and candidate count. One
+     * keystroke asks [autocorrection] and [suggest] for the same search, the slowest step of both.
+     * Word lists are weak keys, so the results never keep a replaced list in memory.
+     */
+    private val searches = WeakHashMap<Lexicon, HashMap<Pair<String, Int>, List<Correction>>>()
+
+    /** [Corrector.corrections] with this suggester's keys, done once per word list and word. */
+    private fun corrections(typed: String, lexicon: Lexicon, limit: Int, checkActive: () -> Unit): List<Correction> {
+        val key = typed.lowercase() to limit
+        synchronized(searches) { searches[lexicon]?.get(key) }?.let { return it }
+        val found = Corrector.corrections(typed, lexicon, limit, keys, checkActive)
+        synchronized(searches) {
+            val done = searches.getOrPut(lexicon) { HashMap() }
+            if (done.size >= MAX_SEARCHES) done.clear()
+            done[key] = found
+        }
+        return found
+    }
 
     /** Ranked candidates for [typed], best first. Empty [typed] returns newest personal terms. */
     @JvmOverloads
@@ -63,7 +85,7 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
         val corrections = if (Corrector.looksLikeAWord(typed) && lexicons.none { it.contains(typed) }) {
             interleave(lexicons.map { lex ->
                 checkActive()
-                listOfNotNull(lex.whitelist[lower]) + Corrector.corrections(typed, lex, limit, keys, checkActive).map { it.word }
+                listOfNotNull(lex.whitelist[lower]) + corrections(typed, lex, limit, checkActive).map { it.word }
             })
         } else emptyList()
         // 4. Keep the best completion, but reserve a slot for a spelling correction: a typo
@@ -139,7 +161,8 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
             checkActive()
             if (search) {
                 // The keyboard's own language is the likelier one: `dne` is `done`, not Dutch `de`.
-                Corrector.autoFix(word, language, atSentenceStart, keys, checkActive)
+                Corrector.autoFix(word, language, atSentenceStart, keys, checkActive,
+                    search = { corrections(word, language, Corrector.AUTOFIX_CANDIDATES, checkActive) })
                     ?.let { if (language === lex) it.copy(score = it.score + PRIMARY_LEAD) else it }
             } else {
                 (Corrector.rule(word, language, atSentenceStart) as? Corrector.Rule.Replace)
@@ -173,6 +196,9 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
          * in the keyboard's language: Polish `im` (159) stays, the Dutch list's `im` (119) doesn't.
          */
         private const val RARE_IN_OTHER_LANGUAGE = 128
+
+        /** Searches kept per word list; the keyboard makes a new suggester for every keystroke. */
+        private const val MAX_SEARCHES = 32
 
         /** Score lead a spelling fix needs over a different one from another language. */
         private const val LANGUAGE_MARGIN = 1.0
