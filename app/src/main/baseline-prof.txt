@@ -1,0 +1,6 @@
+HSPLcom/rheerkens/androidkeyboard/SlimKeyboardApp;->**(**)**
+HSPLcom/rheerkens/androidkeyboard/AppGraph;->**(**)**
+HSPLcom/rheerkens/androidkeyboard/ime/**;->**(**)**
+HSPLcom/rheerkens/androidkeyboard/keyboard/**;->**(**)**
+HSPLcom/rheerkens/androidkeyboard/dictionary/**;->**(**)**
+HSPLcom/rheerkens/androidkeyboard/settings/**;->**(**)**

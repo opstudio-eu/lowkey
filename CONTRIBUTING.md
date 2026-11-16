@@ -62,6 +62,8 @@ Build the native speech libraries with `scripts/build-sherpa-onnx.sh`. It exclud
 
 CI runs the leak check, unit tests, and release build on pull requests and pushes to `main`. With signing secrets available, it signs the APK and attaches it to the run. Without them, it uploads an unsigned APK that cannot be installed as-is.
 
+Release builds are shrunk with R8 (rules in `app/proguard-rules.pro`) and contain native libraries for arm64 phones only. `app/src/main/baseline-prof.txt` lists the keyboard's own packages for ahead-of-time compilation. Add `-PreleaseAbis=arm64-v8a,x86_64` to `./gradlew assembleRelease` to test a release build natively on an x86_64 emulator. `python3 -I scripts/apk-size.py <apk> [<other.apk>]` shows what takes space in an APK, or compares two. `scripts/startup-bench.sh <serial> <apk> <label>` installs an APK over the app and measures cold start, word list loading and memory.
+
 Temporary APK artifacts are retained for one day, and failure test reports for three days. After a release is published or an existing release is verified to contain all downloads, CI removes that run's temporary APK. Published release downloads remain available. A failed publication keeps its temporary APK until it expires.
 
 To publish a new version, bump `versionName` and `versionCode` in `app/build.gradle.kts` in the pull request. After merge, a push to `main` publishes the release if its `v<versionName>` release does not exist. It includes `lowkey.apk`, its checksum, and `update.properties` for the in-app updater. Documentation-only changes do not need a version bump.
