@@ -51,6 +51,7 @@ public final class KeyboardTouchProbe extends Instrumentation {
             ui.setServiceInfo(info);
             if (arguments.getString("probe", "burst").equals("latency")) { latency(result); return; }
             if (arguments.getString("probe", "burst").equals("clipboard")) { clipboard(result); return; }
+            if (arguments.getString("probe", "burst").equals("number-fields")) { numberFields(result); return; }
             startActivitySync(new Intent().setClassName(getTargetContext(), "com.rheerkens.androidkeyboard.companion.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             AccessibilityNodeInfo launch = waitLabel("Try your keyboard");
             while (launch != null && !launch.performAction(AccessibilityNodeInfo.ACTION_CLICK)) launch = launch.getParent();
@@ -249,6 +250,120 @@ public final class KeyboardTouchProbe extends Instrumentation {
         screenshot("clipboard-text-preview.png");
         result.putString("stream", "probe=clipboard PASS: idle/typing transitions, live clip changes, literal text, image thumbnail, image commit with URI permission, unsupported/rejected editors, sensitive clips, password/private fields, clipboard clear\n");
         finish(0,result);
+    }
+    /**
+     * Opens each fixture field with a real tap and types a typical entry the way a person would:
+     * when a character is not on the keys shown, switch layers first. Reports which keys each
+     * field opened on, the taps the entry took, and the size of the first digit key used.
+     */
+    private void numberFields(Bundle result) throws Exception {
+        startActivitySync(new Intent().setClassName(getTargetContext(),
+            "com.rheerkens.androidkeyboard.companion.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        getTargetContext().startActivity(new Intent().setClassName(
+            "com.rheerkens.androidkeyboard.test", "com.rheerkens.androidkeyboard.test.NumberFieldsFixtureActivity")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
+        waitLabel("Number fields fixture");
+        String[] samples = {"ok", "-12.5", "+31 6 12345678", "16/11/2026", "4826"};
+        float density = getTargetContext().getResources().getDisplayMetrics().density;
+        int screen = getTargetContext().getResources().getDisplayMetrics().widthPixels;
+        StringBuilder report = new StringBuilder("probe=number-fields\n");
+        int taps = 0, chars = 0;
+        boolean ok = true;
+        for (int i = 0; i < samples.length; i++) {
+            String name = NumberFieldsFixtureActivity.FIELDS[i];
+            tap(bounds(waitLabel(name)));
+            waitLabel("Switch to voice typing");
+            SystemClock.sleep(1200);
+            String opened = keyFor("q") != null ? "letters" : keyFor("More symbols") != null ? "symbols"
+                : keyFor("Letters") != null && keyFor("Numbers and symbols") != null ? "number pad" : "other";
+            screenshot("number-fields-" + i + ".png");
+            Rect[] digit = new Rect[1];
+            int used = typeByKeys(samples[i], digit);
+            SystemClock.sleep(400);
+            AccessibilityNodeInfo field = waitLabel(name); field.refresh();
+            String typed = String.valueOf(field.getText());
+            boolean same = typed.equalsIgnoreCase(samples[i]);
+            boolean match = same && opened.equals(i == 0 ? "letters" : "number pad");
+            ok &= match;
+            if (i == 2 && opened.equals("number pad")) layerCycle();
+            taps += used; chars += samples[i].length();
+            report.append(String.format(java.util.Locale.ROOT, "%s opened=%s chars=%d taps=%d digitKey=%s typed=%s%s\n",
+                name, opened, samples[i].length(), used,
+                digit[0] == null ? "-" : String.format(java.util.Locale.ROOT, "%.0fx%.0fdp(%.0f%%)",
+                    digit[0].width() / density, digit[0].height() / density, 100f * digit[0].width() / screen),
+                same ? "ok" : "'" + typed + "'", match ? "" : " FAIL"));
+        }
+        report.append("total chars=").append(chars).append(" taps=").append(taps).append('\n');
+        result.putString("stream", report.toString());
+        if (!ok) throw new AssertionError(report.toString());
+        finish(0, result);
+    }
+    /**
+     * In a field with a number pad: ?123 opens the symbols, whose 123 key returns to the pad; ABC
+     * opens the letters, whose ?123 key opens the symbols again; Space there returns to the pad.
+     */
+    private void layerCycle() {
+        tapKey("Numbers and symbols");
+        expectLayer("symbols with 123", keyFor("More symbols") != null && keyFor("Number pad") != null && keyFor("Letters") == null);
+        tapKey("Number pad");
+        expectLayer("number pad", keyFor("Letters") != null && keyFor("Numbers and symbols") != null && keyFor("More symbols") == null);
+        tapKey("Letters");
+        expectLayer("letters", keyFor("q") != null);
+        tapKey("Numbers and symbols");
+        expectLayer("symbols with 123", keyFor("Number pad") != null);
+        tapKey(" ");
+        expectLayer("number pad after Space", keyFor("Letters") != null && keyFor("More symbols") == null && keyFor("q") == null);
+    }
+    private void tapKey(String label) {
+        AccessibilityNodeInfo key = keyFor(label);
+        if (key == null) throw new AssertionError("No key " + label);
+        tap(bounds(key));
+        SystemClock.sleep(500);
+    }
+    private void expectLayer(String name, boolean shown) {
+        if (!shown) throw new AssertionError("Expected the " + name);
+    }
+    /** Types [text] by tapping keys, switching layers when a character isn't shown. Returns the taps. */
+    private int typeByKeys(String text, Rect[] firstDigit) {
+        int taps = 0;
+        for (char ch : text.toCharArray()) {
+            String c = String.valueOf(ch);
+            for (int switches = 0; ; switches++) {
+                AccessibilityNodeInfo key = keyFor(c);
+                if (key != null) {
+                    Rect r = bounds(key);
+                    if (Character.isDigit(ch) && firstDigit[0] == null) firstDigit[0] = r;
+                    tap(r); taps++; SystemClock.sleep(300);
+                    break;
+                }
+                if (switches == 3) throw new AssertionError("No key types '" + c + "'");
+                AccessibilityNodeInfo layer = null;
+                for (String name : Character.isLetter(ch) ? new String[]{"Letters"}
+                        : new String[]{"Number pad", "Numbers and symbols", "More symbols"}) {
+                    layer = keyFor(name);
+                    if (layer != null) break;
+                }
+                if (layer == null) throw new AssertionError("No layer has '" + c + "'");
+                tap(bounds(layer)); taps++; SystemClock.sleep(500);
+            }
+        }
+        return taps;
+    }
+    /** The keyboard's key that types [label] (" " is Space), or a key with that description. */
+    private AccessibilityNodeInfo keyFor(String label) {
+        for (AccessibilityWindowInfo w : ui.getWindows()) {
+            if (w.getType() != AccessibilityWindowInfo.TYPE_INPUT_METHOD) continue;
+            List<AccessibilityNodeInfo> out = new ArrayList<>();
+            walk(w.getRoot(), out);
+            for (AccessibilityNodeInfo n : out) {
+                // Letter keys show capitals while Shift is on.
+                String d = String.valueOf(n.getContentDescription()).toLowerCase(java.util.Locale.ROOT);
+                String l = label.toLowerCase(java.util.Locale.ROOT);
+                if (l.equals(" ") ? d.startsWith("space") : l.equals(",") ? d.equals(",") || d.startsWith("comma.")
+                        : d.equals(l) || d.startsWith(l + ". long-press")) return n;
+            }
+        }
+        return null;
     }
     private void clickLabel(String label) {
         AccessibilityNodeInfo node = waitLabel(label);

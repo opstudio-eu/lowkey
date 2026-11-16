@@ -81,7 +81,8 @@ fun KeysPanel(
     val menu = KeyMenus(keyboards, languageMenu)
     val rollover = remember(state.keyboard, state.layer) { KeyRollover() }
     val rowHeight = (rowHeightDp * keyRows.toFloat() / layout.rows.size).dp
-    if (splitGapDp > 0f) {
+    // A number pad stays whole: its digits are never far apart.
+    if (splitGapDp > 0f && state.layer != Layer.NUMBERS) {
         val rows = remember(layout, state.keyboard, state.layer) { splitRows(layout, state.keyboard, state.layer) }
         val units = rows.filterNot { it.fullWidth }.maxOf { maxOf(it.left.sumOf { key -> key.weight.toDouble() }, it.right.sumOf { key -> key.weight.toDouble() }) }.toFloat()
         BoxWithConstraints(Modifier.fillMaxWidth().padding(start = 3.dp, end = 3.dp, bottom = 4.dp)) {
@@ -153,6 +154,7 @@ private fun KeyView(
                 Layer.LETTERS -> "Letters"
                 Layer.SYMBOLS -> "Numbers and symbols"
                 Layer.SYMBOLS_2 -> "More symbols"
+                Layer.NUMBERS -> "Number pad"
             }
             PressTarget(desc, modifier, gestureKey = key, onDown = actions::onKeyDown, onTap = { actions.onKey(key) }) { pressed ->
                 KeyCap(if (pressed) c.keyPressed else c.keyMod) {
@@ -179,7 +181,11 @@ private fun KeyView(
             onDown = actions::onKeyDown, onTap = { actions.onKey(key) }, onLongPress = actions::onSpaceLongPress,
         ) { pressed ->
             KeyCap(if (pressed) c.keyPressed else c.key) {
-                Text(state.keyboard.spaceLabel, color = c.spaceText, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (key.showsLanguage) {
+                    Text(state.keyboard.spaceLabel, color = c.spaceText, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                } else {
+                    KeyIcon(SlimIcons.Space, tint = c.spaceText)
+                }
             }
         }
         is Key.Enter -> PressTarget(

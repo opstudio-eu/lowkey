@@ -7,7 +7,8 @@ import org.junit.Test
 
 class BottomKeyTest {
     @Test fun emojiIsTheDefaultAndLanguageKeyRemainsAvailableInEveryLayer() {
-        for (keyboard in TypingKeyboard.all(TestLanguages.catalog)) for (layer in Layer.entries) {
+        // The number pad has neither: its fields type no emoji and no words.
+        for (keyboard in TypingKeyboard.all(TestLanguages.catalog)) for (layer in Layer.entries - Layer.NUMBERS) {
             val normal = Layouts.forLayer(layer, keyboard).rows.last()
             assertEquals(",", (normal[1] as? Key.Char)?.output)
             assertTrue(normal[2] is Key.Emoji)
@@ -20,6 +21,10 @@ class BottomKeyTest {
             assertEquals(1, language.count { it is Key.Globe })
             assertEquals(0, language.count { it is Key.Emoji })
             assertTrue(language.filterIsInstance<Key.Char>().first { it.output == "," }.opensEmojiOnHold)
+        }
+        for (bottomKey in BottomKey.entries) {
+            val pad = Layouts.forLayer(Layer.NUMBERS, TestLanguages.keyboard("en_US"), bottomKey = bottomKey, pad = NumberPad.NUMBER)
+            assertTrue(pad.rows.flatten().none { it is Key.Emoji || it is Key.Globe })
         }
     }
 }

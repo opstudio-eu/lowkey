@@ -12,7 +12,12 @@ data class KeyboardState(
     val shift: ShiftState = ShiftState.OFF,
     /** Language and letter arrangement. */
     val keyboard: TypingKeyboard,
-)
+    /** The number pad of the focused field, or null in a text field. */
+    val pad: NumberPad? = null,
+) {
+    /** The layer the field opens on: its number pad, or the letters. */
+    val home: Layer get() = if (pad != null) Layer.NUMBERS else Layer.LETTERS
+}
 
 /** Shift, caps lock, layer, and typing-keyboard state for keys mode. No Android dependencies. */
 class KeyboardController(
@@ -57,7 +62,18 @@ class KeyboardController(
 
     fun setLayer(layer: Layer) = _state.update { it.copy(layer = layer) }
 
-    fun reset() = _state.update { it.copy(layer = Layer.LETTERS, shift = ShiftState.OFF) }
+    /** A new field opens: on its number [pad] if it has one, else on the letters. */
+    fun reset(pad: NumberPad? = null) = _state.update {
+        it.copy(pad = pad, layer = if (pad != null) Layer.NUMBERS else Layer.LETTERS, shift = ShiftState.OFF)
+    }
+
+    /** Back to the field's own keys ([KeyboardState.home]). */
+    fun showHome() = _state.update { it.copy(layer = it.home) }
+
+    /** After Space or a suggestion, a symbol layer returns to the field's own keys. */
+    fun leaveSymbols() = _state.update {
+        if (it.layer == Layer.SYMBOLS || it.layer == Layer.SYMBOLS_2) it.copy(layer = it.home) else it
+    }
 
     /**
      * Switches to the keyboard after the current one in [order] (the usable keyboards, in globe
