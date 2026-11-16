@@ -1,6 +1,7 @@
 package com.rheerkens.androidkeyboard.dictionary
 
 import android.content.Context
+import android.util.Log
 import androidx.core.content.edit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -11,7 +12,7 @@ import org.json.JSONObject
 
 /**
  * Persisted personal dictionary: exact-spelling terms plus speech phrase rules.
- * Stored as JSON in private SharedPreferences. Seeded with the spec's examples on first run.
+ * Stored as JSON in private SharedPreferences. A new install starts empty.
  */
 class DictionaryStore(context: Context, private val clock: () -> Long = System::currentTimeMillis) {
     private val prefs = context.getSharedPreferences("dictionary", Context.MODE_PRIVATE)
@@ -77,26 +78,35 @@ class DictionaryStore(context: Context, private val clock: () -> Long = System::
         save(_state.value)
     }
 
+    /**
+     * Reads the saved dictionary, skipping entries it can't read. If anything was unreadable, the
+     * saved text is first copied to [KEY_UNREADABLE], because the next change overwrites [KEY].
+     */
     private fun load(): DictionaryState {
-        val raw = prefs.getString(KEY, null) ?: return seed().also { save(it) }
-        return try {
-            val root = JSONObject(raw)
-            val terms = root.getJSONArray("terms").let { arr ->
-                List(arr.length()) { i ->
-                    val o = arr.getJSONObject(i)
-                    PersonalTerm(o.getLong("id"), o.getString("text"), o.getLong("addedAt"))
+        val raw = prefs.getString(KEY, null) ?: return DictionaryState(emptyList(), emptyList())
+        var complete = true
+        fun <T> entries(root: JSONObject?, name: String, read: (JSONObject) -> T): List<T> {
+            val arr = root?.optJSONArray(name) ?: run { complete = false; return emptyList() }
+            return (0 until arr.length()).mapNotNull { i ->
+                try {
+                    read(arr.getJSONObject(i))
+                } catch (_: org.json.JSONException) {
+                    complete = false
+                    null
                 }
             }
-            val rules = root.getJSONArray("rules").let { arr ->
-                List(arr.length()) { i ->
-                    val o = arr.getJSONObject(i)
-                    PhraseRule(o.getLong("id"), o.getString("spoken"), o.getString("written"), o.getBoolean("enabled"))
-                }
-            }
-            DictionaryState(terms, rules)
-        } catch (_: org.json.JSONException) {
-            seed()
         }
+        val root = try { JSONObject(raw) } catch (_: org.json.JSONException) { null }
+        val terms = entries(root, "terms") { PersonalTerm(it.getLong("id"), it.getString("text"), it.getLong("addedAt")) }
+        val rules = entries(root, "rules") {
+            PhraseRule(it.getLong("id"), it.getString("spoken"), it.getString("written"), it.getBoolean("enabled"))
+        }
+        // Keep the first unreadable copy: it holds the words from before the damage.
+        if (!complete && !prefs.contains(KEY_UNREADABLE)) {
+            prefs.edit { putString(KEY_UNREADABLE, raw) }
+            Log.w(TAG, "Saved dictionary was partly unreadable; kept a copy (${terms.size} terms, ${rules.size} rules read)")
+        }
+        return DictionaryState(terms, rules)
     }
 
     private fun save(state: DictionaryState) {
@@ -117,22 +127,10 @@ class DictionaryStore(context: Context, private val clock: () -> Long = System::
         prefs.edit { putString(KEY, root.toString()) }
     }
 
-    private fun seed(): DictionaryState {
-        val now = clock()
-        // Older timestamps for later entries so "T3 Code" is the newest seeded term.
-        val terms = listOf("T3 Code", "coroutineScope", "adb", "ViewModel", "Jetpack Compose")
-            .mapIndexed { i, t -> PersonalTerm(i + 1L, t, now - i * 1000L) }
-        val rules = listOf(
-            "three code" to "T3 Code",
-            "t3 code" to "T3 Code",
-            "view model" to "ViewModel",
-            "a d b" to "adb",
-        ).mapIndexed { i, (s, w) -> PhraseRule(100L + i, s, w, enabled = true) }
-        return DictionaryState(terms, rules)
-    }
-
     private companion object {
+        const val TAG = "DictionaryStore"
         const val KEY = "dictionary_v1"
+        const val KEY_UNREADABLE = "dictionary_v1_unreadable"
         const val MAX_TERM_LENGTH = 48
     }
 }
