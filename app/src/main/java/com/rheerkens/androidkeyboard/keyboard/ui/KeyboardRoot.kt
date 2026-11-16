@@ -139,7 +139,7 @@ internal fun KeyboardContent(
                         }) {
                         Row(Modifier.fillMaxSize().padding(top = KEYBOARD_GRIP_SPACE_DP.dp), verticalAlignment = Alignment.CenterVertically) {
                             VoiceEntryButton(state.voice, actions, talk, more, moreLabel)
-                            SuggestionStrip(state.strip, state.clipHistory, state.inputSession, actions)
+                            SuggestionStrip(state.strip, state.clipHistory, state.inputSession, actions, undoClear = state.fan.undoClear)
                         }
                         KeyboardBarGrip()
                     }

@@ -65,6 +65,7 @@ val settingsIndex: List<SettingEntry> = listOfNotNull(
     page("Appearance", Destination.SETTINGS_APPEARANCE, "look", "colors", "colours"),
     row("Theme", Destination.SETTINGS_APPEARANCE, "dark mode", "light mode", "night", "dark theme", "system"),
     page("Keyboard theme", Destination.KEYBOARD_THEME, "custom colors", "colours", "standard colors"),
+    row("Shaded number row", Destination.SETTINGS_APPEARANCE, "number row color", "digits", "1-0", "function keys", "colours"),
     // Shown on the Keyboard theme page once Custom is chosen.
     themePart("Colors", "colours", "swatches", "hex", *ColorRole.entries.filter { it.seed != null }.map { it.label }.toTypedArray()),
     themePart("Background image", "wallpaper", "photo", "picture", "dimming", "remove image"),

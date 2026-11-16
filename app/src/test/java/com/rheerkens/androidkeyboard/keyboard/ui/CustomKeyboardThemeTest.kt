@@ -27,6 +27,17 @@ class CustomKeyboardThemeTest {
     private val image = "bg-0123456789abcdef0123456789abcdef.jpg"
 
     @Test
+    fun numberRowFollowsTheFunctionKeysUntilChanged() {
+        for (palette in listOf(DarkKeyboardColors, LightKeyboardColors, deriveKeyboardColors(forest))) {
+            assertEquals(palette.keyMod, palette.numberKey)
+        }
+        val asLetters = CustomKeyboardTheme(forest).with(ColorRole.NUMBER_KEY, forest.keys).effectiveColors()
+        assertEquals(forest.keys, asLetters.numberKey)
+        assertEquals(forest.functionKeys, asLetters.keyMod)
+        assertTrue(ColorRole.NUMBER_KEY in ColorRole.overridable)
+    }
+
+    @Test
     fun everyRoleReadsBackTheFieldItWrote() {
         val palette = keyboardColorsOf(::unique)
         for (role in ColorRole.entries) assertEquals(role.name, unique(role), palette[role])

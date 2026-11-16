@@ -18,6 +18,8 @@ sealed interface Key {
         val opensEmojiOnHold: Boolean = false,
         /** Hide the duplicate digit label when a dedicated number row is visible. */
         val showLongPressHint: Boolean = true,
+        /** Part of the dedicated number row above the letters, drawn in its own colour. */
+        val numberRow: Boolean = false,
     ) : Key {
         val hint: String? get() = longPressOutput.takeIf { showLongPressHint }
         /** Long-press popup choices; the first is selected when the popup opens. */
@@ -155,7 +157,17 @@ object Layouts {
         )
     )
 
-    fun forLayer(layer: Layer, keyboard: TypingKeyboard, numberRow: Boolean = false, bottomKey: BottomKey = BottomKey.EMOJI): KeyboardLayout {
+    /**
+     * The keys of [layer]. With [numberRow], the letters get a 1–0 row on top; [shadeNumberRow]
+     * draws it in the number row colour instead of the key colour, to set it apart from the letters.
+     */
+    fun forLayer(
+        layer: Layer,
+        keyboard: TypingKeyboard,
+        numberRow: Boolean = false,
+        bottomKey: BottomKey = BottomKey.EMOJI,
+        shadeNumberRow: Boolean = true,
+    ): KeyboardLayout {
         val layout = when (layer) {
             Layer.LETTERS -> letters(keyboard)
             Layer.SYMBOLS -> SYMBOLS
@@ -168,6 +180,8 @@ object Layouts {
                 else -> key
             } }
         }
-        return KeyboardLayout(if (numberRow && layer == Layer.LETTERS) listOf(SYMBOLS.rows.first()) + rows else rows)
+        if (!numberRow || layer != Layer.LETTERS) return KeyboardLayout(rows)
+        val digits = SYMBOLS.rows.first().map { if (it is Key.Char) it.copy(numberRow = shadeNumberRow) else it }
+        return KeyboardLayout(listOf(digits) + rows)
     }
 }

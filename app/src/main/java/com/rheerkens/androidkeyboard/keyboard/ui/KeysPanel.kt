@@ -369,7 +369,7 @@ private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardAction
         onLongPressState = { open = it },
         onLongPressMove = popup?.let { p -> { at: Offset -> selected = p.select(at.x, at.y) } },
     ) { pressed ->
-        KeyCap(if (pressed) c.keyPressed else c.key) {
+        KeyCap(if (pressed) c.keyPressed else if (key.numberRow) c.numberKey else c.key) {
             val hint = key.hint
             Text(
                 label, color = c.keyText, fontSize = 21.sp, maxLines = 1,

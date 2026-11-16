@@ -94,6 +94,10 @@ interface KeyboardActions {
     fun onSuggestion(suggestion: Suggestion)
     fun onPasteClipboard(content: ClipboardContent)
     fun onPasteHistory(entry: ClipEntry)
+    /** Clear clips in the full keyboard's strip: what the minimized bar's fan does with Clear clips. */
+    fun onClearClipHistory() = onFanCommand(FanCommand.CLEAR_CLIPBOARD)
+    /** Undo clear in the full keyboard's strip, while the last clear can still be undone. */
+    fun onUndoClearClipHistory() = onFanCommand(FanCommand.UNDO_CLEAR)
     /** A larger image for the hold-to-preview popup. Blocking: call on an IO dispatcher. */
     fun loadPreview(entry: ClipEntry): Bitmap?
     /** Open an image clip or screenshot in the editor (slide up from its preview). */

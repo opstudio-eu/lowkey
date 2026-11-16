@@ -111,6 +111,8 @@ data class Settings(
     val modelRetention: ModelRetention = ModelRetention.TWO_MINUTES,
     // Appearance
     val theme: ThemeMode = ThemeMode.SYSTEM,
+    /** Draw the number row in its own colour (the function keys' unless the keyboard theme changes it), apart from the letters. */
+    val shadeNumberRow: Boolean = true,
     // Updates
     /** Check GitHub for a newer release about once a day and when the app opens. */
     val checkForUpdates: Boolean = true,

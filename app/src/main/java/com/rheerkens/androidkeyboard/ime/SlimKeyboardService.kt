@@ -339,8 +339,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                     if (image != null && custom != null) KeyboardBackgroundImage(image.bitmap, custom.dim) else null
                 }
                 val (viewportWidth, viewportHeight) = placementViewport()
-                val layout = remember(kb.layer, kb.keyboard, s.numberRow, s.bottomKey) {
-                    Layouts.forLayer(kb.layer, kb.keyboard, s.numberRow, s.bottomKey)
+                val layout = remember(kb.layer, kb.keyboard, s.numberRow, s.bottomKey, s.shadeNumberRow) {
+                    Layouts.forLayer(kb.layer, kb.keyboard, s.numberRow, s.bottomKey, s.shadeNumberRow)
                 }
                 val profile = PlacementProfile.forSize(viewportWidth, viewportHeight)
                 val placement = s.placement.get(profile)

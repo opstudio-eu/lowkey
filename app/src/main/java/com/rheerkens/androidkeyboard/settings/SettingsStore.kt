@@ -67,6 +67,7 @@ class SettingsStore(context: Context) {
             continuousDictation = prefs.getBoolean(K_CONTINUOUS, d.continuousDictation),
             applyPhraseRules = prefs.getBoolean(K_RULES, d.applyPhraseRules),
             theme = enumOr(prefs.getString(K_THEME, null), d.theme),
+            shadeNumberRow = prefs.getBoolean(K_SHADE_NUMBER_ROW, d.shadeNumberRow),
             loupeCorners = enumOr(prefs.getString(K_LOUPE_CORNERS, null), d.loupeCorners),
             checkForUpdates = prefs.getBoolean(K_CHECK_UPDATES, d.checkForUpdates),
             matchTermCase = prefs.getBoolean(K_TERM_CASE, d.matchTermCase),
@@ -104,6 +105,7 @@ class SettingsStore(context: Context) {
         putBoolean(K_CONTINUOUS, s.continuousDictation)
         putBoolean(K_RULES, s.applyPhraseRules)
         putString(K_THEME, s.theme.name)
+        putBoolean(K_SHADE_NUMBER_ROW, s.shadeNumberRow)
         putString(K_LOUPE_CORNERS, s.loupeCorners.name)
         putBoolean(K_CHECK_UPDATES, s.checkForUpdates)
         putBoolean(K_TERM_CASE, s.matchTermCase)
@@ -169,6 +171,7 @@ class SettingsStore(context: Context) {
         const val K_CONTINUOUS = "continuous"
         const val K_RULES = "apply_phrase_rules"
         const val K_THEME = "theme"
+        const val K_SHADE_NUMBER_ROW = "shade_number_row"
         const val K_TERM_CASE = "match_term_case"
         const val K_SPEECH_LANGUAGE = "speech_language"
         const val K_MODEL_RETENTION = "model_retention"

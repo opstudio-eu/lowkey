@@ -224,6 +224,7 @@ fun deriveKeyboardColors(seed: KeyboardSeed): KeyboardColors {
         divider = mix(bg, text, 0.12f),
         key = key,
         keyMod = mod,
+        numberKey = mod,
         keyPressed = keyPressed,
         keyOn = keyOn,
         keyText = text,
