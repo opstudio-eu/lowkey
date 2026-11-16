@@ -24,6 +24,8 @@ Run `./gradlew testDebugUnitTest` for every change. For UI changes, verify the a
 
 When changing the leak check, also run `python3 -I scripts/test_check_leaks.py`.
 
+For changes to suggestions or autocorrect, run the quality benchmark (about three minutes): `LOWKEY_BENCH=1 ./gradlew testDebugUnitTest --tests '*QualityBenchmark' --rerun`. It types 1,000 words with one slip each per language and language mix, plus correct words, words of a second language and words without their accents, through the full English, Dutch and Polish word lists. It writes `app/build/reports/quality-benchmark.md` and fails when a result falls past its threshold in `QualityBenchmark`. The sample is fixed, so the same code gives the same numbers and checksum; compare the report before and after a change, and when a change improves a result, tighten its threshold. A 200-word part runs with every `testDebugUnitTest`.
+
 ## Prepare a contribution
 
 Keep private hostnames, network addresses, home-directory paths, personal details, and secrets out of files, commits, pull requests, logs, and release notes. Do not commit `local.properties`, model weights, APKs, build outputs, signing keys, or credentials. Check screenshots and videos before attaching them to a pull request; keep demo media out of git.
