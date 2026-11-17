@@ -53,7 +53,10 @@ fun registerPinnedDownload(name: String, url: String, target: Provider<RegularFi
 // Microsoft's Maven ONNX Runtime adds a telemetry transport. The zip holds both libraries and their
 // notices; it is attached to this repository's "native-libs" release and verified by SHA-256.
 val sherpaOnnxVersion = "1.13.8"
-val nativeAbis = listOf("arm64-v8a", "x86_64")
+// Debug builds also run on x86_64 emulators. Releases are for phones: arm64 only, which halves the
+// native code; -PreleaseAbis=arm64-v8a,x86_64 builds a release that also runs on such emulators.
+val debugAbis = listOf("arm64-v8a", "x86_64")
+val releaseAbis = providers.gradleProperty("releaseAbis").getOrElse("arm64-v8a").split(',').map { it.trim() }
 val sherpaOnnxZip = layout.buildDirectory.file("downloads/sherpa-onnx-$sherpaOnnxVersion-asr-android.zip")
 val downloadSherpaOnnx = registerPinnedDownload(
     "downloadSherpaOnnx",
@@ -103,8 +106,8 @@ android {
         minSdk = 28
         targetSdk = 37
         testInstrumentationRunner = "com.rheerkens.androidkeyboard.test.KeyboardTouchProbe"
-        versionCode = 71
-        versionName = "0.13.4"
+        versionCode = 72
+        versionName = "0.14.0"
 
         // The release feed the in-app updater reads. -PupdateFeedUrl=https://… points a test build elsewhere.
         val updateFeedUrl = providers.gradleProperty("updateFeedUrl")
@@ -114,11 +117,6 @@ android {
         // -PupdateRequireUserAction=true makes Android ask to confirm every update, as some phones always do.
         val updateRequireUserAction = providers.gradleProperty("updateRequireUserAction").getOrElse("false").toBoolean()
         buildConfigField("boolean", "UPDATE_REQUIRE_USER_ACTION", "$updateRequireUserAction")
-
-        ndk {
-            // Phones (arm64) and the x86_64 emulator; drops 32-bit ARM to keep the APK smaller.
-            abiFilters += nativeAbis
-        }
     }
 
     buildFeatures {
@@ -127,13 +125,25 @@ android {
         resValues = true
     }
 
-    // Opt-in local UI test APK. Release identity and version are unchanged.
+    // No 32-bit ARM, to keep the APK smaller.
     buildTypes.getByName("debug") {
+        ndk { abiFilters += debugAbis }
+        // Opt-in local UI test APK. Release identity and version are unchanged.
         if (providers.gradleProperty("uiPreview").orNull == "true") {
             applicationIdSuffix = ".uipreview"
             resValue("string", "app_name", "Lowkey UI Preview")
             resValue("string", "ime_name", "Lowkey UI Preview")
         }
+    }
+
+    // R8 removes unused code and resources. proguard-rules.pro keeps what native code and crash
+    // reports need. src/main/baseline-prof.txt marks the keyboard's own code for ahead-of-time
+    // compilation, which Android applies after its idle-time optimisation.
+    buildTypes.getByName("release") {
+        ndk { abiFilters += releaseAbis }
+        isMinifyEnabled = true
+        isShrinkResources = true
+        proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
     }
 
     compileOptions {

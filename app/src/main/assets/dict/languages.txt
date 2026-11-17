@@ -22,6 +22,9 @@
 #            when that is this much more frequent (0-255 scale). Only for languages whose word list
 #            also holds accent-less spellings of common words (Polish `juz` next to `już`).
 #   capitalized_nouns  optional, true for languages that capitalize nouns (German): `zeit` -> `Zeit`.
+#   compounds  optional, for languages that write compounds as one word: the letters that may join
+#            two words besides none (Dutch `s e en`), or `-` for none. Two common words then make a
+#            known word, and a slip in one part is repaired.
 
 source = https://android.googlesource.com/platform/packages/inputmethods/LatinIME/+/127336e9f29d69607eab55982324b210279ae8c5/dictionaries
 
@@ -54,6 +57,7 @@ short = NL
 speech = nl
 rows = qwertyuiop asdfghjkl zxcvbnm
 layout = QWERTY
+compounds = s e en
 bundled = false
 size = 1054497
 sha256 = a647ed5fdd846d3240572c9cb10fb8c30880df2ebefea6184a378adb713cd0cd

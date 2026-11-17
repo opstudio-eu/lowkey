@@ -55,6 +55,8 @@ val settingsIndex: List<SettingEntry> = listOfNotNull(
     row("Auto-capitalize", Destination.SETTINGS_TYPING, "capitals", "capital letters", "uppercase", "sentence case", "shift"),
     row("Autocorrect", Destination.SETTINGS_TYPING, "auto-correct", "typos", "spelling", "correction", "spell check"),
     row("Suggestion strip", Destination.SETTINGS_TYPING, "word suggestions", "predictions", "next word", "autocomplete"),
+    row("Learn from my typing", Destination.SETTINGS_TYPING, "learning", "personal", "predict", "next word", "privacy"),
+    row("Forget what Lowkey learned", Destination.SETTINGS_TYPING, "clear learned words", "delete", "reset predictions", "privacy"),
     page("Key feedback", Destination.SETTINGS_CUSTOMIZE),
     row("Vibrate on key press", Destination.SETTINGS_CUSTOMIZE, "vibration", "haptic", "haptics", "feedback", "buzz"),
     // Languages
@@ -72,8 +74,12 @@ val settingsIndex: List<SettingEntry> = listOfNotNull(
     themePart("Advanced colors", "colours", "override", *ColorRole.overridable.map { it.label }.toTypedArray()),
     themePart("Contrast", "readable", "readability", "legibility"),
     themePart("Restore default colors", "reset colors", "standard colors"),
+    // Backup
+    row("Export words and settings", Destination.SETTINGS, "backup", "save", "transfer", "new phone", "dictionary"),
+    row("Import words and settings", Destination.SETTINGS, "restore", "backup", "transfer", "new phone", "dictionary"),
     // Clipboard
     page("Clipboard & images", Destination.SETTINGS_CLIPBOARD, "copy", "paste", "clips"),
+    row("Keep copied clips", Destination.SETTINGS_CLIPBOARD, "clipboard history", "expire", "forget", "clips", "privacy"),
     row("Recent screenshots", Destination.SETTINGS_CLIPBOARD, "screenshot", "photos", "images", "clipboard", "photo access"),
     row("Magnifier position", Destination.SETTINGS_CLIPBOARD, "loupe", "zoom", "image editor", "draw", "markup"),
     // Voice

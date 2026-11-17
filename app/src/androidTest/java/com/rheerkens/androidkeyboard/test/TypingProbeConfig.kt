@@ -23,6 +23,106 @@ object TypingProbeConfig {
 
     @JvmStatic fun restore(before: Settings) { AppGraph.settings.update { before } }
 
+    /** English (US) first and Dutch also on, for mixed-language typing. Dutch must be downloaded. */
+    @JvmStatic fun configureEnglishAndDutch(): Settings {
+        val before = AppGraph.settings.current
+        check(AppGraph.languagePacks.isInstalled(AppGraph.languages["nl"]!!)) { "Download Dutch on the device first" }
+        AppGraph.settings.update {
+            it.copy(autocorrect = true, suggestionStrip = true, autoCapitalize = true,
+                enabledKeyboards = setOf("en_US", "nl"), currentKeyboard = "en_US")
+        }
+        return before
+    }
+
+    /** Waits until [id]'s full word list is loaded. */
+    @JvmStatic fun awaitLexicon(id: String) {
+        val language = AppGraph.languages[id]!!
+        val deadline = android.os.SystemClock.uptimeMillis() + 60_000
+        while (AppGraph.lexicon(language).size < 100_000) {
+            check(android.os.SystemClock.uptimeMillis() < deadline) { "Full $id dictionary not ready" }
+            android.os.SystemClock.sleep(100)
+        }
+    }
+
+    /** Typing defaults with learning on, starting from nothing learned. */
+    @JvmStatic fun configureLearning(): Settings {
+        val before = configure()
+        AppGraph.settings.update { it.copy(learnFromTyping = true) }
+        AppGraph.personalModel.forget()
+        AppGraph.personalModel.model()
+        return before
+    }
+
+    /** Forgets what the learning probe taught, so the device keeps nothing from it. */
+    @JvmStatic fun forgetLearning() { AppGraph.personalModel.forget() }
+
+    /**
+     * Exports through the app's own backup code to a file, deletes a saved word and flips a
+     * setting, imports the file again, and reports whether both came back. Cleans up after.
+     */
+    @JvmStatic fun backupRoundTrip(context: android.content.Context): String {
+        val file = java.io.File(context.cacheDir, "probe-backup.json")
+        val uri = android.net.Uri.fromFile(file)
+        val word = "Zorblax"
+        AppGraph.dictionary.addTerm(word)
+        val numberRow = AppGraph.settings.current.numberRow
+        val saved = kotlinx.coroutines.runBlocking { AppGraph.exportBackup(context, uri) }
+        AppGraph.dictionary.state.value.terms.first { it.text == word }.let { AppGraph.dictionary.deleteTerm(it.id) }
+        AppGraph.settings.update { it.copy(numberRow = !numberRow) }
+        val imported = kotlinx.coroutines.runBlocking { AppGraph.importBackup(context, uri) }
+        val wordBack = AppGraph.dictionary.contains(word)
+        val settingBack = AppGraph.settings.current.numberRow == numberRow
+        val again = kotlinx.coroutines.runBlocking { AppGraph.importBackup(context, uri) }
+        AppGraph.dictionary.state.value.terms.firstOrNull { it.text == word }?.let { AppGraph.dictionary.deleteTerm(it.id) }
+        file.delete()
+        val report = "export: $saved | import: $imported | word back: $wordBack, setting back: $settingBack | again: $again"
+        check(wordBack && settingBack && again.startsWith("Added 0 words and 0 speech rules")) { report }
+        return report
+    }
+
+    /** The Dutch keyboard alone. Dutch must be downloaded. */
+    @JvmStatic fun configureDutch(): Settings {
+        val before = AppGraph.settings.current
+        check(AppGraph.languagePacks.isInstalled(AppGraph.languages["nl"]!!)) { "Download Dutch on the device first" }
+        AppGraph.settings.update {
+            it.copy(autocorrect = true, suggestionStrip = true, autoCapitalize = true, enabledKeyboards = setOf("nl"), currentKeyboard = "nl")
+        }
+        return before
+    }
+
+    /** Waits until Dutch's full word list is loaded. */
+    @JvmStatic fun awaitDutch() {
+        val language = AppGraph.languages["nl"]!!
+        val deadline = android.os.SystemClock.uptimeMillis() + 60_000
+        while (AppGraph.lexicon(language).size < 100_000) {
+            check(android.os.SystemClock.uptimeMillis() < deadline) { "Full Dutch dictionary not ready" }
+            android.os.SystemClock.sleep(100)
+        }
+    }
+
+    /**
+     * Dictation from the debug test clips with Whisper tiny (English), downloading it once if
+     * needed (about 100 MB), live text on, no silence stop.
+     */
+    @JvmStatic fun configureDictation(): Settings {
+        val before = AppGraph.settings.current
+        val model = "whisper-tiny.en"
+        if (model !in AppGraph.models.state.value.installed) {
+            AppGraph.models.download(model)
+            val deadline = android.os.SystemClock.uptimeMillis() + 15 * 60_000
+            while (model !in AppGraph.models.state.value.installed) {
+                check(android.os.SystemClock.uptimeMillis() < deadline) { "Model download timed out" }
+                android.os.SystemClock.sleep(500)
+            }
+        }
+        check(AppGraph.models.setActive(model)) { "Could not use $model" }
+        AppGraph.settings.update {
+            it.copy(audioInput = com.rheerkens.androidkeyboard.settings.AudioInput.TEST_CLIPS, keyboardFirstDictation = true,
+                autoStartVoice = false, liveTextInEditor = true, autoStop = com.rheerkens.androidkeyboard.settings.AutoStop.OFF)
+        }
+        return before
+    }
+
     @JvmStatic fun awaitDictionary() {
         val language = AppGraph.currentLanguage(AppGraph.settings.current)
         val deadline = android.os.SystemClock.uptimeMillis() + 60_000

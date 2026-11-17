@@ -11,6 +11,8 @@ import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputContentInfo
 import com.rheerkens.androidkeyboard.keyboard.BackspaceScrub
+import com.rheerkens.androidkeyboard.keyboard.NumberPad
+import com.rheerkens.androidkeyboard.keyboard.ui.EditAction
 import com.rheerkens.androidkeyboard.keyboard.ui.EnterKind
 
 /**
@@ -254,34 +256,30 @@ class EditorBridge(private val connection: () -> InputConnection?) {
         c.endBatchEdit()
     }
 
-    /** True when the editor asks for a capital letter at the cursor (sentence start). */
-    fun capsModeAtCursor(): Boolean {
+    /**
+     * True when the editor asks for a capital letter at the cursor (sentence start). With the text
+     * [before] the cursor already read (an [EditorContext]), this is worked out from it the way
+     * editors do (`TextUtils.getCapsMode`), sparing the editor a second synchronous call per key;
+     * only when that text is cut off and holds nothing but spaces is the editor asked.
+     */
+    fun capsModeAtCursor(before: String? = null): Boolean {
         val info = editorInfo ?: return false
         if (info.inputType and InputType.TYPE_MASK_CLASS != InputType.TYPE_CLASS_TEXT) return false
+        if (before != null && (before.length < EditorContext.LIMIT || before.any { !it.isWhitespace() && it != '"' && it != '\'' })) {
+            return android.text.TextUtils.getCapsMode(before, before.length, info.inputType) != 0
+        }
         return (ic?.getCursorCapsMode(info.inputType) ?: 0) != 0
     }
 
     val isPasswordField: Boolean
-        get() {
-            val type = editorInfo?.inputType ?: return false
-            val variation = type and InputType.TYPE_MASK_VARIATION
-            return when (type and InputType.TYPE_MASK_CLASS) {
-                InputType.TYPE_CLASS_TEXT ->
-                    variation == InputType.TYPE_TEXT_VARIATION_PASSWORD ||
-                        variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
-                        variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD
-                InputType.TYPE_CLASS_NUMBER -> variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD
-                else -> false
-            }
-        }
+        get() = isPassword(editorInfo)
 
     /**
      * Password fields and fields that ask keyboards not to learn (incognito / private).
      * Voice input is never offered there.
      */
     val isSensitiveField: Boolean
-        get() = isPasswordField ||
-            (editorInfo?.imeOptions ?: 0) and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING != 0
+        get() = isSensitive(editorInfo)
 
     /** Prose shortcuts are inappropriate in passwords, URLs, addresses and numeric fields. */
     val allowsTextShortcuts: Boolean
@@ -294,6 +292,15 @@ class EditorBridge(private val connection: () -> InputConnection?) {
                 InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS,
                 InputType.TYPE_TEXT_VARIATION_FILTER,
             )
+        }
+
+    /** The number pad of a number, phone or date field, which the keyboard opens on; null for text. */
+    val numberPad: NumberPad?
+        get() = when ((editorInfo?.inputType ?: 0) and InputType.TYPE_MASK_CLASS) {
+            InputType.TYPE_CLASS_NUMBER -> NumberPad.NUMBER
+            InputType.TYPE_CLASS_PHONE -> NumberPad.PHONE
+            InputType.TYPE_CLASS_DATETIME -> NumberPad.DATETIME
+            else -> null
         }
 
     private val isMultiLine: Boolean
@@ -356,11 +363,40 @@ class EditorBridge(private val connection: () -> InputConnection?) {
         }
     }
 
-    private fun sendKey(code: Int) {
+    private fun sendKey(code: Int, meta: Int = 0) {
         val c = ic ?: return
         val now = SystemClock.uptimeMillis()
-        c.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, code, 0, 0, KeyCharacterMap.VIRTUAL_KEYBOARD, 0, KeyEvent.FLAG_SOFT_KEYBOARD or KeyEvent.FLAG_KEEP_TOUCH_MODE))
-        c.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_UP, code, 0, 0, KeyCharacterMap.VIRTUAL_KEYBOARD, 0, KeyEvent.FLAG_SOFT_KEYBOARD or KeyEvent.FLAG_KEEP_TOUCH_MODE))
+        c.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, code, 0, meta, KeyCharacterMap.VIRTUAL_KEYBOARD, 0, KeyEvent.FLAG_SOFT_KEYBOARD or KeyEvent.FLAG_KEEP_TOUCH_MODE))
+        c.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_UP, code, 0, meta, KeyCharacterMap.VIRTUAL_KEYBOARD, 0, KeyEvent.FLAG_SOFT_KEYBOARD or KeyEvent.FLAG_KEEP_TOUCH_MODE))
+    }
+
+    /**
+     * Moves the cursor [steps] characters right, or left when negative, as arrow keys do: a whole
+     * emoji is one step, and a selection collapses first. Arrow keys work in nearly every editor,
+     * including web pages.
+     */
+    fun moveCursor(steps: Int) {
+        val code = if (steps < 0) KeyEvent.KEYCODE_DPAD_LEFT else KeyEvent.KEYCODE_DPAD_RIGHT
+        repeat(kotlin.math.abs(steps)) { sendKey(code) }
+    }
+
+    /**
+     * Runs the editor's own [action], as its text menu would. Undo falls back to Ctrl+Z for editors
+     * without a menu entry for it. Returns false if the editor refused.
+     */
+    fun performEdit(action: EditAction): Boolean {
+        val c = ic ?: return false
+        val id = when (action) {
+            EditAction.SELECT_ALL -> android.R.id.selectAll
+            EditAction.CUT -> android.R.id.cut
+            EditAction.COPY -> android.R.id.copy
+            EditAction.PASTE -> android.R.id.paste
+            EditAction.UNDO -> android.R.id.undo
+        }
+        if (c.performContextMenuAction(id)) return true
+        if (action != EditAction.UNDO) return false
+        sendKey(KeyEvent.KEYCODE_Z, KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON)
+        return true
     }
 
     companion object {
@@ -374,6 +410,23 @@ class EditorBridge(private val connection: () -> InputConnection?) {
         /** Deleting everything before the cursor stops after this many [MAX_SCRUB] pieces (a million characters). */
         private const val MAX_DELETE_CHUNKS = 100
         fun isWordChar(ch: Char): Boolean = ch.isLetterOrDigit() || ch == '_' || ch == '\''
+
+        fun isPassword(info: EditorInfo?): Boolean {
+            val type = info?.inputType ?: return false
+            val variation = type and InputType.TYPE_MASK_VARIATION
+            return when (type and InputType.TYPE_MASK_CLASS) {
+                InputType.TYPE_CLASS_TEXT ->
+                    variation == InputType.TYPE_TEXT_VARIATION_PASSWORD ||
+                        variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
+                        variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD
+                InputType.TYPE_CLASS_NUMBER -> variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD
+                else -> false
+            }
+        }
+
+        /** A password field, or one that asks keyboards not to learn (incognito, private). */
+        fun isSensitive(info: EditorInfo?): Boolean =
+            isPassword(info) || (info?.imeOptions ?: 0) and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING != 0
 
         /** Identifies a field across connections, e.g. the chat box an image editor returns to. */
         fun keyOf(info: EditorInfo): String =

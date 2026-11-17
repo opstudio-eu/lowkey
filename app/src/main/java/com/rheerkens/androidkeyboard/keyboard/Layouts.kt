@@ -31,16 +31,50 @@ sealed interface Key {
     data class LayerSwitch(val target: Layer, val label: String, override val weight: Float = 1.5f) : Key
     data class Globe(override val weight: Float = 1f) : Key
     data class Emoji(override val weight: Float = 1f) : Key
-    data class Space(override val weight: Float = 4f) : Key
+    /** Space; [showsLanguage] labels it with the keyboard's language, else it shows a space mark. */
+    data class Space(override val weight: Float = 4f, val showsLanguage: Boolean = true) : Key
     data class Enter(override val weight: Float = 1.5f) : Key
     /** Flexible spacer used to center the middle letter row. */
     data class Gap(override val weight: Float = 0.5f) : Key
 }
 
-enum class Layer { LETTERS, SYMBOLS, SYMBOLS_2 }
+enum class Layer { LETTERS, SYMBOLS, SYMBOLS_2, NUMBERS }
+
+/**
+ * The number pad that number, phone and date fields open on. Beside the digits it offers the
+ * characters such a field needs most: [side] down the left, [aboveEnter], and [besideZero].
+ */
+enum class NumberPad(val side: Pair<String, String>, val aboveEnter: String, val besideZero: Pair<String, String>) {
+    NUMBER("-" to "+", "/", "," to "."),
+    PHONE("-" to "+", ".", "*" to "#"),
+    DATETIME("-" to "/", ":", "," to "."),
+}
 
 /** Four rows of keys. */
 data class KeyboardLayout(val rows: List<List<Key>>)
+
+/** A key as drawn, plus the empty space [before] and [after] it that its touch area also covers. */
+data class TouchKey(val key: Key, val before: Float = 0f, val after: Float = 0f) {
+    /** Share of the row width the touch area takes. */
+    val weight: Float get() = key.weight + before + after
+}
+
+/**
+ * [row] as touch areas: a gap that centres a short row belongs to the letter beside it, so that a
+ * tap left of A or right of L on QWERTY still types that letter. A gap goes to the letter after
+ * it, or else to the one before it; the row keeps its width.
+ */
+fun touchRow(row: List<Key>): List<TouchKey> {
+    val out = ArrayList<TouchKey>(row.size)
+    var ahead = 0f
+    for ((i, key) in row.withIndex()) when {
+        key is Key.Gap && row.getOrNull(i + 1) is Key.Char -> ahead += key.weight
+        key is Key.Gap && out.lastOrNull()?.key is Key.Char -> out[out.lastIndex] = out.last().let { it.copy(after = it.after + key.weight) }
+        key is Key.Char -> { out += TouchKey(key, before = ahead); ahead = 0f }
+        else -> out += TouchKey(key)
+    }
+    return out
+}
 
 object Layouts {
     private fun chars(s: String): List<Key> = s.split(' ').filter { it.isNotEmpty() }.map { Key.Char(it) }
@@ -148,6 +182,28 @@ object Layouts {
         )
     )
 
+    /**
+     * [pad]'s keys: the digits in a phone-style grid with 0 below 8, each a third wider than the
+     * keys beside them, and ?123 and ABC for the other layers.
+     */
+    fun numberPad(pad: NumberPad): KeyboardLayout = NUMBER_PADS.getValue(pad)
+
+    private val NUMBER_PADS = NumberPad.entries.associateWith { pad ->
+        fun digits(s: String) = s.map { Key.Char(it.toString(), weight = PAD_DIGIT) }
+        KeyboardLayout(
+            listOf(
+                listOf(Key.Char(pad.side.first)) + digits("123") + Key.Backspace(1f),
+                listOf(Key.Char(pad.side.second)) + digits("456") + Key.Space(1f, showsLanguage = false),
+                listOf(Key.LayerSwitch(Layer.SYMBOLS, "?123", 1f)) + digits("789") + Key.Char(pad.aboveEnter),
+                listOf(Key.LayerSwitch(Layer.LETTERS, "ABC", 1f), Key.Char(pad.besideZero.first, weight = PAD_DIGIT)) +
+                    digits("0") + Key.Char(pad.besideZero.second, weight = PAD_DIGIT) + Key.Enter(1f),
+            )
+        )
+    }
+
+    /** Width of a number pad digit, in keys beside them. */
+    private const val PAD_DIGIT = 4f / 3f
+
     val SYMBOLS_2 = KeyboardLayout(
         listOf(
             chars("[ ] { } < > = ^ % ~"),
@@ -160,6 +216,7 @@ object Layouts {
     /**
      * The keys of [layer]. With [numberRow], the letters get a 1–0 row on top; [shadeNumberRow]
      * draws it in the number row colour instead of the key colour, to set it apart from the letters.
+     * In a field with a number [pad], the symbol layers' ABC key returns to that pad instead.
      */
     fun forLayer(
         layer: Layer,
@@ -167,14 +224,18 @@ object Layouts {
         numberRow: Boolean = false,
         bottomKey: BottomKey = BottomKey.EMOJI,
         shadeNumberRow: Boolean = true,
+        pad: NumberPad? = null,
     ): KeyboardLayout {
         val layout = when (layer) {
             Layer.LETTERS -> letters(keyboard)
             Layer.SYMBOLS -> SYMBOLS
             Layer.SYMBOLS_2 -> SYMBOLS_2
+            Layer.NUMBERS -> numberPad(pad ?: NumberPad.NUMBER)
         }
         val rows = layout.rows.map { row ->
             row.map { key -> when {
+                pad != null && layer != Layer.NUMBERS && key is Key.LayerSwitch && key.target == Layer.LETTERS ->
+                    Key.LayerSwitch(Layer.NUMBERS, "123", key.weight)
                 key is Key.Globe && bottomKey == BottomKey.EMOJI -> Key.Emoji(key.weight)
                 numberRow && layer == Layer.LETTERS && key is Key.Char -> key.copy(showLongPressHint = false)
                 else -> key

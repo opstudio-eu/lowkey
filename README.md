@@ -2,7 +2,7 @@
 
 Lowkey is a slim Android keyboard with on-device voice typing. Speech recognition, suggestions, and autocorrect run on your phone. Lowkey uses the internet to download speech models and keyboard languages, and to check for and download app updates.
 
-**[Download Lowkey for Android](https://github.com/opstudio-eu/lowkey/releases/latest/download/lowkey.apk)** · Android 9 or later
+**[Download Lowkey for Android](https://github.com/opstudio-eu/lowkey/releases/latest/download/lowkey.apk)** · Android 9 or later, 64-bit ARM
 
 ## Install
 
@@ -17,13 +17,14 @@ The app checks for updates automatically. Use **Settings → Updates → Check f
 ## Features
 
 - Voice typing with downloadable English and multilingual speech models.
-- Suggestions and autocorrect across up to three enabled, installed keyboard languages, with English bundled and Dutch, Polish and 18 more languages to download, plus a personal dictionary for saved terms and dictation casing.
-- Each language's own layout (such as German QWERTZ with Ü, Ö and Ä, or Russian ЙЦУКЕН), plus QWERTY, AZERTY, QWERTZ, Dvorak, and Colemak, with long-press numbers and accents.
-- A minimized keyboard for voice input or use with a physical keyboard, and gestures for deleting words.
+- Suggestions and autocorrect across up to three enabled, installed keyboard languages, following the language you are writing in, with English bundled and Dutch, Polish and 18 more languages to download, plus a personal dictionary for saved terms and dictation casing, and optional next-word predictions learned on the phone from your own typing.
+- Each language's own layout (such as German QWERTZ with Ü, Ö and Ä, or Russian ЙЦУКЕН), plus QWERTY, AZERTY, QWERTZ, Dvorak, and Colemak, with long-press numbers and accents, and a number pad in number, phone and date fields.
+- A minimized keyboard for voice input or use with a physical keyboard, gestures for deleting words, a space bar that moves the cursor when you slide along it, and select, cut, copy, paste and undo in Keyboard tools.
 - Direct resizing and positioning, one-handed and floating modes, a split keyboard for wider screens, and an optional number row.
 - An offline emoji panel with categories, skin-tone variants, and recent choices, plus tap-to-insert emoji suggestions for English and Dutch words (in English also from emoji names, such as thumb for 👍). Hold the emoji key to switch between your keyboard languages.
 - Clipboard history for text and images, with previews and an image editor for cropping, annotation, and blur.
 - A built-in test field to try the keyboard without leaving settings.
+- Export and import of your saved words, speech rules and settings in one file, for a new phone or a reinstall.
 - Light and dark themes in OpStudio's colours, following the system by default, plus an optional custom keyboard theme: your own colours for every part of the keyboard and an optional background photo, with a live preview and contrast checks.
 
 ## Documentation

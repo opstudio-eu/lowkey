@@ -34,6 +34,31 @@ class SettingsStore(context: Context) {
 
     private val lock = Any()
 
+    /** Every stored setting as SharedPreferences holds it, for a backup. */
+    fun exportValues(): Map<String, Any> = synchronized(lock) { prefs.all.filterValues { it != null }.mapValues { it.value!! } }
+
+    /**
+     * Replaces the stored settings with a backup's [values] (Boolean, Int, Long, Float, String
+     * or a set of strings) and loads them, as if the app had started with them.
+     */
+    fun importValues(values: Map<String, Any>) = synchronized(lock) {
+        prefs.edit(commit = true) {
+            clear()
+            for ((key, value) in values) {
+                @Suppress("UNCHECKED_CAST")
+                when (value) {
+                    is Boolean -> putBoolean(key, value)
+                    is Int -> putInt(key, value)
+                    is Long -> putLong(key, value)
+                    is Float -> putFloat(key, value)
+                    is String -> putString(key, value)
+                    is Set<*> -> putStringSet(key, value.filterIsInstance<String>().toSet())
+                }
+            }
+        }
+        _settings.value = load()
+    }
+
     private fun load(): Settings {
         val d = Settings()
         // Before keyboards had arrangements, only languages were stored (always QWERTY).
@@ -55,10 +80,13 @@ class SettingsStore(context: Context) {
             autoCapitalize = prefs.getBoolean(K_AUTOCAP, d.autoCapitalize),
             autocorrect = prefs.getBoolean(K_AUTOCORRECT, d.autocorrect),
             suggestionStrip = prefs.getBoolean(K_STRIP, d.suggestionStrip),
+            learnFromTyping = prefs.getBoolean(K_LEARN, d.learnFromTyping),
             enabledKeyboards = enabled,
             currentKeyboard = current,
             showWithPhysicalKeyboard = prefs.getBoolean(K_SHOW_WITH_PHYSICAL, d.showWithPhysicalKeyboard),
             recentScreenshots = prefs.getBoolean(K_SCREENSHOTS, d.recentScreenshots),
+            clipExpiry = enumOr(prefs.getString(K_CLIP_EXPIRY, null), d.clipExpiry),
+            dismissedLanguageHints = prefs.getStringSet(K_LANGUAGE_HINTS, null)?.toSet() ?: d.dismissedLanguageHints,
             autoStartVoice = prefs.getBoolean(K_AUTOSTART, d.autoStartVoice),
             keyboardFirstDictation = prefs.getBoolean(K_KEYBOARD_FIRST, d.keyboardFirstDictation),
             rememberLastMode = prefs.getBoolean(K_REMEMBER, d.rememberLastMode),
@@ -91,12 +119,15 @@ class SettingsStore(context: Context) {
         putBoolean(K_AUTOCAP, s.autoCapitalize)
         putBoolean(K_AUTOCORRECT, s.autocorrect)
         putBoolean(K_STRIP, s.suggestionStrip)
+        putBoolean(K_LEARN, s.learnFromTyping)
         putStringSet(K_KEYBOARDS, s.enabledKeyboards)
         putString(K_KEYBOARD, s.currentKeyboard)
         remove(K_LAYOUTS)
         remove(K_LAYOUT)
         putBoolean(K_SHOW_WITH_PHYSICAL, s.showWithPhysicalKeyboard)
         putBoolean(K_SCREENSHOTS, s.recentScreenshots)
+        putString(K_CLIP_EXPIRY, s.clipExpiry.name)
+        putStringSet(K_LANGUAGE_HINTS, s.dismissedLanguageHints)
         putBoolean(K_AUTOSTART, s.autoStartVoice)
         putBoolean(K_KEYBOARD_FIRST, s.keyboardFirstDictation)
         putBoolean(K_REMEMBER, s.rememberLastMode)
@@ -158,6 +189,7 @@ class SettingsStore(context: Context) {
         const val K_AUTOCAP = "auto_capitalize"
         const val K_AUTOCORRECT = "autocorrect"
         const val K_STRIP = "suggestion_strip"
+        const val K_LEARN = "learn_from_typing"
         /** Language-only keys from before arrangements; read once to migrate. */
         const val K_LAYOUTS = "enabled_layouts"
         const val K_LAYOUT = "current_layout"
@@ -179,6 +211,8 @@ class SettingsStore(context: Context) {
         const val K_LAST_MODE = "last_mode"
         const val K_SHOW_WITH_PHYSICAL = "show_with_physical_keyboard"
         const val K_SCREENSHOTS = "recent_screenshots"
+        const val K_CLIP_EXPIRY = "clip_expiry"
+        const val K_LANGUAGE_HINTS = "dismissed_language_hints"
         const val K_MINIMIZED_PHYSICAL = "minimized_with_physical_keyboard"
         const val K_MINIMIZED_TOUCH = "minimized_without_physical_keyboard"
     }

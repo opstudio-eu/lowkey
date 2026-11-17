@@ -55,6 +55,8 @@ object AppGraph {
     lateinit var keyboardTheme: KeyboardThemeStore
         private set
     lateinit var dictionary: DictionaryStore
+    /** What the user's typing taught (opt-in, [Settings.learnFromTyping]); see [PersonalModelStore]. */
+    lateinit var personalModel: com.rheerkens.androidkeyboard.dictionary.PersonalModelStore
         private set
     lateinit var models: ModelStore
         private set
@@ -98,6 +100,10 @@ object AppGraph {
     /** Small built-in lists used while a language's full list loads. */
     private val fallbackLexicons = ConcurrentHashMap<String, Lexicon>()
     private lateinit var assets: AssetManager
+    /** Saved binary copies of built word lists ([Lexicon.write]), so a restart skips parsing. */
+    private lateinit var lexiconCache: java.io.File
+    /** When this app was installed or updated: a saved list from another build is rebuilt. */
+    private var installedAt = 0L
     private val nextClip = AtomicInteger(0)
     private var initialized = false
 
@@ -105,9 +111,13 @@ object AppGraph {
         if (initialized) return
         val app = context.applicationContext
         assets = app.assets
+        lexiconCache = java.io.File(app.cacheDir, "lexicons")
+        installedAt = runCatching { app.packageManager.getPackageInfo(app.packageName, 0).lastUpdateTime }.getOrDefault(0L)
         settings = SettingsStore(app)
         keyboardTheme = KeyboardThemeStore(app, appScope)
         dictionary = DictionaryStore(app)
+        personalModel = com.rheerkens.androidkeyboard.dictionary.PersonalModelStore(
+            java.io.File(app.noBackupFilesDir, "personal-model.bin"), appScope)
         models = DiskModelStore(app, appScope)
         sessionLog = SessionLog(app)
         crashLog = CrashLog(app)
@@ -214,6 +224,7 @@ object AppGraph {
     fun deleteLanguage(id: String) {
         languagePacks.delete(id)
         invalidateLexicon(id)
+        java.io.File(lexiconCache, "$id.lkx").delete()
         settings.update(::withoutUnusableKeyboards)
     }
 
@@ -263,24 +274,89 @@ object AppGraph {
         if (languagePacks.isInstalled(language)) lexicons.preload(language)
     }
 
-    /** Builds [language]'s full list on the loader thread, or null if it can't be read. */
+    /** Saves the saved words, speech rules and settings to [uri]; returns what to tell the user. */
+    suspend fun exportBackup(context: Context, uri: android.net.Uri): String = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        runCatching {
+            val d = dictionary.state.value
+            val out = context.contentResolver.openOutputStream(uri, "wt") ?: error("The file couldn't be opened")
+            out.use {
+                com.rheerkens.androidkeyboard.backup.BackupFile.write(it,
+                    com.rheerkens.androidkeyboard.backup.BackupContents(d.terms, d.rules, settings.exportValues()), System.currentTimeMillis())
+            }
+            "Saved ${count(d.terms.size, "word")}, ${count(d.rules.size, "speech rule")} and your settings."
+        }.getOrElse { "Couldn't save the backup: ${it.message}" }
+    }
+
+    /**
+     * Reads a backup from [uri]: adds its words and speech rules that aren't saved yet and takes
+     * its settings. Returns what to tell the user, including languages to download again.
+     */
+    suspend fun importBackup(context: Context, uri: android.net.Uri): String = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        runCatching {
+            val input = context.contentResolver.openInputStream(uri) ?: error("The file couldn't be opened")
+            val contents = input.use(com.rheerkens.androidkeyboard.backup.BackupFile::read)
+            val (terms, rules) = dictionary.import(contents.terms, contents.rules)
+            if (contents.settings.isNotEmpty()) settings.importValues(contents.settings)
+            val missing = settings.current.enabledKeyboards.mapNotNull { languages[it.substringBefore(':')] }
+                .filter { !languagePacks.isInstalled(it) }.distinct().map { it.englishName }
+            "Added ${count(terms, "word")} and ${count(rules, "speech rule")}" + (if (contents.settings.isNotEmpty()) "; settings restored." else ".") +
+                if (missing.isEmpty()) "" else " Download ${missing.joinToString(", ")} again under Languages & layouts."
+        }.getOrElse { it.message ?: "Couldn't read this file" }
+    }
+
+    private fun count(n: Int, thing: String) = if (n == 1) "1 $thing" else "$n ${thing}s"
+
+    /**
+     * Builds [language]'s full list on the loader thread, or null if it can't be read: from its
+     * saved binary copy when that was built from the same source by this install of the app, else
+     * from the text list, which is then saved for the next start.
+     */
     private fun buildLexicon(language: KeyboardLanguage): Lexicon? {
         val name = language.dictionaryFile
         val started = android.os.SystemClock.elapsedRealtime()
+        val saved = java.io.File(lexiconCache, "${language.id}.lkx")
+        var fromCache = false
         return runCatching {
-            val input = if (language.bundled) assets.open("dict/$name") else languagePacks.file(language).inputStream()
-            val base = input.use { Lexicon.parseGzip(it, language.folding, language.rules) }
-            // Tech/chat words (and, outside English, the English basics people mix in) count as known.
-            val extra = if (language.id.startsWith("en_")) BuiltInWords.TECH else BuiltInWords.TECH + BuiltInWords.ENGLISH
-            base.withExtraWords(BuiltInWords.ENGLISH + extra, EXTRA_WORD_FREQUENCY).also {
+            val tag = lexiconTag(language)
+            val cached = runCatching {
+                if (saved.isFile) saved.inputStream().use { Lexicon.read(it, tag, language.folding, language.rules) } else null
+            }.onFailure { Log.w(TAG, "Rebuilding $name: its saved copy is unreadable", it) }.getOrNull()
+            (cached?.also { fromCache = true } ?: parseLexicon(language).also { saveLexicon(saved, it, tag) }).also {
                 // Initialize the spelling engine's cold path on this loader thread before
                 // making the full dictionary available to a Space press on the main thread.
                 Corrector.corrections("keyboard", it)
             }
         }.onSuccess {
             val ms = android.os.SystemClock.elapsedRealtime() - started
-            Log.i(TAG, "Built $name: ${it.size} words in $ms ms")
+            Log.i(TAG, "Built $name: ${it.size} words in $ms ms" + if (fromCache) " from its saved copy" else "")
         }.onFailure { Log.e(TAG, "Failed to load $name", it) }.getOrNull()
+    }
+
+    private fun parseLexicon(language: KeyboardLanguage): Lexicon {
+        val input = if (language.bundled) assets.open("dict/${language.dictionaryFile}") else languagePacks.file(language).inputStream()
+        val base = input.use { Lexicon.parseGzip(it, language.folding, language.rules) }
+        // Tech/chat words (and, outside English, the English basics people mix in) count as known.
+        val extra = if (language.id.startsWith("en_")) BuiltInWords.TECH else BuiltInWords.TECH + BuiltInWords.ENGLISH
+        return base.withExtraWords(BuiltInWords.ENGLISH + extra, EXTRA_WORD_FREQUENCY)
+    }
+
+    /** What a saved list was built from: this install of the app and the language's word list file. */
+    private fun lexiconTag(language: KeyboardLanguage): String {
+        val source = if (language.bundled) "bundled" else languagePacks.file(language).let { "${it.length()}:${it.lastModified()}" }
+        return "$installedAt|${language.id}|$source"
+    }
+
+    /** Saves [lexicon] as [file] for the next start; a full disk only costs that speed-up. */
+    private fun saveLexicon(file: java.io.File, lexicon: Lexicon, tag: String) {
+        val partial = java.io.File(file.path + ".partial")
+        runCatching {
+            file.parentFile?.mkdirs()
+            partial.outputStream().use { lexicon.write(it, tag) }
+            check(partial.renameTo(file)) { "Could not move ${partial.name}" }
+        }.onFailure {
+            partial.delete()
+            Log.w(TAG, "Could not save ${file.name}", it)
+        }
     }
 
     /** Key of the model the next capture would load (see `LoadableModel.key`), or null. */

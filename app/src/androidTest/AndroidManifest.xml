@@ -7,6 +7,10 @@
         <activity android:name="com.rheerkens.androidkeyboard.test.ClipboardFixtureActivity"
             android:exported="true" android:theme="@android:style/Theme.Material.Light.NoActionBar"
             android:windowSoftInputMode="adjustResize" />
+        <!-- Number, phone, date and PIN editors, for which keys each field opens on. -->
+        <activity android:name="com.rheerkens.androidkeyboard.test.NumberFieldsFixtureActivity"
+            android:exported="true" android:theme="@android:style/Theme.Material.Light.NoActionBar"
+            android:windowSoftInputMode="adjustResize" />
         <provider android:name="com.rheerkens.androidkeyboard.test.ClipboardFixtureProvider"
             android:authorities="com.rheerkens.androidkeyboard.test.clipboard"
             android:exported="false" android:grantUriPermissions="true" />

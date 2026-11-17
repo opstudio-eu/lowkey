@@ -98,7 +98,7 @@ class LanguageCatalog(val languages: List<KeyboardLanguage>) {
         /** Keys a language section may have; any other is a typo that would silently do nothing. */
         private val KEYS = setOf(
             "name", "english", "short", "speech", "rows", "layout", "accents", "bundled", "size", "sha256",
-            "accent_margin", "capitalized_nouns",
+            "accent_margin", "capitalized_nouns", "compounds",
         )
 
         private fun language(id: String, s: Map<String, String>, source: String): KeyboardLanguage {
@@ -135,6 +135,11 @@ class LanguageCatalog(val languages: List<KeyboardLanguage>) {
                         null, "false" -> false
                         "true" -> true
                         else -> throw IllegalArgumentException("[$id]: capitalized_nouns must be true or false")
+                    },
+                    compoundLinkers = s["compounds"]?.let { v ->
+                        v.split(' ').filter { it.isNotEmpty() && it != "-" }.also { linkers ->
+                            require(linkers.all { l -> l.all { it.isLetter() } }) { "[$id]: compounds lists linking letters, such as s e en" }
+                        }
                     },
                 ),
                 bundled = bundled, sourceBytes = bytes, sourceSha256 = sha,

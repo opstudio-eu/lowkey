@@ -1,0 +1,119 @@
+Hi Mira, thanks for the update. I will look at the new design later today and send you my notes.
+
+Can we move the meeting to Thursday? I have a dentist appointment on Wednesday morning.
+
+Thanks for the quick reply. Thursday at ten works for me.
+
+I just pushed the fix for the login screen. Let me know if you still see the problem.
+
+Good morning! I am working from home today, so call me if you need anything.
+
+The build is green again. I will send the release notes to the team this afternoon.
+
+Sorry, I am running a bit late. I will be there in ten minutes.
+
+Can you send me the slides from the meeting? I want to add a few notes before Friday.
+
+Thanks for the slides. I added my notes on the last page.
+
+I will pick up the kids from school today. Can you start dinner?
+
+We are out of milk and bread. I will get some on the way home.
+
+Let me know if you need anything else for the report. I can send it later today.
+
+The meeting went well. They liked the new design, but they want a simpler settings page.
+
+I am working from home tomorrow. Let me know if you want to call.
+
+Thanks for the coffee this morning! Next time it is on me.
+
+Can we talk about the settings page tomorrow? I have a few ideas.
+
+I just sent you the new version of the report. Let me know what you think.
+
+I will be at the office on Monday and Tuesday next week.
+
+Sorry for the late reply. I was in meetings all afternoon.
+
+The kids want pizza tonight. Is that fine with you?
+
+I will send the invoice at the end of the month.
+
+Good morning! The build failed last night, so I am looking into it now.
+
+I found the problem. It was a missing permission in the manifest. The fix is ready.
+
+Thanks for testing the new version. I will look at the crash you found.
+
+Can you review my pull request when you have a moment? It is a small change to the keyboard.
+
+I am going for a run after work. I will be home around seven.
+
+Let me know when you are free this week. I would like to talk about the roadmap.
+
+The design review is moved to Friday at two.
+
+Thanks for the review! I fixed the comments and pushed a new version.
+
+I will pick up the groceries on the way home. Do we need anything else?
+
+Good morning! I am working from home today because the trains are not running.
+
+Can we move our call to tomorrow morning? Something came up this afternoon.
+
+I just sent the release notes to the team. Let me know if I missed anything.
+
+Sorry, I will be a bit late for dinner. The meeting is running over.
+
+Thanks for the update on the budget. I will look at it tonight.
+
+The new version is live. Thanks everyone for the hard work this month.
+
+Can you send me the address of the restaurant? I will meet you there at eight.
+
+I will be at the office tomorrow. Do you want to have lunch together?
+
+Let me know if you need anything else from me before the weekend.
+
+Good morning! The kids are sick today, so I am working from home.
+
+Thanks for the quick fix. The login screen works again.
+
+Can we talk about the roadmap on Monday? I have a few questions about the next release.
+
+I just pushed a new version of the settings page. Let me know what you think.
+
+I will send you the report later today. I am still waiting for the numbers from finance.
+
+Sorry for the late reply. I was out for a run.
+
+The meeting is moved to Thursday at ten. I will send a new invite.
+
+Thanks for the coffee! See you at the meeting on Thursday.
+
+I will pick up the kids from school tomorrow. Can you take them to football?
+
+Can you review the new design when you have a moment? I would like to send it to the team on Friday.
+
+Good morning! I am working from home today. Call me if you need anything.
+
+Thanks for the review. I will fix the comments this afternoon.
+
+I just sent you the slides for the meeting. Let me know if you want to change anything.
+
+Can we move the design review to next week? The team needs more time.
+
+I will be home around six tonight. Do we need anything from the shop?
+
+Let me know if you need anything else for the release. I can stay a bit longer today.
+
+Sorry, I am running late. I will be there in five minutes.
+
+The build is green and the new version is ready for testing.
+
+Thanks for the update. I will send the release notes to the team tomorrow morning.
+
+I am working from home on Friday. Let me know if you want to call about the roadmap.
+
+Can you send me the numbers for the report? I want to finish it before the weekend.

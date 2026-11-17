@@ -1,5 +1,7 @@
 package com.rheerkens.androidkeyboard.dictionary
 
+import java.util.WeakHashMap
+
 /** One suggestion slot. [isPersonal] marks saved terms; [isLiteral] marks the typed word itself. */
 data class Suggestion(
     val text: String,
@@ -23,6 +25,26 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
     private val dictionariesReady: Boolean = true) {
     /** A suggester over a fixed word list, most frequent first (tests and fallbacks). */
     constructor(words: List<String>) : this(constant(Lexicon.fromWords(words)))
+
+    /**
+     * Spelling searches already done, per word list by lowercase word and candidate count. One
+     * keystroke asks [autocorrection] and [suggest] for the same search, the slowest step of both.
+     * Word lists are weak keys, so the results never keep a replaced list in memory.
+     */
+    private val searches = WeakHashMap<Lexicon, HashMap<Pair<String, Int>, List<Correction>>>()
+
+    /** [Corrector.corrections] with this suggester's keys, done once per word list and word. */
+    private fun corrections(typed: String, lexicon: Lexicon, limit: Int, checkActive: () -> Unit): List<Correction> {
+        val key = typed.lowercase() to limit
+        synchronized(searches) { searches[lexicon]?.get(key) }?.let { return it }
+        val found = Corrector.corrections(typed, lexicon, limit, keys, checkActive)
+        synchronized(searches) {
+            val done = searches.getOrPut(lexicon) { HashMap() }
+            if (done.size >= MAX_SEARCHES) done.clear()
+            done[key] = found
+        }
+        return found
+    }
 
     /** Ranked candidates for [typed], best first. Empty [typed] returns newest personal terms. */
     @JvmOverloads
@@ -63,7 +85,7 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
         val corrections = if (Corrector.looksLikeAWord(typed) && lexicons.none { it.contains(typed) }) {
             interleave(lexicons.map { lex ->
                 checkActive()
-                listOfNotNull(lex.whitelist[lower]) + Corrector.corrections(typed, lex, limit, keys, checkActive).map { it.word }
+                listOfNotNull(lex.whitelist[lower]) + corrections(typed, lex, limit, checkActive).map { it.word }
             })
         } else emptyList()
         // 4. Keep the best completion, but reserve a slot for a spelling correction: a typo
@@ -135,11 +157,15 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
         }
         // Preserve language-specific casing/accent rules for known words in the active language.
         if (primaryRule == Corrector.Rule.Keep && lex.contains(word)) return null
+        // Two common words written as one (Dutch `thuiswerkdag`) are a word, though not in the list,
+        // unless a common whole word is very close: `onderwerk` is a slip of `onderwerp`.
+        val compound = (listOf(lex) + secondary).any { Compounds.isCompound(word, it) }
         val fixes = (listOf(lex) + secondary).mapNotNull { language ->
             checkActive()
             if (search) {
                 // The keyboard's own language is the likelier one: `dne` is `done`, not Dutch `de`.
-                Corrector.autoFix(word, language, atSentenceStart, keys, checkActive)
+                Corrector.autoFix(word, language, atSentenceStart, keys, checkActive,
+                    search = { corrections(word, language, Corrector.AUTOFIX_CANDIDATES, checkActive) })
                     ?.let { if (language === lex) it.copy(score = it.score + PRIMARY_LEAD) else it }
             } else {
                 (Corrector.rule(word, language, atSentenceStart) as? Corrector.Rule.Replace)
@@ -147,7 +173,50 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
             }
         }
         // Without the search a sure fix still wins over any found later; anything else is unsure.
-        return pick(if (search) fixes else fixes.filter { it.certain })
+        if (!search) return pick(fixes.filter { it.certain })
+        if (compound) return pick(fixes.filter { it.certain || it.score >= COMPOUND_OVERRIDE })
+        if (fixes.isNotEmpty()) return pick(fixes)
+        // No whole word is close: a slip in one part of a compound (`toetsenbrodinstellingen`).
+        return pick((listOf(lex) + secondary).mapNotNull { language -> Compounds.repair(word, language, keys, checkActive) })
+    }
+
+    /**
+     * The participating language the words in [before] are written in: 0 for the keyboard's
+     * language, n for the nth of [secondaryLexicons]. Each of the last [CONTEXT_WORDS] complete
+     * words votes for the language whose list has it clearly more often than every other's; a
+     * language with at least [MIN_CONTEXT_VOTES] votes and twice as many as any other leads.
+     * Otherwise, and with one language, the keyboard's language leads. The word being typed at
+     * the end of [before] doesn't vote.
+     */
+    fun contextLanguage(before: String): Int {
+        val lexicons = listOf(lexicon()) + secondaryLexicons()
+        if (lexicons.size < 2 || before.isEmpty()) return 0
+        val words = CONTEXT_WORD.findAll(before).map { it.value }.toList()
+            .let { if (before.last().isLetter() || before.last() == '\'') it.dropLast(1) else it }
+        val votes = IntArray(lexicons.size)
+        for (word in words.takeLast(CONTEXT_WORDS)) {
+            if (word.length < 2) continue
+            val frequency = lexicons.map { it.frequency(word) ?: 0 }
+            val best = frequency.indices.maxBy { frequency[it] }
+            if (frequency[best] > 0 && frequency.indices.all { it == best || frequency[it] + VOTE_MARGIN <= frequency[best] }) {
+                votes[best]++
+            }
+        }
+        val lead = votes.indices.maxBy { votes[it] }
+        return if (votes[lead] >= MIN_CONTEXT_VOTES && votes.indices.all { it == lead || 2 * votes[it] <= votes[lead] }) lead else 0
+    }
+
+    /**
+     * This suggester with participating language [lead] ([contextLanguage]) in the keyboard
+     * language's place: its words come first in the strip, and it gets the keyboard language's
+     * edge when autocorrect fixes disagree. Key distances still follow the keyboard.
+     */
+    fun leading(lead: Int): Suggester {
+        if (lead == 0) return this
+        val lexicons = listOf(lexicon()) + secondaryLexicons()
+        val first = lexicons.getOrNull(lead) ?: return this
+        val rest = lexicons.filterIndexed { i, _ -> i != lead }
+        return Suggester({ first }, keys, { rest }, dictionariesReady)
     }
 
     /**
@@ -173,6 +242,29 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
          * in the keyboard's language: Polish `im` (159) stays, the Dutch list's `im` (119) doesn't.
          */
         private const val RARE_IN_OTHER_LANGUAGE = 128
+
+        /** Searches kept per word list; the keyboard makes a new suggester for every keystroke. */
+        private const val MAX_SEARCHES = 32
+        /** Complete words before the cursor that decide the language written in. */
+        private const val CONTEXT_WORDS = 8
+
+        /** Votes the language written in needs before it leads. */
+        private const val MIN_CONTEXT_VOTES = 2
+
+        /**
+         * Frequency (0–255) by which a word must be more common in one language than in every
+         * other to vote for it: `the` (English 255, 120 as an extra word in Dutch) votes English,
+         * `in`, common in both, votes for neither.
+         */
+        private const val VOTE_MARGIN = 40
+
+        private val CONTEXT_WORD = Regex("""[\p{L}']+""")
+        /**
+         * Score a whole-word fix needs to win over reading the word as a compound. Up to 2 every
+         * swapped-letter slip of a long Dutch word was still fixed and no compound of two common
+         * words was changed; higher, slips start to be read as compounds.
+         */
+        private const val COMPOUND_OVERRIDE = 2.0
 
         /** Score lead a spelling fix needs over a different one from another language. */
         private const val LANGUAGE_MARGIN = 1.0

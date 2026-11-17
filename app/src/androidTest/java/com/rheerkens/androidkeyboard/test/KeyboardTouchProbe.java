@@ -38,9 +38,38 @@ public final class KeyboardTouchProbe extends Instrumentation {
     @Override public void onStart() {
         Bundle result = new Bundle();
         try {
+            if (arguments.getString("probe", "burst").equals("whisper-context")) {
+                result.putString("stream", WhisperContextProbe.run(getTargetContext()));
+                finish(0, result);
+                return;
+            }
             if (arguments.getString("typingDefaults", "0").equals("1")) {
                 runOnMainSync(() -> savedSettings = TypingProbeConfig.configure());
                 TypingProbeConfig.awaitDictionary();
+            }
+            if (arguments.getString("probe", "burst").equals("context-language")) {
+                runOnMainSync(() -> savedSettings = TypingProbeConfig.configureEnglishAndDutch());
+                TypingProbeConfig.awaitLexicon("en_US");
+                TypingProbeConfig.awaitLexicon("nl");
+            }
+            if (arguments.getString("probe", "burst").equals("learning")) {
+                runOnMainSync(() -> savedSettings = TypingProbeConfig.configureLearning());
+                TypingProbeConfig.awaitDictionary();
+            }
+            if (arguments.getString("probe", "burst").equals("backup")) {
+                String[] report = new String[1];
+                runOnMainSync(() -> report[0] = TypingProbeConfig.backupRoundTrip(getTargetContext()));
+                result.putString("stream", "probe=backup " + report[0] + "\n");
+                finish(0, result);
+                return;
+            }
+            if (arguments.getString("probe", "burst").equals("compounds")) {
+                runOnMainSync(() -> savedSettings = TypingProbeConfig.configureDutch());
+                TypingProbeConfig.awaitDutch();
+            }
+            if (arguments.getString("probe", "burst").equals("dictation")) {
+                runOnMainSync(() -> {});
+                savedSettings = TypingProbeConfig.configureDictation();
             }
             if (arguments.getString("probe", "burst").equals("registration")) { registration(result); return; }
             if (arguments.getString("probe", "burst").equals("correction")) { correctionBudget(result); return; }
@@ -49,8 +78,11 @@ public final class KeyboardTouchProbe extends Instrumentation {
             AccessibilityServiceInfo info = ui.getServiceInfo();
             info.flags |= AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS;
             ui.setServiceInfo(info);
+            if (arguments.getString("probe", "burst").equals("layout")) { layout(result); return; }
             if (arguments.getString("probe", "burst").equals("latency")) { latency(result); return; }
             if (arguments.getString("probe", "burst").equals("clipboard")) { clipboard(result); return; }
+            if (arguments.getString("probe", "burst").equals("number-fields")) { numberFields(result); return; }
+            if (arguments.getString("probe", "burst").equals("clip-hygiene")) { clipHygiene(result); return; }
             startActivitySync(new Intent().setClassName(getTargetContext(), "com.rheerkens.androidkeyboard.companion.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             AccessibilityNodeInfo launch = waitLabel("Try your keyboard");
             while (launch != null && !launch.performAction(AccessibilityNodeInfo.ACTION_CLICK)) launch = launch.getParent();
@@ -63,9 +95,16 @@ public final class KeyboardTouchProbe extends Instrumentation {
             cancelPointers();
             if (arguments.getString("steady-shift", "0").equals("1")) { waitLabel("Shift on").performAction(AccessibilityNodeInfo.ACTION_CLICK); SystemClock.sleep(300); }
             if (arguments.getString("probe", "burst").equals("numbers")) { numbers(result); return; }
+            if (arguments.getString("probe", "burst").equals("context-language")) { contextLanguage(result); return; }
+            if (arguments.getString("probe", "burst").equals("learning")) { learning(result); return; }
+            if (arguments.getString("probe", "burst").equals("trackpad-edit")) { trackpadEdit(result); return; }
+            if (arguments.getString("probe", "burst").equals("compounds")) { compounds(result); return; }
+            if (arguments.getString("probe", "burst").equals("caps")) { caps(result); return; }
+            if (arguments.getString("probe", "burst").equals("dictation")) { dictation(result); return; }
             if (arguments.getString("probe", "burst").startsWith("autocomplete")) { autocomplete(result); return; }
             if (arguments.getString("probe", "burst").equals("accents")) { accents(result); return; }
             if (arguments.getString("probe", "burst").equals("hold-overlap")) { holdOverlap(result); return; }
+            if (arguments.getString("probe", "burst").equals("taps")) { taps(result); return; }
             Rect a = bounds(waitLabel("s")), b = bounds(waitLabel("d"));
             Bundle coordinates = new Bundle(); coordinates.putString("stream", "key s="+a+" d="+b+"\n"); sendStatus(0,coordinates);
             try (java.io.FileOutputStream f = new java.io.FileOutputStream(new java.io.File(getTargetContext().getCacheDir(), "probe-before.png"))) { ui.takeScreenshot().compress(android.graphics.Bitmap.CompressFormat.PNG,100,f); }
@@ -249,6 +288,459 @@ public final class KeyboardTouchProbe extends Instrumentation {
         screenshot("clipboard-text-preview.png");
         result.putString("stream", "probe=clipboard PASS: idle/typing transitions, live clip changes, literal text, image thumbnail, image commit with URI permission, unsupported/rejected editors, sensitive clips, password/private fields, clipboard clear\n");
         finish(0,result);
+    }
+    /**
+     * Opens each fixture field with a real tap and types a typical entry the way a person would:
+     * when a character is not on the keys shown, switch layers first. Reports which keys each
+     * field opened on, the taps the entry took, and the size of the first digit key used.
+     */
+    private void numberFields(Bundle result) throws Exception {
+        startActivitySync(new Intent().setClassName(getTargetContext(),
+            "com.rheerkens.androidkeyboard.companion.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        getTargetContext().startActivity(new Intent().setClassName(
+            "com.rheerkens.androidkeyboard.test", "com.rheerkens.androidkeyboard.test.NumberFieldsFixtureActivity")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
+        waitLabel("Number fields fixture");
+        String[] samples = {"ok", "-12.5", "+31 6 12345678", "16/11/2026", "4826"};
+        float density = getTargetContext().getResources().getDisplayMetrics().density;
+        int screen = getTargetContext().getResources().getDisplayMetrics().widthPixels;
+        StringBuilder report = new StringBuilder("probe=number-fields\n");
+        int taps = 0, chars = 0;
+        boolean ok = true;
+        for (int i = 0; i < samples.length; i++) {
+            String name = NumberFieldsFixtureActivity.FIELDS[i];
+            tap(bounds(waitLabel(name)));
+            waitLabel("Switch to voice typing");
+            SystemClock.sleep(1200);
+            String opened = keyFor("q") != null ? "letters" : keyFor("More symbols") != null ? "symbols"
+                : keyFor("Letters") != null && keyFor("Numbers and symbols") != null ? "number pad" : "other";
+            screenshot("number-fields-" + i + ".png");
+            Rect[] digit = new Rect[1];
+            int used = typeByKeys(samples[i], digit);
+            SystemClock.sleep(400);
+            AccessibilityNodeInfo field = waitLabel(name); field.refresh();
+            String typed = String.valueOf(field.getText());
+            boolean same = typed.equalsIgnoreCase(samples[i]);
+            boolean match = same && opened.equals(i == 0 ? "letters" : "number pad");
+            ok &= match;
+            if (i == 2 && opened.equals("number pad")) layerCycle();
+            taps += used; chars += samples[i].length();
+            report.append(String.format(java.util.Locale.ROOT, "%s opened=%s chars=%d taps=%d digitKey=%s typed=%s%s\n",
+                name, opened, samples[i].length(), used,
+                digit[0] == null ? "-" : String.format(java.util.Locale.ROOT, "%.0fx%.0fdp(%.0f%%)",
+                    digit[0].width() / density, digit[0].height() / density, 100f * digit[0].width() / screen),
+                same ? "ok" : "'" + typed + "'", match ? "" : " FAIL"));
+        }
+        report.append("total chars=").append(chars).append(" taps=").append(taps).append('\n');
+        result.putString("stream", report.toString());
+        if (!ok) throw new AssertionError(report.toString());
+        finish(0, result);
+    }
+    /**
+     * In a field with a number pad: ?123 opens the symbols, whose 123 key returns to the pad; ABC
+     * opens the letters, whose ?123 key opens the symbols again; Space there returns to the pad.
+     */
+    private void layerCycle() {
+        tapKey("Numbers and symbols");
+        expectLayer("symbols with 123", keyFor("More symbols") != null && keyFor("Number pad") != null && keyFor("Letters") == null);
+        tapKey("Number pad");
+        expectLayer("number pad", keyFor("Letters") != null && keyFor("Numbers and symbols") != null && keyFor("More symbols") == null);
+        tapKey("Letters");
+        expectLayer("letters", keyFor("q") != null);
+        tapKey("Numbers and symbols");
+        expectLayer("symbols with 123", keyFor("Number pad") != null);
+        tapKey(" ");
+        expectLayer("number pad after Space", keyFor("Letters") != null && keyFor("More symbols") == null && keyFor("q") == null);
+    }
+    private void tapKey(String label) {
+        AccessibilityNodeInfo key = keyFor(label);
+        if (key == null) throw new AssertionError("No key " + label);
+        tap(bounds(key));
+        SystemClock.sleep(500);
+    }
+    private void expectLayer(String name, boolean shown) {
+        if (!shown) throw new AssertionError("Expected the " + name);
+    }
+    /** Types [text] by tapping keys, switching layers when a character isn't shown. Returns the taps. */
+    private int typeByKeys(String text, Rect[] firstDigit) {
+        int taps = 0;
+        for (char ch : text.toCharArray()) {
+            String c = String.valueOf(ch);
+            for (int switches = 0; ; switches++) {
+                AccessibilityNodeInfo key = keyFor(c);
+                if (key != null) {
+                    Rect r = bounds(key);
+                    if (Character.isDigit(ch) && firstDigit[0] == null) firstDigit[0] = r;
+                    tap(r); taps++; SystemClock.sleep(300);
+                    break;
+                }
+                if (switches == 3) throw new AssertionError("No key types '" + c + "'");
+                AccessibilityNodeInfo layer = null;
+                for (String name : Character.isLetter(ch) ? new String[]{"Letters"}
+                        : new String[]{"Number pad", "Numbers and symbols", "More symbols"}) {
+                    layer = keyFor(name);
+                    if (layer != null) break;
+                }
+                if (layer == null) throw new AssertionError("No layer has '" + c + "'");
+                tap(bounds(layer)); taps++; SystemClock.sleep(500);
+            }
+        }
+        return taps;
+    }
+    /** The keyboard's key that types [label] (" " is Space), or a key with that description. */
+    private AccessibilityNodeInfo keyFor(String label) {
+        for (AccessibilityWindowInfo w : ui.getWindows()) {
+            if (w.getType() != AccessibilityWindowInfo.TYPE_INPUT_METHOD) continue;
+            List<AccessibilityNodeInfo> out = new ArrayList<>();
+            walk(w.getRoot(), out);
+            for (AccessibilityNodeInfo n : out) {
+                // Letter keys show capitals while Shift is on.
+                String d = String.valueOf(n.getContentDescription()).toLowerCase(java.util.Locale.ROOT);
+                String l = label.toLowerCase(java.util.Locale.ROOT);
+                if (l.equals(" ") ? d.startsWith("space") : l.equals(",") ? d.equals(",") || d.startsWith("comma.")
+                        : d.equals(l) || d.startsWith(l + ". long-press")) return n;
+            }
+        }
+        return null;
+    }
+    /**
+     * Copies a marker while a password field, a private field and a plain field have focus, plus
+     * a 30,000-character text, then reads which of them the minimized bar offers to paste.
+     */
+    private void clipHygiene(Bundle result) throws Exception {
+        startActivitySync(new Intent().setClassName(getTargetContext(),
+            "com.rheerkens.androidkeyboard.companion.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        String run = "r" + SystemClock.uptimeMillis();
+        getTargetContext().startActivity(new Intent().setClassName(
+            "com.rheerkens.androidkeyboard.test", "com.rheerkens.androidkeyboard.test.ClipboardFixtureActivity")
+            .putExtra("run", run)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
+        waitLabel("Clipboard integration fixture");
+        waitLabel("Switch to voice typing");
+        keyboardAction("Show keyboard");
+        clickLabel("Plain editor");
+        clickLabel("Clear clip");
+        clickLabel("Password editor");
+        clickLabel("Copy marker");
+        SystemClock.sleep(600);
+        clickLabel("Private editor");
+        clickLabel("Copy marker");
+        SystemClock.sleep(600);
+        clickLabel("Plain editor");
+        SystemClock.sleep(800);
+        // The private field's clip is still the system clip: the strip may offer it, without a preview.
+        boolean previewed = descriptionContains("marker from private field " + run);
+        boolean hidden = nodes().stream().anyMatch(n -> "Paste copied text".equals(String.valueOf(n.getContentDescription())));
+        screenshot("clip-strip-private.png");
+        clickLabel("Copy long text");
+        SystemClock.sleep(600);
+        clickLabel("Copy marker");
+        SystemClock.sleep(600);
+        // A plain clip is still offered with its preview (as the system clip or a history chip), and pastes.
+        AccessibilityNodeInfo plain = null;
+        for (int i = 0; i < 40 && plain == null; i++) {
+            for (AccessibilityNodeInfo n : nodes()) {
+                String d = String.valueOf(n.getContentDescription());
+                if (d.equals("Paste clipboard text: marker from plain field " + run) || d.equals("Paste copied text: marker from plain field " + run)) plain = n;
+            }
+            if (plain == null) SystemClock.sleep(100);
+        }
+        if (plain == null) throw new AssertionError("Plain clip not offered in the strip");
+        tap(bounds(plain));
+        SystemClock.sleep(500);
+        if (!editorText().equals("marker from plain field " + run)) throw new AssertionError("Plain clip paste: " + editorText());
+        setEditorText("");
+        java.util.Set<String> offered = new java.util.TreeSet<>();
+        try {
+            if (!keyboardAction("Minimize keyboard")) throw new AssertionError("No Minimize keyboard action");
+            screenshot("clip-hygiene.png");
+            for (int page = 0; page < 4; page++) {
+                AccessibilityNodeInfo scroller = null;
+                for (AccessibilityNodeInfo n : nodes()) {
+                    String d = String.valueOf(n.getContentDescription());
+                    if (d.startsWith("Paste copied text: ")) offered.add(d.substring("Paste copied text: ".length()));
+                    if (n.isScrollable() && n.getChildCount() > 0 && String.valueOf(n.getChild(0).getContentDescription()).startsWith("Paste")) scroller = n;
+                }
+                if (scroller == null || !scroller.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) break;
+                SystemClock.sleep(300);
+            }
+        } finally {
+            keyboardAction("Show keyboard");
+        }
+        StringBuilder report = new StringBuilder("probe=clip-hygiene\n");
+        report.append("private clip previewed in a plain field's strip: ").append(previewed ? "yes" : "no")
+            .append(" expected=no; offered without preview: ").append(hidden ? "yes" : "no").append('\n');
+        report.append("plain clip offered in the strip and pasted: yes\n");
+        String[][] clips = {{"marker from password field", "no"}, {"marker from private field", "no"},
+            {"long fixture", "no"}, {"marker from plain field", "yes"}};
+        boolean ok = !previewed;
+        for (String[] clip : clips) {
+            boolean kept = offered.stream().anyMatch(o -> o.startsWith(clip[0] + " " + run));
+            ok &= kept == clip[1].equals("yes");
+            report.append(clip[0].trim()).append(": offered=").append(kept ? "yes" : "no")
+                .append(" expected=").append(clip[1]).append('\n');
+        }
+        result.putString("stream", report.toString());
+        if (!ok) throw new AssertionError(report.toString());
+        finish(0, result);
+    }
+    /** Performs the keyboard's accessibility action [label], if offered. */
+    private boolean keyboardAction(String label) {
+        for (AccessibilityNodeInfo n : nodes()) {
+            for (AccessibilityNodeInfo.AccessibilityAction action : n.getActionList()) {
+                if (label.contentEquals(String.valueOf(action.getLabel())) && n.performAction(action.getId())) {
+                    SystemClock.sleep(1000);
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+    /**
+     * English (US) keyboard with Dutch also on: Dutch typos after Dutch words are fixed in Dutch,
+     * while the same typo on its own (no context) is a close call left alone.
+     */
+    private void contextLanguage(Bundle result) {
+        String[][] cases = {
+            {"probleen", "probleen "},
+            {"ik heb het al gezien maar probleen", "ik heb het al gezien maar probleem "},
+            {"wpord", "wpord "},
+            {"dat is een heel lang wpord", "dat is een heel lang woord "},
+        };
+        StringBuilder report = new StringBuilder("probe=context-language\n");
+        boolean ok = true;
+        for (String[] c : cases) {
+            setEditorText(c[0], 2500);
+            tap(bounds(waitLabel("Space")));
+            SystemClock.sleep(600);
+            String actual = editorText();
+            boolean match = actual.equals(c[1]);
+            ok &= match;
+            report.append("'").append(c[0]).append("' + Space -> '").append(actual).append("'").append(match ? "" : " FAIL expected '" + c[1] + "'").append('\n');
+        }
+        result.putString("stream", report.toString());
+        if (!ok) throw new AssertionError(report.toString());
+        finish(0, result);
+    }
+    /**
+     * With learning on: words typed with Space are learned, and the strip then predicts the next
+     * word after the same words, which a tap inserts. Forgets it all afterwards.
+     */
+    private void learning(Bundle result) {
+        try {
+            for (String text : new String[]{"I will send", "Then I will send"}) {
+                setEditorText(text, 1500);
+                tap(bounds(waitLabel("Space")));
+                SystemClock.sleep(800);
+            }
+            setEditorText("Ok. I will", 1500);
+            tap(bounds(waitLabel("Space")));
+            SystemClock.sleep(1500);
+            boolean predicted = descriptionContains("Insert send");
+            String report = "probe=learning predicted 'send' after 'I will': " + (predicted ? "yes" : "no");
+            if (predicted) {
+                clickLabel("Insert send");
+                SystemClock.sleep(500);
+                report += "; tapped -> '" + editorText() + "'";
+            }
+            result.putString("stream", report + "\n");
+            if (!predicted || !editorText().equals("Ok. I will send ")) throw new AssertionError(report);
+            finish(0, result);
+        } finally {
+            runOnMainSync(TypingProbeConfig::forgetLearning);
+        }
+    }
+    /**
+     * Sliding a finger left along Space moves the cursor without typing a space; Keyboard tools'
+     * editing row selects, copies, pastes and undoes in the field.
+     */
+    private void trackpadEdit(Bundle result) throws Exception {
+        float dp = getTargetContext().getResources().getDisplayMetrics().density;
+        StringBuilder report = new StringBuilder("probe=trackpad-edit\n");
+        boolean ok = true;
+        setEditorText("hello world", 1500);
+        AccessibilityNodeInfo field = waitEditable(); field.refresh();
+
+        Rect space = bounds(waitLabel("Space"));
+        float x = space.left + space.width() * 0.75f, y = space.centerY();
+        long down = SystemClock.uptimeMillis();
+        touchAt(down, MotionEvent.ACTION_DOWN, x, y);
+        for (int i = 1; i <= 13; i++) { SystemClock.sleep(25); touchAt(down, MotionEvent.ACTION_MOVE, x - i * 5 * dp, y); }
+        SystemClock.sleep(25);
+        touchAt(down, MotionEvent.ACTION_UP, x - 65 * dp, y);
+        SystemClock.sleep(600);
+        String text = editorText();
+        // The field doesn't report its cursor to accessibility: a typed letter shows where it is.
+        tap(bounds(waitLabel("x")));
+        SystemClock.sleep(600);
+        String marked = editorText();
+        boolean slid = text.equals("hello world") && marked.length() == 12 && marked.indexOf('x') >= 3 && marked.indexOf('x') <= 7;
+        ok &= slid;
+        report.append("slide 65 dp left on Space, then x: '").append(text).append("' -> '").append(marked).append("'")
+            .append(slid ? "" : " FAIL").append('\n');
+        setEditorText("hello world", 1200);
+        // Editing row under Keyboard tools (hold the microphone).
+        Rect mic = bounds(waitLabel("Switch to voice typing"));
+        long hold = SystemClock.uptimeMillis();
+        touchAt(hold, MotionEvent.ACTION_DOWN, mic.centerX(), mic.centerY());
+        SystemClock.sleep(800);
+        touchAt(hold, MotionEvent.ACTION_UP, mic.centerX(), mic.centerY());
+        SystemClock.sleep(800);
+        screenshot("trackpad-tools.png");
+        boolean tools = descriptionContains("Select all");
+        report.append("editing row in Keyboard tools: ").append(tools ? "yes" : "no").append('\n');
+        if (tools) {
+            // Where the buttons are, read once: the accessibility tree can lag behind after an edit.
+            java.util.Map<String, Rect> button = new java.util.HashMap<>();
+            for (String label : new String[]{"Select all", "Cut", "Copy", "Paste", "Undo"}) button.put(label, bounds(waitLabel(label)));
+            tap(button.get("Select all")); SystemClock.sleep(500);
+            field = waitEditable(); field.refresh();
+            boolean all = field.getTextSelectionStart() == 0 && field.getTextSelectionEnd() == 11 || field.getTextSelectionStart() < 0;
+            tap(button.get("Copy")); SystemClock.sleep(500);
+            tap(button.get("Cut")); SystemClock.sleep(500);
+            boolean cut = editorText().isEmpty();
+            tap(button.get("Paste")); SystemClock.sleep(500);
+            tap(button.get("Paste")); SystemClock.sleep(500);
+            boolean pasted = editorText().equals("hello worldhello world");
+            tap(button.get("Undo")); SystemClock.sleep(500);
+            String undone = editorText();
+            report.append("select all ").append(all).append(", cut -> '").append(cut ? "" : editorText()).append("' ").append(cut)
+                .append(", paste twice ").append(pasted).append(", undo in this Compose field -> '").append(undone).append("'").append('\n');
+            ok &= all && cut && pasted;
+            keyboardTools("Show keyboard");
+            // Undo in an ordinary Android text field (the clipboard test app's).
+            getTargetContext().startActivity(new Intent().setClassName(
+                "com.rheerkens.androidkeyboard.test", "com.rheerkens.androidkeyboard.test.ClipboardFixtureActivity")
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
+            waitLabel("Clipboard integration fixture");
+            waitLabel("Switch to voice typing");
+            clickLabel("Plain editor");
+            for (String k : new String[]{"a", "b"}) { tap(bounds(waitLabel(k))); SystemClock.sleep(400); }
+            String typed = editorText();
+            Rect mic2 = bounds(waitLabel("Switch to voice typing"));
+            long hold2 = SystemClock.uptimeMillis();
+            touchAt(hold2, MotionEvent.ACTION_DOWN, mic2.centerX(), mic2.centerY());
+            SystemClock.sleep(800);
+            touchAt(hold2, MotionEvent.ACTION_UP, mic2.centerX(), mic2.centerY());
+            SystemClock.sleep(800);
+            tap(bounds(waitLabel("Undo"))); SystemClock.sleep(600);
+            String afterUndo = editorText();
+            boolean undid = afterUndo.length() < typed.length();
+            report.append("undo in an Android text field: '").append(typed).append("' -> '").append(afterUndo).append("'")
+                .append(undid ? "" : " FAIL").append('\n');
+            ok &= undid;
+            keyboardTools("Show keyboard");
+        } else ok = false;
+        result.putString("stream", report.toString());
+        if (!ok) throw new AssertionError(report.toString());
+        finish(0, result);
+    }
+    /** Closes Keyboard tools if open: its own tile, or Android's Back. */
+    private void keyboardTools(String close) {
+        for (AccessibilityNodeInfo n : nodes()) {
+            if (close.equals(String.valueOf(n.getContentDescription())) || "Close keyboard tools".equals(String.valueOf(n.getContentDescription()))) {
+                n.performAction(AccessibilityNodeInfo.ACTION_CLICK); SystemClock.sleep(400); return;
+            }
+        }
+    }
+    /** Dutch keyboard: a compound the word list lacks stays, and a slip in one of its parts is repaired. */
+    private void compounds(Bundle result) {
+        String[][] cases = {
+            {"thuiswerkdag", "thuiswerkdag "},
+            {"toetsenbordinstellingen", "toetsenbordinstellingen "},
+            {"toetsenbrodinstellingen", "toetsenbordinstellingen "},
+            {"klembordgeschiedenus", "klembordgeschiedenis "},
+        };
+        StringBuilder report = new StringBuilder("probe=compounds\n");
+        boolean ok = true;
+        for (String[] c : cases) {
+            setEditorText(c[0], 3000);
+            tap(bounds(waitLabel("Space")));
+            SystemClock.sleep(700);
+            String actual = editorText();
+            boolean match = actual.equals(c[1]);
+            ok &= match;
+            report.append("'").append(c[0]).append("' + Space -> '").append(actual).append("'").append(match ? "" : " FAIL").append('\n');
+        }
+        result.putString("stream", report.toString());
+        if (!ok) throw new AssertionError(report.toString());
+        finish(0, result);
+    }
+    /** Shift turns on at a sentence start and off elsewhere, as the editor's own caps mode says. */
+    private void caps(Bundle result) {
+        String[][] cases = {{"", "A"}, {"hello. ", "hello. A"}, {"hello ", "hello a"},
+            {"Mr. Smith said e.g. ", "Mr. Smith said e.g. a"}, {"line one\n", "line one\nA"}};
+        StringBuilder report = new StringBuilder("probe=caps\n");
+        boolean ok = true;
+        for (String[] c : cases) {
+            setEditorText(c[0], 1200);
+            tap(bounds(waitLabel("a")));
+            SystemClock.sleep(600);
+            String actual = editorText();
+            boolean match = actual.equals(c[1]);
+            ok &= match;
+            report.append("'").append(c[0].replace("\n", "\\n")).append("' + a -> '").append(actual.replace("\n", "\\n")).append("'")
+                .append(match ? "" : " FAIL").append('\n');
+        }
+        result.putString("stream", report.toString());
+        if (!ok) throw new AssertionError(report.toString());
+        finish(0, result);
+    }
+    /**
+     * Dictates each debug test clip: the clip plays, then 2.5 s of quiet as a speaker pauses before
+     * Stop. Reports whether words showed before Stop and how long the text took after it.
+     */
+    private void dictation(Bundle result) {
+        int count = Integer.parseInt(arguments.getString("count", "4"));
+        StringBuilder report = new StringBuilder("probe=dictation\n");
+        long[] waits = new long[count];
+        for (int i = 0; i < count; i++) {
+            setEditorText("", 800);
+            tap(bounds(waitLabel("Switch to voice typing")));
+            Rect stop = bounds(waitLabel("Stop and insert text"));
+            SystemClock.sleep(6_500 + 2_500);
+            String beforeStop = editorText();
+            long stopAt = SystemClock.uptimeMillis();
+            tap(stop);
+            String text = "";
+            while (SystemClock.uptimeMillis() - stopAt < 30_000) {
+                if (!descriptionContains("Stop and insert text") && !(text = editorText()).isEmpty()) break;
+                SystemClock.sleep(20);
+            }
+            waits[i] = SystemClock.uptimeMillis() - stopAt;
+            report.append("clip ").append(i + 1).append(": before Stop '").append(beforeStop).append("'; ")
+                .append(waits[i]).append(" ms after Stop -> '").append(text).append("'\n");
+            SystemClock.sleep(1_000);
+        }
+        java.util.Arrays.sort(waits);
+        report.append("median wait after Stop ").append(waits[count / 2]).append(" ms\n");
+        result.putString("stream", report.toString());
+        finish(0, result);
+    }
+    /**
+     * The keyboard as the system's font size and layout direction leave it: saves a screenshot and
+     * checks that the letters run left to right (q left of p, a left of l).
+     */
+    private void layout(Bundle result) throws Exception {
+        // The latency test app's editor gets the keyboard at once, whatever the app's own screens look like.
+        startActivitySync(new Intent().setClassName(getTargetContext(),
+            "com.rheerkens.androidkeyboard.companion.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        getTargetContext().startActivity(new Intent().setClassName(
+            getContext().getPackageName(), "com.rheerkens.androidkeyboard.test.LatencyFixtureActivity")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
+        waitLabel("Latency fixture");
+        waitLabel("Switch to voice typing");
+        SystemClock.sleep(1500);
+        Rect q = bounds(waitLabel("q")), p = bounds(waitLabel("p")), a = bounds(waitLabel("a")), l = bounds(waitLabel("l"));
+        screenshot("keyboard-layout.png");
+        android.content.res.Configuration config = getTargetContext().getResources().getConfiguration();
+        boolean ltr = q.centerX() < p.centerX() && a.centerX() < l.centerX();
+        String report = "probe=layout fontScale=" + config.fontScale + " systemDirection=" +
+            (config.getLayoutDirection() == android.view.View.LAYOUT_DIRECTION_RTL ? "rtl" : "ltr") +
+            " q=" + q.centerX() + " p=" + p.centerX() + " keys " + (ltr ? "left to right" : "MIRRORED");
+        result.putString("stream", report + "\n");
+        if (!ltr) throw new AssertionError(report);
+        finish(0, result);
     }
     private void clickLabel(String label) {
         AccessibilityNodeInfo node = waitLabel(label);
@@ -632,6 +1124,116 @@ public final class KeyboardTouchProbe extends Instrumentation {
     }
     private void save(android.graphics.Bitmap b, java.io.File f) throws java.io.IOException {
         try (java.io.FileOutputStream out = new java.io.FileOutputStream(f)) { b.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out); }
+    }
+    /**
+     * Fast-typing taps that used to be lost, [count] of each (default 10): a finger that drifts
+     * half a key while pressing; taps in the half-key strips beside A and L; Shift overlapping a
+     * letter (letter first, then Shift first); and a letter still held when ?123 is tapped. Reports
+     * how many arrived as typed, and fails unless all did.
+     */
+    private void taps(Bundle result) throws Exception {
+        int count = Integer.parseInt(arguments.getString("count", "10"));
+        setEditorText("ok ");
+        Rect s = bounds(waitLabel("s")), d = bounds(waitLabel("d")), k = bounds(waitLabel("k"));
+        Rect shift = bounds(waitLabel("Shift")), symbols = bounds(waitLabel("Numbers and symbols"));
+        float pitch = d.centerX() - s.centerX();
+        // The strips beside A and L: half a key wide, measured from S and K, which never move.
+        float leftGap = s.centerX() - pitch * 1.5f - pitch * 0.25f, rightGap = k.centerX() + pitch * 1.5f + pitch * 0.25f;
+        float row = s.centerY();
+
+        // A finger that lands on the right part of S and slides half a key, over the edge into D.
+        setEditorText("ok ");
+        for (int i = 0; i < count; i++) {
+            long down = SystemClock.uptimeMillis();
+            float x = s.centerX() + pitch * 0.3f;
+            touchAt(down, MotionEvent.ACTION_DOWN, new int[]{0}, new float[][]{{x, row}});
+            for (int step = 1; step <= 3; step++) {
+                SystemClock.sleep(12);
+                touchAt(down, MotionEvent.ACTION_MOVE, new int[]{0}, new float[][]{{x + pitch * 0.5f * step / 3f, row}});
+            }
+            touchAt(down, MotionEvent.ACTION_UP, new int[]{0}, new float[][]{{x + pitch * 0.5f, row}});
+            SystemClock.sleep(120);
+        }
+        SystemClock.sleep(400);
+        int drift = occurrences(editorText().substring(3), 's');
+
+        // Taps in the strips left of A and right of L.
+        setEditorText("ok ");
+        for (int i = 0; i < count; i++) { tapAt(leftGap, row); SystemClock.sleep(120); }
+        for (int i = 0; i < count; i++) { tapAt(rightGap, row); SystemClock.sleep(120); }
+        SystemClock.sleep(400);
+        String strips = editorText().substring(3);
+        int left = occurrences(strips, 'a'), right = occurrences(strips, 'l');
+
+        // Letter pressed, Shift pressed, Shift released, letter released, then d: "sD".
+        int letterFirst = 0, shiftFirst = 0, layer = 0;
+        String sampleLetterFirst = null, sampleShiftFirst = null, sampleLayer = null;
+        for (int i = 0; i < count; i++) {
+            setEditorText("ok ");
+            overlap(s, shift);
+            tap(d); SystemClock.sleep(300);
+            if (sampleLetterFirst == null) sampleLetterFirst = editorText();
+            if (editorText().equals("ok sD")) letterFirst++;
+        }
+        // Shift held while a letter is tapped, then d: "Sd".
+        for (int i = 0; i < count; i++) {
+            setEditorText("ok ");
+            overlap(shift, s);
+            tap(d); SystemClock.sleep(300);
+            if (sampleShiftFirst == null) sampleShiftFirst = editorText();
+            if (editorText().equals("ok Sd")) shiftFirst++;
+        }
+        // A letter still held when ?123 is tapped: it is typed before the layer changes.
+        for (int i = 0; i < count; i++) {
+            setEditorText("ok ");
+            overlap(s, symbols);
+            SystemClock.sleep(300);
+            if (sampleLayer == null) sampleLayer = editorText();
+            if (editorText().equals("ok s")) layer++;
+            clickLabel("Letters");
+            SystemClock.sleep(200);
+        }
+        String report = "probe=taps of " + count + ": drift=" + drift + " leftStrip=" + left + " rightStrip=" + right +
+            " letterThenShift=" + letterFirst + " shiftThenLetter=" + shiftFirst + " letterOverLayer=" + layer +
+            " (first results: '" + sampleLetterFirst + "' '" + sampleShiftFirst + "' '" + sampleLayer + "')";
+        result.putString("stream", report + "\n");
+        if (drift + left + right + letterFirst + shiftFirst + layer != 6 * count) throw new AssertionError(report);
+        finish(0, result);
+    }
+    private static int occurrences(String text, char c) {
+        int n = 0;
+        for (int i = 0; i < text.length(); i++) if (Character.toLowerCase(text.charAt(i)) == c) n++;
+        return n;
+    }
+    /** [first] goes down, [second] is tapped while [first] is held, then [first] lifts. */
+    private void overlap(Rect first, Rect second) {
+        long down = SystemClock.uptimeMillis();
+        Rect[] both = {first, second};
+        touch(down, MotionEvent.ACTION_DOWN, new int[]{0}, new Rect[]{first});
+        SystemClock.sleep(30);
+        touch(down, MotionEvent.ACTION_POINTER_DOWN | (1 << MotionEvent.ACTION_POINTER_INDEX_SHIFT), new int[]{0, 1}, both);
+        SystemClock.sleep(30);
+        touch(down, MotionEvent.ACTION_POINTER_UP | (1 << MotionEvent.ACTION_POINTER_INDEX_SHIFT), new int[]{0, 1}, both);
+        SystemClock.sleep(30);
+        touch(down, MotionEvent.ACTION_UP, new int[]{0}, new Rect[]{first});
+        SystemClock.sleep(150);
+    }
+    private void tapAt(float x, float y) {
+        long down = SystemClock.uptimeMillis();
+        touchAt(down, MotionEvent.ACTION_DOWN, new int[]{0}, new float[][]{{x, y}});
+        SystemClock.sleep(20);
+        touchAt(down, MotionEvent.ACTION_UP, new int[]{0}, new float[][]{{x, y}});
+    }
+    private void touchAt(long down, int action, int[] ids, float[][] points) {
+        MotionEvent.PointerProperties[] props = new MotionEvent.PointerProperties[ids.length];
+        MotionEvent.PointerCoords[] coords = new MotionEvent.PointerCoords[ids.length];
+        for (int i=0;i<ids.length;i++) {
+            props[i]=new MotionEvent.PointerProperties(); props[i].id=ids[i]; props[i].toolType=MotionEvent.TOOL_TYPE_FINGER;
+            coords[i]=new MotionEvent.PointerCoords(); coords[i].x=points[i][0]; coords[i].y=points[i][1]; coords[i].pressure=1; coords[i].size=1;
+        }
+        MotionEvent event=MotionEvent.obtain(down,SystemClock.uptimeMillis(),action,ids.length,props,coords,0,0,1,1,0,0,InputDevice.SOURCE_TOUCHSCREEN,0);
+        if (!ui.injectInputEvent(event,false)) throw new AssertionError("Touch injection refused");
+        event.recycle();
     }
     private void cancelPointers() {
         MotionEvent event = MotionEvent.obtain(SystemClock.uptimeMillis(),SystemClock.uptimeMillis(),MotionEvent.ACTION_CANCEL,0f,0f,0);

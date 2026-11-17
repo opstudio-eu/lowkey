@@ -50,6 +50,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rheerkens.androidkeyboard.AppGraph
+import kotlinx.coroutines.launch
 import com.rheerkens.androidkeyboard.BuildConfig
 import com.rheerkens.androidkeyboard.clipboard.PhotoAccess
 import com.rheerkens.androidkeyboard.companion.Destination
@@ -59,6 +60,7 @@ import com.rheerkens.androidkeyboard.models.SpeechLanguage
 import com.rheerkens.androidkeyboard.models.resolveLanguage
 import com.rheerkens.androidkeyboard.models.speechLanguageCode
 import com.rheerkens.androidkeyboard.settings.AutoStop
+import com.rheerkens.androidkeyboard.settings.ClipExpiry
 import com.rheerkens.androidkeyboard.settings.KeyArrangement
 import com.rheerkens.androidkeyboard.settings.BottomKey
 import com.rheerkens.androidkeyboard.settings.LoupeCorners
@@ -108,6 +110,12 @@ fun SettingsScreen(
             SettingsFocus.CLIPBOARD -> {
                 item {
                     SettingsGroup("Clipboard") {
+                        ChoiceDialogRow(
+                            "Keep copied clips", ClipExpiry.entries, s.clipExpiry, { it.label },
+                            { v -> update { it.copy(clipExpiry = v) } },
+                            subtitle = "Since copied or last pasted. Nothing copied in password or private fields is kept.",
+                            detail = { if (it.millis == null) "Kept until Android stops the keyboard" else "Then forgotten, images included" },
+                        )
                         SwitchRow(
                             "Recent screenshots", s.recentScreenshots && photosGranted,
                             { v ->
@@ -227,6 +235,7 @@ private fun LazyListScope.topPage(
             LinkRow("Voice typing", models.activeModel?.name ?: "Not set up") { navigate(Destination.MODELS) }
         }
     }
+    item(key = "backup") { BackupSettings() }
     item(key = "app") {
         SettingsGroup("App") {
             LinkRow(
@@ -314,10 +323,34 @@ private fun LazyListScope.typingPage(s: Settings, update: Update, navigate: (Des
             )
         }
     }
+    item { LearningSettings(s, update) }
     item {
         SettingsGroup {
             LinkRow("My words", "Words that keep their exact spelling") { navigate(Destination.DICTIONARY) }
         }
+    }
+}
+
+/** Learning from typing (opt-in), and forgetting what was learned. */
+@Composable
+private fun LearningSettings(s: Settings, update: Update) {
+    var confirm by rememberSaveable { mutableStateOf(false) }
+    SettingsGroup("Learning") {
+        SwitchRow(
+            "Learn from my typing", s.learnFromTyping, { v -> update { it.copy(learnFromTyping = v) } },
+            subtitle = "Suggests the words you usually type next and remembers corrections you undo. " +
+                "Stays on this phone and is never backed up. Nothing is learned in password, private, email or web address fields.",
+        )
+        ActionRow("Forget what Lowkey learned") { confirm = true }
+    }
+    if (confirm) {
+        AlertDialog(
+            onDismissRequest = { confirm = false },
+            title = { Text("Forget what Lowkey learned?") },
+            text = { Text("This removes the words Lowkey learned from your typing and the corrections you undid. Your saved words stay.") },
+            confirmButton = { TextButton(onClick = { AppGraph.personalModel.forget(); confirm = false }) { Text("Forget") } },
+            dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } },
+        )
     }
 }
 
@@ -369,7 +402,7 @@ private fun LazyListScope.voicePage(s: Settings, models: ModelStoreState, update
         SettingsGroup("While you speak") {
             SwitchRow(
                 "Show words as you speak", s.liveTextInEditor, { v -> update { it.copy(liveTextInEditor = v) } },
-                subtitle = "Provisional words appear underlined until the final text replaces them",
+                subtitle = "At each pause, what you said appears underlined until the final text replaces it",
             )
             ChoiceDialogRow(
                 "Stop after silence", AutoStop.entries, s.autoStop, { it.label }, { v -> update { it.copy(autoStop = v) } },
@@ -474,6 +507,34 @@ private fun InfoRow(title: String, value: String) {
                 Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+    }
+}
+
+/**
+ * Saves the saved words, speech rules and settings to a file the user picks, and reads them back,
+ * through Android's file picker (no storage permission).
+ */
+@Composable
+private fun BackupSettings() {
+    val context = LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var message by rememberSaveable { mutableStateOf<String?>(null) }
+    val export = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument(com.rheerkens.androidkeyboard.backup.BackupFile.MIME),
+    ) { uri -> if (uri != null) scope.launch { message = AppGraph.exportBackup(context, uri) } }
+    val import = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+    ) { uri -> if (uri != null) scope.launch { message = AppGraph.importBackup(context, uri) } }
+    SettingsGroup("Backup") {
+        ActionRow("Export words and settings") { export.launch(com.rheerkens.androidkeyboard.backup.BackupFile.NAME) }
+        ActionRow("Import words and settings") { import.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }
+        Text(
+            message ?: "Your saved words, speech rules and settings, in one file you keep where you like. " +
+                "Word lists and speech models download again.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
     }
 }
 

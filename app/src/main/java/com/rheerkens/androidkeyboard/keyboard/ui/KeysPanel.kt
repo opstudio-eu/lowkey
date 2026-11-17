@@ -63,6 +63,8 @@ import com.rheerkens.androidkeyboard.keyboard.KeyboardLayout
 import com.rheerkens.androidkeyboard.keyboard.KeyboardState
 import com.rheerkens.androidkeyboard.keyboard.Layer
 import com.rheerkens.androidkeyboard.keyboard.ShiftState
+import com.rheerkens.androidkeyboard.keyboard.TouchKey
+import com.rheerkens.androidkeyboard.keyboard.touchRow
 import com.rheerkens.androidkeyboard.ui.SlimIcons
 
 /** Four key rows (concept 4 geometry: 48 dp rows by default, 3 dp side and 4 dp bottom padding). */
@@ -81,7 +83,8 @@ fun KeysPanel(
     val menu = KeyMenus(keyboards, languageMenu)
     val rollover = remember(state.keyboard, state.layer) { KeyRollover() }
     val rowHeight = (rowHeightDp * keyRows.toFloat() / layout.rows.size).dp
-    if (splitGapDp > 0f) {
+    // A number pad stays whole: its digits are never far apart.
+    if (splitGapDp > 0f && state.layer != Layer.NUMBERS) {
         val rows = remember(layout, state.keyboard, state.layer) { splitRows(layout, state.keyboard, state.layer) }
         val units = rows.filterNot { it.fullWidth }.maxOf { maxOf(it.left.sumOf { key -> key.weight.toDouble() }, it.right.sumOf { key -> key.weight.toDouble() }) }.toFloat()
         BoxWithConstraints(Modifier.fillMaxWidth().padding(start = 3.dp, end = 3.dp, bottom = 4.dp)) {
@@ -108,7 +111,10 @@ fun KeysPanel(
     Column(Modifier.fillMaxWidth().padding(start = 3.dp, end = 3.dp, bottom = 4.dp)) {
         layout.rows.forEach { row ->
             Row(Modifier.fillMaxWidth().height(rowHeight)) {
-                row.forEach { key -> KeyView(key, state, enterKind, actions, menu, Modifier.weight(key.weight).fillMaxHeight(), rollover) }
+                // Gaps that centre a row widen the touch area of the letter beside them (A and L on QWERTY).
+                touchRow(row).forEach { touch ->
+                    KeyView(touch.key, state, enterKind, actions, menu, Modifier.weight(touch.weight).fillMaxHeight(), rollover, touch)
+                }
             }
         }
     }
@@ -123,11 +129,12 @@ private fun KeyView(
     menu: KeyMenus,
     modifier: Modifier,
     rollover: KeyRollover,
+    touch: TouchKey? = null,
 ) {
     val c = LocalKeyboardColors.current
     when (key) {
         is Key.Gap -> Spacer(modifier)
-        is Key.Char -> CharKey(key, state, actions, modifier, rollover)
+        is Key.Char -> CharKey(key, state, actions, modifier, rollover, touch?.before ?: 0f, touch?.after ?: 0f)
         is Key.Shift -> {
             val on = state.shift != ShiftState.OFF
             val desc = when (state.shift) {
@@ -135,7 +142,7 @@ private fun KeyView(
                 ShiftState.ONCE -> "Shift on"
                 ShiftState.LOCKED -> "Caps lock on"
             }
-            PressTarget(desc, modifier, gestureKey = key, onDown = actions::onKeyDown, onTap = { actions.onKey(key) }) { pressed ->
+            PressTarget(desc, modifier, gestureKey = key, rollover = rollover, onDown = actions::onKeyDown, onTap = { actions.onKey(key) }) { pressed ->
                 KeyCap(if (pressed) c.keyPressed else if (on) c.keyOn else c.keyMod) {
                     val icon = when (state.shift) {
                         ShiftState.OFF -> SlimIcons.Shift
@@ -147,20 +154,23 @@ private fun KeyView(
             }
         }
         // The slider rises above the keyboard in its own window, for a long travel.
-        is Key.Backspace -> BackspaceKey(actions, modifier, sliderInPopup = true, onSwipeDown = { actions.onSetMinimized(true) })
+        // Backspace acts on touch-down: type a letter still held before it deletes.
+        is Key.Backspace -> BackspaceKey(actions, modifier, sliderInPopup = true, onSwipeDown = { actions.onSetMinimized(true) },
+            onPress = rollover::flush)
         is Key.LayerSwitch -> {
             val desc = when (key.target) {
                 Layer.LETTERS -> "Letters"
                 Layer.SYMBOLS -> "Numbers and symbols"
                 Layer.SYMBOLS_2 -> "More symbols"
+                Layer.NUMBERS -> "Number pad"
             }
-            PressTarget(desc, modifier, gestureKey = key, onDown = actions::onKeyDown, onTap = { actions.onKey(key) }) { pressed ->
+            PressTarget(desc, modifier, gestureKey = key, rollover = rollover, onDown = actions::onKeyDown, onTap = { actions.onKey(key) }) { pressed ->
                 KeyCap(if (pressed) c.keyPressed else c.keyMod) {
                     Text(key.label, color = c.keyText, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                 }
             }
         }
-        is Key.Emoji -> EmojiKey(key, state, actions, menu, modifier)
+        is Key.Emoji -> EmojiKey(key, state, actions, menu, modifier, rollover)
         is Key.Globe -> PressTarget(
             "Next keyboard. Long-press to switch to another keyboard app",
             // Announce the keyboard a tap switched to, whichever key has focus.
@@ -169,17 +179,22 @@ private fun KeyView(
                 liveRegion = LiveRegionMode.Polite
             },
             gestureKey = key,
-            onDown = actions::onKeyDown, onTap = { actions.onKey(key) }, onLongPress = actions::onGlobeLongPress,
+            onDown = { rollover.flush(); actions.onKeyDown() }, onTap = { actions.onKey(key) }, onLongPress = actions::onGlobeLongPress,
         ) { pressed ->
             KeyCap(if (pressed) c.keyPressed else c.keyMod) { KeyIcon(SlimIcons.Globe) }
         }
         is Key.Space -> PressTarget(
-            "Space, ${state.keyboard.fullLabel}. Long-press to switch keyboard app", modifier, gestureKey = key,
+            "Space, ${state.keyboard.fullLabel}. Slide to move the cursor. Long-press to switch keyboard app", modifier, gestureKey = key,
             rollover = rollover,
             onDown = actions::onKeyDown, onTap = { actions.onKey(key) }, onLongPress = actions::onSpaceLongPress,
+            onSlide = actions::onMoveCursor,
         ) { pressed ->
             KeyCap(if (pressed) c.keyPressed else c.key) {
-                Text(state.keyboard.spaceLabel, color = c.spaceText, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (key.showsLanguage) {
+                    Text(state.keyboard.spaceLabel, color = c.spaceText, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                } else {
+                    KeyIcon(SlimIcons.Space, tint = c.spaceText)
+                }
             }
         }
         is Key.Enter -> PressTarget(
@@ -206,7 +221,8 @@ private data class KeyMenus(val keyboards: List<TypingKeyboard>, val languages: 
  * (like accents: slide to one and let go). Letting go without sliding keeps it open to tap one.
  */
 @Composable
-private fun EmojiKey(key: Key.Emoji, state: KeyboardState, actions: KeyboardActions, menus: KeyMenus, modifier: Modifier) {
+private fun EmojiKey(key: Key.Emoji, state: KeyboardState, actions: KeyboardActions, menus: KeyMenus, modifier: Modifier,
+    rollover: KeyRollover) {
     val c = LocalKeyboardColors.current
     val density = LocalDensity.current
     val menu = menus.languages
@@ -259,7 +275,8 @@ private fun EmojiKey(key: Key.Emoji, state: KeyboardState, actions: KeyboardActi
         modifier.onGloballyPositioned { holder.coords = it }
             .then(if (switches) Modifier.semantics { stateDescription = state.keyboard.fullLabel } else Modifier),
         gestureKey = key to switches,
-        onDown = actions::onKeyDown,
+        // The emoji panel replaces the keys: type a letter still held first.
+        onDown = { rollover.flush(); actions.onKeyDown() },
         onTap = { actions.onKey(key) },
         onLongPressAt = { holder.startAt = it },
         onLongPress = if (switches) ({ open() }) else null,
@@ -302,15 +319,29 @@ private class EmojiKeyHolder(val hold: LanguageMenu.Hold) {
     var startAt: Offset? = null
 }
 
-/** Key size and left edge in the window, in pixels. */
-private data class KeyPlacement(val left: Float, val width: Float, val height: Float, val window: Float)
+/**
+ * Drawn key size and left edge in the window, in pixels. [capLeft] is where the drawn key starts
+ * in its touch area, which can also cover a gap beside it.
+ */
+private data class KeyPlacement(val left: Float, val width: Float, val height: Float, val window: Float, val capLeft: Float = 0f)
+
+/** Draws a key over its own [weight] when its touch area also covers [before] and [after] it. */
+private fun Modifier.drawnKey(before: Float, after: Float, weight: Float): Modifier =
+    if (before == 0f && after == 0f) this else layout { measurable, constraints ->
+        val total = weight + before + after
+        val width = constraints.maxWidth
+        val placeable = measurable.measure(Constraints.fixed((width * weight / total).roundToInt(), constraints.maxHeight))
+        layout(width, constraints.maxHeight) { placeable.place((width * before / total).roundToInt(), 0) }
+    }
 
 /**
  * A letter or symbol key. Long-press opens a popup with its number and accents; slide to choose,
- * release to type. Sliding away from the popup and key cancels.
+ * release to type. Sliding away from the popup and key cancels. Its touch area also covers the
+ * empty space [before] and [after] it, in key widths.
  */
 @Composable
-private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardActions, modifier: Modifier, rollover: KeyRollover) {
+private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardActions, modifier: Modifier, rollover: KeyRollover,
+    before: Float = 0f, after: Float = 0f) {
     val c = LocalKeyboardColors.current
     val density = LocalDensity.current
     val shifted = state.layer == Layer.LETTERS && state.shift != ShiftState.OFF
@@ -349,7 +380,10 @@ private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardAction
             .onGloballyPositioned { coords ->
                 val root = coords.findRootCoordinates()
                 val left = root.localPositionOf(coords, Offset.Zero).x
-                placement = KeyPlacement(left, coords.size.width.toFloat(), coords.size.height.toFloat(), root.size.width.toFloat())
+                val total = key.weight + before + after
+                val capLeft = coords.size.width * before / total
+                placement = KeyPlacement(left + capLeft, coords.size.width * key.weight / total,
+                    coords.size.height.toFloat(), root.size.width.toFloat(), capLeft)
             }
             .semantics {
                 if (key.accents.isNotEmpty()) {
@@ -367,9 +401,9 @@ private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardAction
         },
         onLongPressRelease = if (choices.isEmpty()) null else { { selected?.let { actions.onKey(Key.Char(choices[it])) } } },
         onLongPressState = { open = it },
-        onLongPressMove = popup?.let { p -> { at: Offset -> selected = p.select(at.x, at.y) } },
+        onLongPressMove = popup?.let { p -> { at: Offset -> selected = p.select(at.x - (placement?.capLeft ?: 0f), at.y) } },
     ) { pressed ->
-        KeyCap(if (pressed) c.keyPressed else if (key.numberRow) c.numberKey else c.key) {
+        KeyCap(if (pressed) c.keyPressed else if (key.numberRow) c.numberKey else c.key, Modifier.drawnKey(before, after, key.weight)) {
             val hint = key.hint
             Text(
                 label, color = c.keyText, fontSize = 21.sp, maxLines = 1,
@@ -391,7 +425,8 @@ private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardAction
                     .align(Alignment.TopStart)
                     .layout { measurable, _ ->
                         val box = measurable.measure(Constraints.fixed(popup.width.roundToInt(), popup.height.roundToInt()))
-                        layout(0, 0) { box.place(popup.left.roundToInt(), popup.top.roundToInt()) }
+                        val capLeft = (placement?.capLeft ?: 0f).roundToInt()
+                        layout(0, 0) { box.place(popup.left.roundToInt() + capLeft, popup.top.roundToInt()) }
                     }
                     .shadow(3.dp, shape).background(c.popup, shape).border(1.dp, c.popupBorder, shape)
                     .semantics { contentDescription = choiceDescription(selected) },

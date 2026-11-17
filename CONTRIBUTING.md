@@ -24,6 +24,13 @@ Run `./gradlew testDebugUnitTest` for every change. For UI changes, verify the a
 
 When changing the leak check, also run `python3 -I scripts/test_check_leaks.py`.
 
+When changing suggestions or autocorrect, compare `LOWKEY_BENCH=1 ./gradlew testDebugUnitTest --tests '*SuggestionLatencyBenchmark' --rerun` before and after. It reports the time per keystroke and a checksum of all results, which stays the same when behavior doesn't change.
+
+For changes to suggestions or autocorrect, run the quality benchmark (about three minutes): `LOWKEY_BENCH=1 ./gradlew testDebugUnitTest --tests '*QualityBenchmark' --rerun`. It types 1,000 words with one slip each per language and language mix, plus correct words, words of a second language and words without their accents, through the full English, Dutch and Polish word lists. It writes `app/build/reports/quality-benchmark.md` and fails when a result falls past its threshold in `QualityBenchmark`. The sample is fixed, so the same code gives the same numbers and checksum; compare the report before and after a change, and when a change improves a result, tighten its threshold. A 200-word part runs with every `testDebugUnitTest`. For changes to how word lists are stored, `LOWKEY_BENCH=1 ./gradlew testDebugUnitTest --tests '*LexiconFootprintBenchmark' --rerun` reports the heap each list keeps and its build time in `app/build/reports/lexicon-footprint.md`.
+
+
+For changes to predictions or learning, `LOWKEY_BENCH=1 ./gradlew testDebugUnitTest --tests '*PredictionBenchmark' --rerun` types a fixed set of short messages (`app/src/test/resources/prediction/`) with learning off and on, and reports how often the next word was predicted and how many keys the strip saved, in `app/build/reports/prediction-benchmark.md`.
+
 ## Prepare a contribution
 
 Keep private hostnames, network addresses, home-directory paths, personal details, and secrets out of files, commits, pull requests, logs, and release notes. Do not commit `local.properties`, model weights, APKs, build outputs, signing keys, or credentials. Check screenshots and videos before attaching them to a pull request; keep demo media out of git.
@@ -61,6 +68,8 @@ Build the native speech libraries with `scripts/build-sherpa-onnx.sh`. It exclud
 ## Publish a release
 
 CI runs the leak check, unit tests, and release build on pull requests and pushes to `main`. With signing secrets available, it signs the APK and attaches it to the run. Without them, it uploads an unsigned APK that cannot be installed as-is.
+
+Release builds are shrunk with R8 (rules in `app/proguard-rules.pro`) and contain native libraries for arm64 phones only. `app/src/main/baseline-prof.txt` lists the keyboard's own packages for ahead-of-time compilation. Add `-PreleaseAbis=arm64-v8a,x86_64` to `./gradlew assembleRelease` to test a release build natively on an x86_64 emulator. `python3 -I scripts/apk-size.py <apk> [<other.apk>]` shows what takes space in an APK, or compares two. `scripts/startup-bench.sh <serial> <apk> <label>` installs an APK over the app and measures cold start, word list loading and memory.
 
 Temporary APK artifacts are retained for one day, and failure test reports for three days. After a release is published or an existing release is verified to contain all downloads, CI removes that run's temporary APK. Published release downloads remain available. A failed publication keeps its temporary APK until it expires.
 

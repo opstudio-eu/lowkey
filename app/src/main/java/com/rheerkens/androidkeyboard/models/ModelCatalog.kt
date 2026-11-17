@@ -99,7 +99,7 @@ object ModelCatalog {
             source = "$source, sherpa-onnx int8 export by k2-fsa",
             description = listOfNotNull(
                 note,
-                if (english) "Text after Stop. English only." else "Text after Stop. Detects the language or uses the one you choose.",
+                if (english) "Text at each pause. English only." else "Text at each pause. Detects the language or uses the one you choose.",
             ).joinToString(" "),
             artifacts = listOf(
                 hf(repo, commit, "$size-encoder.int8.onnx", encoder.first, encoder.second),

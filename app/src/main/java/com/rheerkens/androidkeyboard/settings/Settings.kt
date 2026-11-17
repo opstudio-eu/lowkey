@@ -35,6 +35,14 @@ enum class AutoStop(val label: String, val millis: Long) {
     FOUR_SECONDS("4 s", 4_000),
 }
 
+/** How long copied clips stay in the keyboard's clipboard history, since copied or last pasted. */
+enum class ClipExpiry(val label: String, val millis: Long?) {
+    TEN_MINUTES("10 minutes", 600_000),
+    ONE_HOUR("1 hour", 3_600_000),
+    ONE_DAY("1 day", 86_400_000),
+    UNTIL_RESTART("Until the keyboard restarts", null),
+}
+
 /** Time to keep native model resources after a dictation ends, not after hiding the IME. */
 enum class ModelRetention(val label: String, val millis: Long?) {
     IMMEDIATE("Release after dictation", 0),
@@ -81,6 +89,11 @@ data class Settings(
     val autocorrect: Boolean = true,
     val suggestionStrip: Boolean = true,
     /**
+     * Learn from what you type (opt-in): next-word predictions, completions in context, and
+     * corrections you undid. Stays on the phone, outside backups; never in sensitive fields.
+     */
+    val learnFromTyping: Boolean = false,
+    /**
      * Ids of the keyboards the globe key cycles through (`TypingKeyboard.id`: `pl` for Polish
      * on its own layout, `en_US:AZERTY` for an alternative one). Only English (US) is built in;
      * a keyboard counts once its language's word list is on the phone.
@@ -94,6 +107,9 @@ data class Settings(
      * appear once all photos are allowed (Home's setup step 5 or the Settings switch asks).
      */
     val recentScreenshots: Boolean = true,
+    val clipExpiry: ClipExpiry = ClipExpiry.ONE_HOUR,
+    /** Languages the phone uses whose suggestion on Home ("Add Dutch") the user declined. */
+    val dismissedLanguageHints: Set<String> = emptySet(),
     // Voice
     val keyboardFirstDictation: Boolean = true,
     val autoStartVoice: Boolean = true,

@@ -67,6 +67,10 @@ object SlimIcons {
         filled = "M12 4l7.5 7.5h-4v4h-7v-4h-4z",
     )
     val Enter = stroke("enter", "M19 6v5.5a2 2 0 0 1 -2 2H6", "M9.5 10L6 13.5 9.5 17")
+    val Space = stroke("space", "M4.5 10.5v4h15v-4")
+    val SelectAll = stroke("selectAll", "M4 4h3M10 4h4M17 4h3v3M20 10v4M20 17v3h-3M14 20h-4M7 20H4v-3M4 14v-4M4 7V4", "M8 9h8M8 12h8M8 15h5")
+    val Cut = stroke("cut", circle(7f, 17f, 2.5f), circle(17f, 17f, 2.5f), "M8.8 15.2L18 4M15.2 15.2L6 4")
+    val Copy = stroke("copy", "M9 9h10v11H9z", "M15 9V4H5v11h4")
     val Book = stroke(
         "book",
         "M5 5a2 2 0 0 1 2 -2h12v14H7a2 2 0 0 0 -2 2z",

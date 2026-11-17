@@ -44,6 +44,7 @@ import com.rheerkens.androidkeyboard.editor.Attachment
 import com.rheerkens.androidkeyboard.editor.ImageEditorActivity
 import com.rheerkens.androidkeyboard.editor.PendingAttachment
 import com.rheerkens.androidkeyboard.clipboard.ClipboardReader
+import com.rheerkens.androidkeyboard.clipboard.asSensitive
 import com.rheerkens.androidkeyboard.companion.CompanionLinks
 import com.rheerkens.androidkeyboard.companion.Destination
 import com.rheerkens.androidkeyboard.dictionary.DictionaryStore
@@ -52,6 +53,9 @@ import com.rheerkens.androidkeyboard.dictionary.Suggester
 import com.rheerkens.androidkeyboard.dictionary.Corrector
 import com.rheerkens.androidkeyboard.dictionary.Suggestion
 import com.rheerkens.androidkeyboard.dictionary.NextWordPredictor
+import com.rheerkens.androidkeyboard.dictionary.PersonalPredictions
+import com.rheerkens.androidkeyboard.dictionary.WordContextModel
+import com.rheerkens.androidkeyboard.keyboard.ShiftState
 import com.rheerkens.androidkeyboard.keyboard.BackspaceScrub
 import com.rheerkens.androidkeyboard.keyboard.FanCommand
 import com.rheerkens.androidkeyboard.keyboard.Key
@@ -60,6 +64,7 @@ import com.rheerkens.androidkeyboard.keyboard.Layer
 import com.rheerkens.androidkeyboard.keyboard.EmojiSuggestions
 import com.rheerkens.androidkeyboard.keyboard.Layouts
 import com.rheerkens.androidkeyboard.keyboard.ui.ClipChip
+import com.rheerkens.androidkeyboard.keyboard.ui.EditAction
 import com.rheerkens.androidkeyboard.keyboard.ui.EnterKind
 import com.rheerkens.androidkeyboard.keyboard.ui.FanSpec
 import com.rheerkens.androidkeyboard.keyboard.ui.KeyboardActions
@@ -165,12 +170,20 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     private lateinit var clipboardManager: ClipboardManager
     private lateinit var clipboardReader: ClipboardReader
     private var clipboardJob: Job? = null
+    private var clipPruneJob: Job? = null
     private var inputViewActive = false
     private lateinit var clipHistory: ClipboardHistory
     /** Clipboard history for the minimized bar, empty in sensitive fields. */
     private val clipChips = MutableStateFlow<List<ClipChip>>(emptyList())
     /** Bumped each time the keyboard opens, so the clip row starts at the newest item. */
     private val inputSession = MutableStateFlow(0)
+    /**
+     * Counts fields the keyboard is shown for. Unlike [inputSession], an editor that restarts its
+     * input while it stays shown (some apps do after a cut) keeps the keyboard's panels as they
+     * were, such as open Keyboard tools.
+     */
+    private val shownSession = MutableStateFlow(0)
+    private var shownEditor: String? = null
     private lateinit var screenshots: RecentScreenshots
     /** Recent screenshots, when that setting is on and the photos permission is granted. */
     private val recentShots = MutableStateFlow<List<ClipEntry.Screenshot>>(emptyList())
@@ -191,16 +204,23 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
     private val clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
         refreshClipboard()
-        recordClipboard()
+        recordClipboard(changed = true)
     }
+
+    /**
+     * Clips copied while a password or private field had focus, by [privateClipKey]. They stay out
+     * of the history and show without a preview, like clips an app marks sensitive.
+     */
+    private val privateClips: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
 
     /** The clip history, system clip and screenshot cut-off from before a Clear clips. */
     private class ClearedClips(val entries: List<ClipEntry>, val primary: ClipData?, val clearedAtBefore: Long)
 
     /** What an autocorrection depends on: the word, the keyboard (language and layout), and sentence position. */
     /** [lexiconLoad] tells a result computed on a fallback list from one on the full list. */
+    /** [lead] is the language written in ([Suggester.contextLanguage]), which leads suggestions. */
     private data class CorrectionKey(val word: String, val keyboard: String, val atSentenceStart: Boolean,
-        val lexiconLoad: Int, val languages: List<String>, val terms: List<PersonalTerm>)
+        val lexiconLoad: Int, val languages: List<String>, val terms: List<PersonalTerm>, val lead: Int = 0)
     private data class CachedCorrection(val key: CorrectionKey, val fix: String?)
     private data class StripRequest(val context: CorrectionKey, val before: String,
         val correcting: Boolean, val enabled: Boolean, val catalog: EmojiCatalog?, val session: Int)
@@ -234,8 +254,11 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         clipboardManager = getSystemService(ClipboardManager::class.java)
         clipboardReader = ClipboardReader(contentResolver)
         clipboardManager.addPrimaryClipChangedListener(clipboardListener)
-        clipHistory = ClipboardHistory(this)
-        clipHistory.entries.onEach { refreshClipChips() }.launchIn(scope)
+        clipHistory = ClipboardHistory(this, maxAgeMs = { settings.current.clipExpiry.millis })
+        clipHistory.entries.onEach {
+            scheduleClipPrune()
+            refreshClipChips()
+        }.launchIn(scope)
         screenshots = RecentScreenshots(this)
         recentShots.onEach { refreshClipChips() }.launchIn(scope)
         contentResolver.registerContentObserver(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, true, mediaObserver)
@@ -320,7 +343,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                 val sensitive by sensitiveField.collectAsState()
                 val physical by physicalKeyboard.collectAsState()
                 val clips by clipChips.collectAsState()
-                val session by inputSession.collectAsState()
+                val session by shownSession.collectAsState()
                 val once by keyboardOnce.collectAsState()
                 val fan by fanSpec.collectAsState()
                 val packs by AppGraph.languagePacks.state.collectAsState()
@@ -339,8 +362,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                     if (image != null && custom != null) KeyboardBackgroundImage(image.bitmap, custom.dim) else null
                 }
                 val (viewportWidth, viewportHeight) = placementViewport()
-                val layout = remember(kb.layer, kb.keyboard, s.numberRow, s.bottomKey, s.shadeNumberRow) {
-                    Layouts.forLayer(kb.layer, kb.keyboard, s.numberRow, s.bottomKey, s.shadeNumberRow)
+                val layout = remember(kb.layer, kb.keyboard, s.numberRow, s.bottomKey, s.shadeNumberRow, kb.pad) {
+                    Layouts.forLayer(kb.layer, kb.keyboard, s.numberRow, s.bottomKey, s.shadeNumberRow, kb.pad)
                 }
                 val profile = PlacementProfile.forSize(viewportWidth, viewportHeight)
                 val placement = s.placement.get(profile)
@@ -437,6 +460,28 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
 
     override fun onSetNumberRow(enabled: Boolean) {
         settings.update { it.copy(numberRow = enabled) }
+    }
+
+    override fun onMoveCursor(steps: Int) {
+        if (!inputViewActive) return
+        clearNote()
+        lastCorrection = null
+        autoSpaced = false
+        doubleSpacePeriod.reset()
+        onKeyDown()
+        bridge.moveCursor(steps)
+    }
+
+    override fun onEditAction(action: EditAction) {
+        if (!inputViewActive) return
+        clearNote()
+        lastCorrection = null
+        autoSpaced = false
+        doubleSpacePeriod.reset()
+        markOwnEdit()
+        if (!bridge.performEdit(action)) showNote("This field doesn't support ${action.label.lowercase()}", warn = true)
+        updateShift()
+        refreshStrip()
     }
 
     override fun onPrepareResize() {
@@ -591,10 +636,14 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         inputViewActive = true
         emojiOpen.value = false
         sensitiveField.value = bridge.isSensitiveField
+        // Also applies a changed Keep copied clips setting.
+        scheduleClipPrune()
         refreshClipChips()
         resizeOnOpen = info.privateImeOptions?.contains("lowkey.resize") == true
         placementBounds = null
+        expectedEchoes.clear()
         inputSession.value++
+        bridge.editorKey().let { editor -> if (editor == null || editor != shownEditor) shownSession.value++; shownEditor = editor }
         // A restart keeps the session only if it's still the same editor at the owned position;
         // otherwise (another field in the same view) the old capture must never write here.
         val keepSession = restarting && voice.currentSessionId != null &&
@@ -611,7 +660,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         }
         enterKind.value = bridge.enterKind()
         if (keepSession) return
-        keyboard.reset()
+        keyboard.reset(bridge.numberPad)
         keyboard.setKeyboard(AppGraph.currentKeyboard())
         preloadLanguages()
         autoSpaced = false
@@ -628,12 +677,14 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             refreshStrip()
         }
         refreshClipboard()
-        recordClipboard()
+        recordClipboard(changed = false)
         refreshScreenshots()
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
         doubleSpacePeriod.reset()
+        AppGraph.personalModel.flush()
+        shownEditor = null
         menuBackHandler = null
         onLayoutBackHandler(null)
         inputViewActive = false
@@ -666,6 +717,14 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             voice.cancel(CancelReason.CURSOR_MOVED)
         }
         if (mode.value != InputMode.KEYS) return
+        // The echo of a letter we typed, where we expected it: Shift and the strip are up to date.
+        expectedEchoes.firstOrNull()?.let { expected ->
+            if (newSelStart == expected && newSelEnd == expected) {
+                expectedEchoes.removeFirst()
+                return
+            }
+            expectedEchoes.clear()
+        }
         // Our own edits update shift synchronously; only react to external cursor moves.
         if (SystemClock.uptimeMillis() - lastOwnEditAt > OWN_EDIT_WINDOW_MS) {
             doubleSpacePeriod.reset()
@@ -736,6 +795,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         if (undo != null && undo.stillAtCursor()) {
             bridge.replaceBeforeCursor(undo.corrected.length + undo.separator.length, undo.original)
             rejectedCorrections += undo.original.lowercase()
+            unlearnCorrection(undo.original, undo.corrected)
             showNote("Kept “${undo.original}”")
         } else {
             bridge.deleteBackward(emojiCatalog.value?.suffixOf(bridge.textBeforeCursor(64)))
@@ -941,7 +1001,11 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             FanCommand.KEYBOARD_ONCE, FanCommand.NUMBERS_ONCE -> {
                 keyboardOnceEditor = bridge.editorKey()
                 keyboardOnce.value = true
-                keyboard.setLayer(if (command == FanCommand.NUMBERS_ONCE) Layer.SYMBOLS else Layer.LETTERS)
+                when {
+                    command == FanCommand.KEYBOARD_ONCE -> keyboard.showHome()
+                    keyboard.state.value.pad != null -> keyboard.setLayer(Layer.NUMBERS)
+                    else -> keyboard.setLayer(Layer.SYMBOLS)
+                }
                 updateShift()
                 refreshStrip()
             }
@@ -1028,7 +1092,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
 
     override fun onCloseEmoji() {
         emojiOpen.value = false
-        keyboard.setLayer(Layer.LETTERS)
+        keyboard.showHome()
     }
 
     override fun onChooseEmoji(value: String) {
@@ -1076,8 +1140,10 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         autoSpaced = true
         if (suggestion.emojiName != null) {
             settings.update { it.copy(recentEmoji = EmojiHistory.record(it.recentEmoji, suggestion.text)) }
+        } else {
+            learnLastWord()
         }
-        keyboard.setLayer(Layer.LETTERS)
+        keyboard.leaveSymbols()
         keyboard.onCharTyped()
         updateShift()
         refreshStrip()
@@ -1158,6 +1224,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         lastCorrection = null
         autoSpaced = false
         markOwnEdit()
+        clipHistory.markUsed(entry)
         val pasted = try {
             when (entry) {
                 is ClipEntry.Text -> bridge.pasteText(target, entry.text)
@@ -1381,12 +1448,29 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         } else if (punctuation) {
             commitWordBoundary(output)
         } else {
-            bridge.commitText(keyboard.applyCase(output))
+            val text = keyboard.applyCase(output)
+            expectEcho(text.length)
+            bridge.commitText(text)
         }
+        if (punctuation) learnLastWord()
         autoSpaced = false
         keyboard.onCharTyped()
-        updateShift()
-        refreshStrip()
+        // One read of the text before the cursor serves both Shift and the strip.
+        val snapshot = bridge.readContext()
+        updateShift(snapshot.before)
+        refreshStrip(snapshot)
+    }
+
+    /**
+     * Where the editor will report the cursor after each letter just typed, oldest first. Its
+     * report (the selection echo) then carries nothing new, so it reads nothing.
+     */
+    private val expectedEchoes = ArrayDeque<Int>()
+
+    /** A letter of [length] chars is about to be typed at the cursor. */
+    private fun expectEcho(length: Int) {
+        val base = expectedEchoes.lastOrNull() ?: selStart.takeIf { it >= 0 && it == selEnd }
+        if (base == null) expectedEchoes.clear() else expectedEchoes.addLast(base + length)
     }
 
     private fun typeSpace() {
@@ -1401,8 +1485,9 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             commitWordBoundary(" ")
             if (shortcuts) doubleSpacePeriod.spaceCommitted(bridge.textBeforeCursor(DoubleSpacePeriod.CONTEXT_LIMIT))
         }
+        learnLastWord()
         autoSpaced = false
-        keyboard.setLayer(Layer.LETTERS)
+        keyboard.leaveSymbols()
         updateShift()
         refreshStrip()
     }
@@ -1422,7 +1507,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                 // A fast Space must not run a dictionary scan on the input thread. On a cache
                 // miss apply only what lookups settle (`dont` → `don't`), else keep the literal
                 // word; never correct it after later edits.
-                else -> suggester().quickAutocorrection(word, terms, key.atSentenceStart)
+                else -> suggester().leading(key.lead).quickAutocorrection(word, terms, key.atSentenceStart)
             }
             var applied: Pair<String, String>? = null
             if (phrase != null) {
@@ -1452,7 +1537,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
      */
     private fun correctionKey(snapshot: EditorContext, context: CorrectionKey): CorrectionKey? {
         val word = snapshot.word
-        if (word.isEmpty() || word.lowercase() in rejectedCorrections) return null
+        if (word.isEmpty() || rejected(word)) return null
         if (!Corrector.isStandaloneWord(snapshot.token, word)) return null
         return context
     }
@@ -1460,30 +1545,70 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     private fun suggestionKey(snapshot: EditorContext): CorrectionKey {
         val current = keyboard.state.value.keyboard
         return CorrectionKey(snapshot.word, current.id, snapshot.wordStartsSentence, AppGraph.lexiconLoads.value,
-            AppGraph.suggestionLanguages(current).map { it.id }, dictionary.state.value.terms)
+            AppGraph.suggestionLanguages(current).map { it.id }, dictionary.state.value.terms,
+            lead = suggester().contextLanguage(snapshot.before))
     }
 
     /** The saved multi-word term to recase before the cursor, unless the user undid it here. */
     private fun savedPhrase(suggester: Suggester, terms: List<PersonalTerm>,
         before: String = bridge.textBeforeCursor(MAX_TERM_CHARS)): Pair<Int, String>? =
         suggester.protectedPhrase(before.takeLast(MAX_TERM_CHARS), terms)
-            ?.takeIf { before.takeLast(it.first).lowercase() !in rejectedCorrections }
+            ?.takeIf { !rejected(before.takeLast(it.first)) }
 
-    private fun updateShift() {
-        keyboard.setAutoShift(settings.current.autoCapitalize && bridge.capsModeAtCursor())
+    /** The user undid this word's autocorrection: in this session, or ever when learning is on. */
+    private fun rejected(word: String): Boolean = word.lowercase() in rejectedCorrections ||
+        (settings.current.learnFromTyping && AppGraph.personalModel.model()?.isRejected(word) == true)
+
+    /** The learned model, when learning is on and this field is ordinary text; else null. */
+    private fun learnedModel(): WordContextModel? =
+        if (settings.current.learnFromTyping && bridge.allowsTextShortcuts) AppGraph.personalModel.model() else null
+
+    /** Where the last learned word ended, so a second boundary after it (`word.` then Space) adds nothing. */
+    private var lastLearned: String? = null
+
+    /** Teaches the learned model the word just completed before the cursor, with the words before it. */
+    private fun learnLastWord() {
+        val model = learnedModel() ?: return
+        val before = bridge.textBeforeCursor(PersonalPredictions.CONTEXT_CHARS)
+        val (previous, word) = PersonalPredictions.justTyped(before) ?: return
+        val trailing = before.length - 1 - before.indexOfLast { it.isLetter() || it == '\'' || it == '’' }
+        val end = bridge.currentSelection()?.first?.minus(trailing) ?: return
+        val at = "${bridge.editorKey()}|$end|$word"
+        if (at == lastLearned) return
+        lastLearned = at
+        model.learn(previous, word)
+        AppGraph.personalModel.changed()
+    }
+
+    /** An undone autocorrection: forget the learned [corrected] word, and never correct [original] again. */
+    private fun unlearnCorrection(original: String, corrected: String) {
+        if (!settings.current.learnFromTyping) return
+        val model = AppGraph.personalModel.model() ?: return
+        model.reject(original)
+        if (learnedModel() != null) {
+            model.unlearn(PersonalPredictions.sentenceWords(bridge.textBeforeCursor(PersonalPredictions.CONTEXT_CHARS)).takeLast(2), corrected)
+        }
+        lastLearned = null
+        AppGraph.personalModel.changed()
+    }
+
+    /** [before]: the text before the cursor if just read, to spare the editor another call. */
+    private fun updateShift(before: String? = null) {
+        keyboard.setAutoShift(settings.current.autoCapitalize && bridge.capsModeAtCursor(before))
     }
 
     /** Recomputes suggestion slots. Notes stay until they expire or the user types. */
-    private fun refreshStrip() {
+    private fun refreshStrip(read: EditorContext? = null) {
         if (mode.value != InputMode.KEYS || isMinimized()) return
-        val snapshot = bridge.readContext()
+        val snapshot = read ?: bridge.readContext()
         val typed = snapshot.word
         if (typed.isEmpty() || bridge.isSensitiveField) {
             invalidateStrip()
             cachedCorrection = null
             val predictions = if (typed.isEmpty() && bridge.allowsTextShortcuts &&
                 settings.current.suggestionStrip && !bridge.hasSelection()) {
-                NextWordPredictor.suggest(bridge.textBeforeCursor(NextWordPredictor.CONTEXT_LIMIT), dictionary.state.value.terms)
+                PersonalPredictions.nextWords(bridge.textBeforeCursor(NextWordPredictor.CONTEXT_LIMIT), dictionary.state.value.terms,
+                    learnedModel(), capitalize = keyboard.state.value.shift != ShiftState.OFF)
             } else emptyList()
             val image = strip.value.clipboard as? ClipboardContent.Image
             strip.value = strip.value.copy(
@@ -1506,9 +1631,11 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         // Removing them here cancels a finger press even if the result is unchanged.
         strip.value = strip.value.copy(typingWord = true)
         val terms = dictionary.state.value.terms
-        val suggester = suggester()
+        // The language written in leads, whichever language the keyboard lists first.
+        val suggester = suggester().leading(context.lead)
         val session = inputSession.value
         val emoji = EmojiSuggestions.suggest(typed, context.languages, emojiCatalog.value)
+        val learned = learnedModel()
         // Space recases a saved multi-word term first (see typeSpace); show that in the middle.
         val phrase = if (correcting) savedPhrase(suggester, terms, snapshot.before) else null
         val key = if (correcting && phrase == null) correctionKey(snapshot, context) else null
@@ -1521,7 +1648,9 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             if (inputSession.value != session || stripGeneration != generation) return@launch
             if (key != null) cachedCorrection = CachedCorrection(key, fix)
             val ranked = withContext(Dispatchers.Default) {
-                if (request.enabled) suggester.suggest(typed, terms, checkActive = { ensureActive() }) else emptyList()
+                if (request.enabled) {
+                    PersonalPredictions.rank(typed, suggester.suggest(typed, terms, checkActive = { ensureActive() }), snapshot.before, learned)
+                } else emptyList()
             }
             if (inputSession.value != session || stripGeneration != generation) return@launch
             val middle = phrase?.let { Suggestion(it.second, isPersonal = true, replaceChars = it.first) } ?: fix?.let { Suggestion(it) }
@@ -1536,9 +1665,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             !settings.current.suggestionStrip) return
         val target = bridge.captureTarget() ?: return
         clipboardJob = scope.launch {
-            val content = withContext(Dispatchers.IO) {
-                try { clipboardReader.read(clipboardManager.primaryClip) } catch (_: RuntimeException) { null }
-            }
+            val content = withContext(Dispatchers.IO) { readClip() }?.takeUnless { clipExpired(it.copiedAtMs) }
             if (!inputViewActive || !bridge.isCurrent(target) || bridge.isSensitiveField) return@launch
             strip.value = strip.value.copy(
                 clipboard = content,
@@ -1547,15 +1674,52 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         }
     }
 
-    /** Adds the current system clip to the history (also while the keyboard is hidden). */
-    private fun recordClipboard() {
-        scope.launch(Dispatchers.IO) {
-            val content = try { clipboardReader.read(clipboardManager.primaryClip) } catch (_: RuntimeException) { null }
-            if (content != null) {
-                clipHistory.record(content)
-                // Something new on the clipboard: Clear clips takes Undo clear's place again.
-                withContext(Dispatchers.Main) { forgetClear() }
+    /** A clip copied at [copiedAtMs] is older than the history keeps clips. */
+    private fun clipExpired(copiedAtMs: Long): Boolean {
+        val age = settings.current.clipExpiry.millis ?: return false
+        return copiedAtMs > 0 && copiedAtMs <= System.currentTimeMillis() - age
+    }
+
+    /** Forgets expired clips now, and again each time the next one expires. */
+    private fun scheduleClipPrune() {
+        clipPruneJob?.cancel()
+        clipPruneJob = scope.launch {
+            while (true) {
+                val next = withContext(Dispatchers.IO) { clipHistory.prune() } ?: break
+                delay((next - System.currentTimeMillis()).coerceAtLeast(0) + CLIP_PRUNE_SLACK_MS)
             }
+        }
+    }
+
+    /** The current system clip, marked sensitive if it was copied in a password or private field. Call on IO. */
+    private fun readClip(): ClipboardContent? {
+        val content = try { clipboardReader.read(clipboardManager.primaryClip) } catch (_: RuntimeException) { null }
+        return if (content != null && privateClipKey(content) in privateClips) content.asSensitive() else content
+    }
+
+    private fun privateClipKey(content: ClipboardContent) = "${content.copiedAtMs}:" + when (content) {
+        is ClipboardContent.Text -> content.text.hashCode()
+        is ClipboardContent.Image -> content.uri
+    }
+
+    /**
+     * Adds the current system clip to the history (also while the keyboard is hidden). A clip
+     * that [changed] while a password or private field has focus is remembered as private instead,
+     * so it stays out of the history when a normal field opens later.
+     */
+    private fun recordClipboard(changed: Boolean) {
+        val privateFocus = currentInputStarted && EditorBridge.isSensitive(currentInputEditorInfo)
+        if (privateFocus && !changed) return
+        scope.launch(Dispatchers.IO) {
+            val content = readClip() ?: return@launch
+            if (privateFocus) {
+                if (privateClips.size >= MAX_PRIVATE_CLIPS) privateClips.clear()
+                privateClips += privateClipKey(content)
+            } else {
+                clipHistory.record(content)
+            }
+            // Something new on the clipboard: Clear clips takes Undo clear's place again.
+            withContext(Dispatchers.Main) { forgetClear() }
         }
     }
 
@@ -1576,7 +1740,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             return
         }
         val shots = recentShots.value.filter { it.timeMs > clipsClearedAt }
-        clipChips.value = ClipboardHistory.merge(clipHistory.entries.value, shots, MAX_CLIP_CHIPS).map {
+        clipChips.value = ClipboardHistory.merge(clipHistory.current(), shots, MAX_CLIP_CHIPS).map {
             val mime = when (it) {
                 is ClipEntry.Text -> null
                 is ClipEntry.Image -> it.mimeType
@@ -1636,6 +1800,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     private fun initialMode(): InputMode = when {
         settings.current.keyboardFirstDictation -> InputMode.KEYS
         bridge.isSensitiveField -> InputMode.KEYS
+        // A number, phone or date field opens on its number pad.
+        bridge.numberPad != null -> InputMode.KEYS
         settings.current.rememberLastMode -> settings.current.lastMode
         else -> InputMode.KEYS
     }
@@ -1774,6 +1940,10 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         const val AIMED = -2
         const val WIDE_PX = 100_000f
         const val MAX_CLIP_CHIPS = 12
+        /** Prune a moment after a clip expires, so one pass catches it. */
+        private const val CLIP_PRUNE_SLACK_MS = 1_000L
+        /** Private clips remembered; only the current system clip matters, so a few suffice. */
+        private const val MAX_PRIVATE_CLIPS = 32
         const val PREVIEW_PX = 720
         const val OWN_EDIT_WINDOW_MS = 250L
         const val MAX_TERM_CHARS = 48
