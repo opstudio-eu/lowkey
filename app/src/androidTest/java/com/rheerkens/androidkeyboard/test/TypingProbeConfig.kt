@@ -23,6 +23,27 @@ object TypingProbeConfig {
 
     @JvmStatic fun restore(before: Settings) { AppGraph.settings.update { before } }
 
+    /** English (US) first and Dutch also on, for mixed-language typing. Dutch must be downloaded. */
+    @JvmStatic fun configureEnglishAndDutch(): Settings {
+        val before = AppGraph.settings.current
+        check(AppGraph.languagePacks.isInstalled(AppGraph.languages["nl"]!!)) { "Download Dutch on the device first" }
+        AppGraph.settings.update {
+            it.copy(autocorrect = true, suggestionStrip = true, autoCapitalize = true,
+                enabledKeyboards = setOf("en_US", "nl"), currentKeyboard = "en_US")
+        }
+        return before
+    }
+
+    /** Waits until [id]'s full word list is loaded. */
+    @JvmStatic fun awaitLexicon(id: String) {
+        val language = AppGraph.languages[id]!!
+        val deadline = android.os.SystemClock.uptimeMillis() + 60_000
+        while (AppGraph.lexicon(language).size < 100_000) {
+            check(android.os.SystemClock.uptimeMillis() < deadline) { "Full $id dictionary not ready" }
+            android.os.SystemClock.sleep(100)
+        }
+    }
+
     @JvmStatic fun awaitDictionary() {
         val language = AppGraph.currentLanguage(AppGraph.settings.current)
         val deadline = android.os.SystemClock.uptimeMillis() + 60_000

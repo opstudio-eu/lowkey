@@ -94,6 +94,8 @@ data class Settings(
      * appear once all photos are allowed (Home's setup step 5 or the Settings switch asks).
      */
     val recentScreenshots: Boolean = true,
+    /** Languages the phone uses whose suggestion on Home ("Add Dutch") the user declined. */
+    val dismissedLanguageHints: Set<String> = emptySet(),
     // Voice
     val keyboardFirstDictation: Boolean = true,
     val autoStartVoice: Boolean = true,

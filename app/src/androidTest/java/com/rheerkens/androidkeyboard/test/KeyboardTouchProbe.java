@@ -42,6 +42,11 @@ public final class KeyboardTouchProbe extends Instrumentation {
                 runOnMainSync(() -> savedSettings = TypingProbeConfig.configure());
                 TypingProbeConfig.awaitDictionary();
             }
+            if (arguments.getString("probe", "burst").equals("context-language")) {
+                runOnMainSync(() -> savedSettings = TypingProbeConfig.configureEnglishAndDutch());
+                TypingProbeConfig.awaitLexicon("en_US");
+                TypingProbeConfig.awaitLexicon("nl");
+            }
             if (arguments.getString("probe", "burst").equals("registration")) { registration(result); return; }
             if (arguments.getString("probe", "burst").equals("correction")) { correctionBudget(result); return; }
             if (arguments.getString("probe", "burst").equals("blur")) { blur(result); return; }
@@ -63,6 +68,7 @@ public final class KeyboardTouchProbe extends Instrumentation {
             cancelPointers();
             if (arguments.getString("steady-shift", "0").equals("1")) { waitLabel("Shift on").performAction(AccessibilityNodeInfo.ACTION_CLICK); SystemClock.sleep(300); }
             if (arguments.getString("probe", "burst").equals("numbers")) { numbers(result); return; }
+            if (arguments.getString("probe", "burst").equals("context-language")) { contextLanguage(result); return; }
             if (arguments.getString("probe", "burst").startsWith("autocomplete")) { autocomplete(result); return; }
             if (arguments.getString("probe", "burst").equals("accents")) { accents(result); return; }
             if (arguments.getString("probe", "burst").equals("hold-overlap")) { holdOverlap(result); return; }
@@ -249,6 +255,32 @@ public final class KeyboardTouchProbe extends Instrumentation {
         screenshot("clipboard-text-preview.png");
         result.putString("stream", "probe=clipboard PASS: idle/typing transitions, live clip changes, literal text, image thumbnail, image commit with URI permission, unsupported/rejected editors, sensitive clips, password/private fields, clipboard clear\n");
         finish(0,result);
+    }
+    /**
+     * English (US) keyboard with Dutch also on: Dutch typos after Dutch words are fixed in Dutch,
+     * while the same typo on its own (no context) is a close call left alone.
+     */
+    private void contextLanguage(Bundle result) {
+        String[][] cases = {
+            {"probleen", "probleen "},
+            {"ik heb het al gezien maar probleen", "ik heb het al gezien maar probleem "},
+            {"wpord", "wpord "},
+            {"dat is een heel lang wpord", "dat is een heel lang woord "},
+        };
+        StringBuilder report = new StringBuilder("probe=context-language\n");
+        boolean ok = true;
+        for (String[] c : cases) {
+            setEditorText(c[0], 2500);
+            tap(bounds(waitLabel("Space")));
+            SystemClock.sleep(600);
+            String actual = editorText();
+            boolean match = actual.equals(c[1]);
+            ok &= match;
+            report.append("'").append(c[0]).append("' + Space -> '").append(actual).append("'").append(match ? "" : " FAIL expected '" + c[1] + "'").append('\n');
+        }
+        result.putString("stream", report.toString());
+        if (!ok) throw new AssertionError(report.toString());
+        finish(0, result);
     }
     private void clickLabel(String label) {
         AccessibilityNodeInfo node = waitLabel(label);

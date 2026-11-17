@@ -30,6 +30,34 @@ class MultilingualSuggesterTest {
         assertEquals("don't", mixed(listOf("don't"), listOf("doet")).autocorrection("dont", emptyList()))
     }
 
+    @Test fun theLanguageWrittenInLeadsOnceTwoWordsSayWhichItIs() {
+        val suggester = Suggester({ TestLanguages.lexicon("en_US") }, secondaryLexicons = { listOf(TestLanguages.lexicon("nl")) })
+        assertEquals(0, suggester.contextLanguage(""))
+        // The word being typed doesn't count, and one word isn't enough.
+        assertEquals(0, suggester.contextLanguage("misschien"))
+        assertEquals(0, suggester.contextLanguage("misschien mo"))
+        assertEquals(1, suggester.contextLanguage("ik heb misschien mo"))
+        assertEquals(1, suggester.contextLanguage("Ik heb het al gezien, maar "))
+        assertEquals(0, suggester.contextLanguage("I have already seen it, but "))
+        // Words common in both languages don't vote.
+        assertEquals(0, suggester.contextLanguage("in de "))
+        // A mixed sentence leads with the clear majority only.
+        assertEquals(0, suggester.contextLanguage("ik heb the meeting already "))
+        assertEquals(1, suggester.contextLanguage("I said: ik heb het al gezien "))
+        // One language: nothing to choose.
+        assertEquals(0, Suggester({ TestLanguages.lexicon("nl") }).contextLanguage("ik heb het al gezien "))
+    }
+
+    @Test fun theLeadingLanguageComesFirstInTheStripAndWinsCloseCalls() {
+        val suggester = mixed(listOf("hello", "help", "hero"), listOf("helemaal", "hemel"))
+        assertEquals(listOf("helemaal", "he", "hello"), Suggester.arrangeForStrip("he", suggester.leading(1).suggest("he", emptyList())).map { it?.text })
+        assertSame(suggester, suggester.leading(0))
+        // `wird`: a close call between English `ward` and Dutch `word` goes to the language written in.
+        val close = mixed(listOf("ward"), listOf("word"))
+        assertNull(close.autocorrection("wird", emptyList()))
+        assertEquals("word", close.leading(1).autocorrection("wird", emptyList()))
+    }
+
     @Test fun englishTyposAreCorrectedWithDutchAlsoEnabled() {
         val suggester = Suggester({ TestLanguages.lexicon("en_US") }, secondaryLexicons = { listOf(TestLanguages.lexicon("nl")) })
         val expected = mapOf(

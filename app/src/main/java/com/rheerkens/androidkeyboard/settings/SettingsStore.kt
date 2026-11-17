@@ -59,6 +59,7 @@ class SettingsStore(context: Context) {
             currentKeyboard = current,
             showWithPhysicalKeyboard = prefs.getBoolean(K_SHOW_WITH_PHYSICAL, d.showWithPhysicalKeyboard),
             recentScreenshots = prefs.getBoolean(K_SCREENSHOTS, d.recentScreenshots),
+            dismissedLanguageHints = prefs.getStringSet(K_LANGUAGE_HINTS, null)?.toSet() ?: d.dismissedLanguageHints,
             autoStartVoice = prefs.getBoolean(K_AUTOSTART, d.autoStartVoice),
             keyboardFirstDictation = prefs.getBoolean(K_KEYBOARD_FIRST, d.keyboardFirstDictation),
             rememberLastMode = prefs.getBoolean(K_REMEMBER, d.rememberLastMode),
@@ -97,6 +98,7 @@ class SettingsStore(context: Context) {
         remove(K_LAYOUT)
         putBoolean(K_SHOW_WITH_PHYSICAL, s.showWithPhysicalKeyboard)
         putBoolean(K_SCREENSHOTS, s.recentScreenshots)
+        putStringSet(K_LANGUAGE_HINTS, s.dismissedLanguageHints)
         putBoolean(K_AUTOSTART, s.autoStartVoice)
         putBoolean(K_KEYBOARD_FIRST, s.keyboardFirstDictation)
         putBoolean(K_REMEMBER, s.rememberLastMode)
@@ -179,6 +181,7 @@ class SettingsStore(context: Context) {
         const val K_LAST_MODE = "last_mode"
         const val K_SHOW_WITH_PHYSICAL = "show_with_physical_keyboard"
         const val K_SCREENSHOTS = "recent_screenshots"
+        const val K_LANGUAGE_HINTS = "dismissed_language_hints"
         const val K_MINIMIZED_PHYSICAL = "minimized_with_physical_keyboard"
         const val K_MINIMIZED_TOUCH = "minimized_without_physical_keyboard"
     }

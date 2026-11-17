@@ -31,11 +31,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -50,6 +52,52 @@ import com.rheerkens.androidkeyboard.companion.SystemImeStatus
 import com.rheerkens.androidkeyboard.companion.keyboardSetupState
 import com.rheerkens.androidkeyboard.companion.theme.isDark
 import com.rheerkens.androidkeyboard.ui.SlimIcons
+
+/**
+ * "Add Dutch" when the phone also uses a language that no enabled keyboard covers: one tap
+ * downloads its word list (a downloaded language turns on at once) or turns it back on. Typing in
+ * a language that isn't on gets many correct words autocorrected; with it on, Lowkey suggests and
+ * corrects in both without switching. "Not now" hides it for that language.
+ */
+@Composable
+private fun LanguageHintRow(settings: com.rheerkens.androidkeyboard.settings.Settings) {
+    val packs by AppGraph.languagePacks.state.collectAsStateWithLifecycle()
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val hint = remember(settings.enabledKeyboards, settings.dismissedLanguageHints, packs.installed, configuration) {
+        val phone = android.content.res.Resources.getSystem().configuration.locales
+        com.rheerkens.androidkeyboard.dictionary.languageToSuggest(
+            List(phone.size()) { phone[it] }, AppGraph.languages,
+            AppGraph.usableKeyboards(settings).map { it.language }, settings.dismissedLanguageHints,
+        )
+    } ?: return
+    val colors = MaterialTheme.colorScheme
+    val installed = AppGraph.languagePacks.isInstalled(hint)
+    val progress = packs.downloads[hint.id]
+    val error = packs.errors[hint.id]
+    HorizontalDivider(color = colors.outlineVariant)
+    HomeShortcut(
+        SlimIcons.Download,
+        if (installed) "Turn on ${hint.englishName}" else "Add ${hint.englishName}",
+        when {
+            progress != null -> "Downloading ${hint.englishName}… ${(progress * 100).toInt()}%"
+            error != null -> "Download failed: $error. Tap to try again"
+            else -> "Your phone also uses ${hint.englishName}. Suggestions and autocorrect for both, without switching" +
+                if (installed) "" else " · ${downloadSize(hint)}"
+        },
+    ) {
+        if (installed) {
+            AppGraph.settings.update { it.setLanguageEnabled(hint.id, true, AppGraph.installedKeyboards().map { k -> k.id }) }
+        } else if (progress == null) {
+            AppGraph.languagePacks.download(hint.id)
+        }
+    }
+    if (progress == null) {
+        TextButton(
+            onClick = { AppGraph.settings.update { it.copy(dismissedLanguageHints = it.dismissedLanguageHints + hint.id) } },
+            modifier = Modifier.semantics { contentDescription = "Not now: don't suggest ${hint.englishName}" },
+        ) { Text("Not now") }
+    }
+}
 
 @Composable
 fun HomeScreen(
@@ -131,6 +179,7 @@ fun HomeScreen(
                         HomeShortcut(SlimIcons.Globe, "Languages & layouts", AppGraph.currentKeyboard(settings).fullLabel) {
                             navigate(Destination.LANGUAGES)
                         }
+                        LanguageHintRow(settings)
                     }
                 }
             }

@@ -199,8 +199,9 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
 
     /** What an autocorrection depends on: the word, the keyboard (language and layout), and sentence position. */
     /** [lexiconLoad] tells a result computed on a fallback list from one on the full list. */
+    /** [lead] is the language written in ([Suggester.contextLanguage]), which leads suggestions. */
     private data class CorrectionKey(val word: String, val keyboard: String, val atSentenceStart: Boolean,
-        val lexiconLoad: Int, val languages: List<String>, val terms: List<PersonalTerm>)
+        val lexiconLoad: Int, val languages: List<String>, val terms: List<PersonalTerm>, val lead: Int = 0)
     private data class CachedCorrection(val key: CorrectionKey, val fix: String?)
     private data class StripRequest(val context: CorrectionKey, val before: String,
         val correcting: Boolean, val enabled: Boolean, val catalog: EmojiCatalog?, val session: Int)
@@ -1422,7 +1423,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                 // A fast Space must not run a dictionary scan on the input thread. On a cache
                 // miss apply only what lookups settle (`dont` → `don't`), else keep the literal
                 // word; never correct it after later edits.
-                else -> suggester().quickAutocorrection(word, terms, key.atSentenceStart)
+                else -> suggester().leading(key.lead).quickAutocorrection(word, terms, key.atSentenceStart)
             }
             var applied: Pair<String, String>? = null
             if (phrase != null) {
@@ -1460,7 +1461,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     private fun suggestionKey(snapshot: EditorContext): CorrectionKey {
         val current = keyboard.state.value.keyboard
         return CorrectionKey(snapshot.word, current.id, snapshot.wordStartsSentence, AppGraph.lexiconLoads.value,
-            AppGraph.suggestionLanguages(current).map { it.id }, dictionary.state.value.terms)
+            AppGraph.suggestionLanguages(current).map { it.id }, dictionary.state.value.terms,
+            lead = suggester().contextLanguage(snapshot.before))
     }
 
     /** The saved multi-word term to recase before the cursor, unless the user undid it here. */
@@ -1506,7 +1508,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         // Removing them here cancels a finger press even if the result is unchanged.
         strip.value = strip.value.copy(typingWord = true)
         val terms = dictionary.state.value.terms
-        val suggester = suggester()
+        // The language written in leads, whichever language the keyboard lists first.
+        val suggester = suggester().leading(context.lead)
         val session = inputSession.value
         val emoji = EmojiSuggestions.suggest(typed, context.languages, emojiCatalog.value)
         // Space recases a saved multi-word term first (see typeSpace); show that in the middle.
