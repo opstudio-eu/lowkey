@@ -42,6 +42,10 @@ public final class KeyboardTouchProbe extends Instrumentation {
                 runOnMainSync(() -> savedSettings = TypingProbeConfig.configure());
                 TypingProbeConfig.awaitDictionary();
             }
+            if (arguments.getString("probe", "burst").equals("dictation")) {
+                runOnMainSync(() -> {});
+                savedSettings = TypingProbeConfig.configureDictation();
+            }
             if (arguments.getString("probe", "burst").equals("registration")) { registration(result); return; }
             if (arguments.getString("probe", "burst").equals("correction")) { correctionBudget(result); return; }
             if (arguments.getString("probe", "burst").equals("blur")) { blur(result); return; }
@@ -63,6 +67,7 @@ public final class KeyboardTouchProbe extends Instrumentation {
             cancelPointers();
             if (arguments.getString("steady-shift", "0").equals("1")) { waitLabel("Shift on").performAction(AccessibilityNodeInfo.ACTION_CLICK); SystemClock.sleep(300); }
             if (arguments.getString("probe", "burst").equals("numbers")) { numbers(result); return; }
+            if (arguments.getString("probe", "burst").equals("dictation")) { dictation(result); return; }
             if (arguments.getString("probe", "burst").startsWith("autocomplete")) { autocomplete(result); return; }
             if (arguments.getString("probe", "burst").equals("accents")) { accents(result); return; }
             if (arguments.getString("probe", "burst").equals("hold-overlap")) { holdOverlap(result); return; }
@@ -249,6 +254,37 @@ public final class KeyboardTouchProbe extends Instrumentation {
         screenshot("clipboard-text-preview.png");
         result.putString("stream", "probe=clipboard PASS: idle/typing transitions, live clip changes, literal text, image thumbnail, image commit with URI permission, unsupported/rejected editors, sensitive clips, password/private fields, clipboard clear\n");
         finish(0,result);
+    }
+    /**
+     * Dictates each debug test clip: the clip plays, then 2.5 s of quiet as a speaker pauses before
+     * Stop. Reports whether words showed before Stop and how long the text took after it.
+     */
+    private void dictation(Bundle result) {
+        int count = Integer.parseInt(arguments.getString("count", "4"));
+        StringBuilder report = new StringBuilder("probe=dictation\n");
+        long[] waits = new long[count];
+        for (int i = 0; i < count; i++) {
+            setEditorText("", 800);
+            tap(bounds(waitLabel("Switch to voice typing")));
+            Rect stop = bounds(waitLabel("Stop and insert text"));
+            SystemClock.sleep(6_500 + 2_500);
+            String beforeStop = editorText();
+            long stopAt = SystemClock.uptimeMillis();
+            tap(stop);
+            String text = "";
+            while (SystemClock.uptimeMillis() - stopAt < 30_000) {
+                if (!descriptionContains("Stop and insert text") && !(text = editorText()).isEmpty()) break;
+                SystemClock.sleep(20);
+            }
+            waits[i] = SystemClock.uptimeMillis() - stopAt;
+            report.append("clip ").append(i + 1).append(": before Stop '").append(beforeStop).append("'; ")
+                .append(waits[i]).append(" ms after Stop -> '").append(text).append("'\n");
+            SystemClock.sleep(1_000);
+        }
+        java.util.Arrays.sort(waits);
+        report.append("median wait after Stop ").append(waits[count / 2]).append(" ms\n");
+        result.putString("stream", report.toString());
+        finish(0, result);
     }
     private void clickLabel(String label) {
         AccessibilityNodeInfo node = waitLabel(label);

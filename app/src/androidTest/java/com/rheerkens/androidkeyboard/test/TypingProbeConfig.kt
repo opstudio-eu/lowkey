@@ -23,6 +23,29 @@ object TypingProbeConfig {
 
     @JvmStatic fun restore(before: Settings) { AppGraph.settings.update { before } }
 
+    /**
+     * Dictation from the debug test clips with Whisper tiny (English), downloading it once if
+     * needed (about 100 MB), live text on, no silence stop.
+     */
+    @JvmStatic fun configureDictation(): Settings {
+        val before = AppGraph.settings.current
+        val model = "whisper-tiny.en"
+        if (model !in AppGraph.models.state.value.installed) {
+            AppGraph.models.download(model)
+            val deadline = android.os.SystemClock.uptimeMillis() + 15 * 60_000
+            while (model !in AppGraph.models.state.value.installed) {
+                check(android.os.SystemClock.uptimeMillis() < deadline) { "Model download timed out" }
+                android.os.SystemClock.sleep(500)
+            }
+        }
+        check(AppGraph.models.setActive(model)) { "Could not use $model" }
+        AppGraph.settings.update {
+            it.copy(audioInput = com.rheerkens.androidkeyboard.settings.AudioInput.TEST_CLIPS, keyboardFirstDictation = true,
+                autoStartVoice = false, liveTextInEditor = true, autoStop = com.rheerkens.androidkeyboard.settings.AutoStop.OFF)
+        }
+        return before
+    }
+
     @JvmStatic fun awaitDictionary() {
         val language = AppGraph.currentLanguage(AppGraph.settings.current)
         val deadline = android.os.SystemClock.uptimeMillis() + 60_000
