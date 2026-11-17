@@ -38,6 +38,11 @@ public final class KeyboardTouchProbe extends Instrumentation {
     @Override public void onStart() {
         Bundle result = new Bundle();
         try {
+            if (arguments.getString("probe", "burst").equals("whisper-context")) {
+                result.putString("stream", WhisperContextProbe.run(getTargetContext()));
+                finish(0, result);
+                return;
+            }
             if (arguments.getString("typingDefaults", "0").equals("1")) {
                 runOnMainSync(() -> savedSettings = TypingProbeConfig.configure());
                 TypingProbeConfig.awaitDictionary();

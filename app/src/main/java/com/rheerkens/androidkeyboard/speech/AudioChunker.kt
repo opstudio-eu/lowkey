@@ -24,11 +24,11 @@ object AudioChunker {
         return pieces
     }
 
-    /** True if any 100 ms window of [samples] is louder than near-silence (RMS above 0.01). */
-    fun hasSpeech(samples: FloatArray): Boolean {
-        var w = 0
-        while (w < samples.size) {
-            val end = minOf(w + WINDOW, samples.size)
+    /** True if any 100 ms window in [start, length) is louder than near-silence (RMS above 0.01). */
+    fun hasSpeech(samples: FloatArray, start: Int = 0, length: Int = samples.size): Boolean {
+        var w = start
+        while (w < length) {
+            val end = minOf(w + WINDOW, length)
             var energy = 0.0
             for (i in w until end) energy += samples[i] * samples[i]
             if (energy / (end - w) > SPEECH_RMS * SPEECH_RMS) return true
