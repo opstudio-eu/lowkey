@@ -20,13 +20,13 @@ Install it on an emulator or test device, then enable Lowkey in Android's keyboa
 
 Debug builds use your local debug key and cannot update a release installation. To update a release install, use a signed APK from the [latest release](https://github.com/opstudio-eu/lowkey/releases/latest).
 
-Run `./gradlew testDebugUnitTest` for every change. For UI changes, verify the actual interaction on an emulator. Debug builds include audio clips under **Settings → Diagnostics → Dictation audio** for testing without a microphone. Existing feature checks are recorded in [docs/demos/](docs/demos/).
+Run `./gradlew testDebugUnitTest` for every change. For UI changes, verify the actual interaction on an emulator. Debug builds include audio clips under **Settings â†’ Diagnostics â†’ Dictation audio** for testing without a microphone. Existing feature checks are recorded in [docs/demos/](docs/demos/).
 
 When changing the leak check, also run `python3 -I scripts/test_check_leaks.py`.
 
 When changing suggestions or autocorrect, compare `LOWKEY_BENCH=1 ./gradlew testDebugUnitTest --tests '*SuggestionLatencyBenchmark' --rerun` before and after. It reports the time per keystroke and a checksum of all results, which stays the same when behavior doesn't change.
 
-For changes to suggestions or autocorrect, run the quality benchmark (about three minutes): `LOWKEY_BENCH=1 ./gradlew testDebugUnitTest --tests '*QualityBenchmark' --rerun`. It types 1,000 words with one slip each per language and language mix, plus correct words, words of a second language and words without their accents, through the full English, Dutch and Polish word lists. It writes `app/build/reports/quality-benchmark.md` and fails when a result falls past its threshold in `QualityBenchmark`. The sample is fixed, so the same code gives the same numbers and checksum; compare the report before and after a change, and when a change improves a result, tighten its threshold. A 200-word part runs with every `testDebugUnitTest`.
+For changes to suggestions or autocorrect, run the quality benchmark (about three minutes): `LOWKEY_BENCH=1 ./gradlew testDebugUnitTest --tests '*QualityBenchmark' --rerun`. It types 1,000 words with one slip each per language and language mix, plus correct words, words of a second language and words without their accents, through the full English, Dutch and Polish word lists. It writes `app/build/reports/quality-benchmark.md` and fails when a result falls past its threshold in `QualityBenchmark`. The sample is fixed, so the same code gives the same numbers and checksum; compare the report before and after a change, and when a change improves a result, tighten its threshold. A 200-word part runs with every `testDebugUnitTest`. For changes to how word lists are stored, `LOWKEY_BENCH=1 ./gradlew testDebugUnitTest --tests '*LexiconFootprintBenchmark' --rerun` reports the heap each list keeps and its build time in `app/build/reports/lexicon-footprint.md`.
 
 
 ## Prepare a contribution
