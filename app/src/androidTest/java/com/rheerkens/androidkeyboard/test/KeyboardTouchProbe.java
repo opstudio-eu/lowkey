@@ -66,6 +66,7 @@ public final class KeyboardTouchProbe extends Instrumentation {
             if (arguments.getString("probe", "burst").startsWith("autocomplete")) { autocomplete(result); return; }
             if (arguments.getString("probe", "burst").equals("accents")) { accents(result); return; }
             if (arguments.getString("probe", "burst").equals("hold-overlap")) { holdOverlap(result); return; }
+            if (arguments.getString("probe", "burst").equals("taps")) { taps(result); return; }
             Rect a = bounds(waitLabel("s")), b = bounds(waitLabel("d"));
             Bundle coordinates = new Bundle(); coordinates.putString("stream", "key s="+a+" d="+b+"\n"); sendStatus(0,coordinates);
             try (java.io.FileOutputStream f = new java.io.FileOutputStream(new java.io.File(getTargetContext().getCacheDir(), "probe-before.png"))) { ui.takeScreenshot().compress(android.graphics.Bitmap.CompressFormat.PNG,100,f); }
@@ -632,6 +633,116 @@ public final class KeyboardTouchProbe extends Instrumentation {
     }
     private void save(android.graphics.Bitmap b, java.io.File f) throws java.io.IOException {
         try (java.io.FileOutputStream out = new java.io.FileOutputStream(f)) { b.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out); }
+    }
+    /**
+     * Fast-typing taps that used to be lost, [count] of each (default 10): a finger that drifts
+     * half a key while pressing; taps in the half-key strips beside A and L; Shift overlapping a
+     * letter (letter first, then Shift first); and a letter still held when ?123 is tapped. Reports
+     * how many arrived as typed, and fails unless all did.
+     */
+    private void taps(Bundle result) throws Exception {
+        int count = Integer.parseInt(arguments.getString("count", "10"));
+        setEditorText("ok ");
+        Rect s = bounds(waitLabel("s")), d = bounds(waitLabel("d")), k = bounds(waitLabel("k"));
+        Rect shift = bounds(waitLabel("Shift")), symbols = bounds(waitLabel("Numbers and symbols"));
+        float pitch = d.centerX() - s.centerX();
+        // The strips beside A and L: half a key wide, measured from S and K, which never move.
+        float leftGap = s.centerX() - pitch * 1.5f - pitch * 0.25f, rightGap = k.centerX() + pitch * 1.5f + pitch * 0.25f;
+        float row = s.centerY();
+
+        // A finger that lands on the right part of S and slides half a key, over the edge into D.
+        setEditorText("ok ");
+        for (int i = 0; i < count; i++) {
+            long down = SystemClock.uptimeMillis();
+            float x = s.centerX() + pitch * 0.3f;
+            touchAt(down, MotionEvent.ACTION_DOWN, new int[]{0}, new float[][]{{x, row}});
+            for (int step = 1; step <= 3; step++) {
+                SystemClock.sleep(12);
+                touchAt(down, MotionEvent.ACTION_MOVE, new int[]{0}, new float[][]{{x + pitch * 0.5f * step / 3f, row}});
+            }
+            touchAt(down, MotionEvent.ACTION_UP, new int[]{0}, new float[][]{{x + pitch * 0.5f, row}});
+            SystemClock.sleep(120);
+        }
+        SystemClock.sleep(400);
+        int drift = occurrences(editorText().substring(3), 's');
+
+        // Taps in the strips left of A and right of L.
+        setEditorText("ok ");
+        for (int i = 0; i < count; i++) { tapAt(leftGap, row); SystemClock.sleep(120); }
+        for (int i = 0; i < count; i++) { tapAt(rightGap, row); SystemClock.sleep(120); }
+        SystemClock.sleep(400);
+        String strips = editorText().substring(3);
+        int left = occurrences(strips, 'a'), right = occurrences(strips, 'l');
+
+        // Letter pressed, Shift pressed, Shift released, letter released, then d: "sD".
+        int letterFirst = 0, shiftFirst = 0, layer = 0;
+        String sampleLetterFirst = null, sampleShiftFirst = null, sampleLayer = null;
+        for (int i = 0; i < count; i++) {
+            setEditorText("ok ");
+            overlap(s, shift);
+            tap(d); SystemClock.sleep(300);
+            if (sampleLetterFirst == null) sampleLetterFirst = editorText();
+            if (editorText().equals("ok sD")) letterFirst++;
+        }
+        // Shift held while a letter is tapped, then d: "Sd".
+        for (int i = 0; i < count; i++) {
+            setEditorText("ok ");
+            overlap(shift, s);
+            tap(d); SystemClock.sleep(300);
+            if (sampleShiftFirst == null) sampleShiftFirst = editorText();
+            if (editorText().equals("ok Sd")) shiftFirst++;
+        }
+        // A letter still held when ?123 is tapped: it is typed before the layer changes.
+        for (int i = 0; i < count; i++) {
+            setEditorText("ok ");
+            overlap(s, symbols);
+            SystemClock.sleep(300);
+            if (sampleLayer == null) sampleLayer = editorText();
+            if (editorText().equals("ok s")) layer++;
+            clickLabel("Letters");
+            SystemClock.sleep(200);
+        }
+        String report = "probe=taps of " + count + ": drift=" + drift + " leftStrip=" + left + " rightStrip=" + right +
+            " letterThenShift=" + letterFirst + " shiftThenLetter=" + shiftFirst + " letterOverLayer=" + layer +
+            " (first results: '" + sampleLetterFirst + "' '" + sampleShiftFirst + "' '" + sampleLayer + "')";
+        result.putString("stream", report + "\n");
+        if (drift + left + right + letterFirst + shiftFirst + layer != 6 * count) throw new AssertionError(report);
+        finish(0, result);
+    }
+    private static int occurrences(String text, char c) {
+        int n = 0;
+        for (int i = 0; i < text.length(); i++) if (Character.toLowerCase(text.charAt(i)) == c) n++;
+        return n;
+    }
+    /** [first] goes down, [second] is tapped while [first] is held, then [first] lifts. */
+    private void overlap(Rect first, Rect second) {
+        long down = SystemClock.uptimeMillis();
+        Rect[] both = {first, second};
+        touch(down, MotionEvent.ACTION_DOWN, new int[]{0}, new Rect[]{first});
+        SystemClock.sleep(30);
+        touch(down, MotionEvent.ACTION_POINTER_DOWN | (1 << MotionEvent.ACTION_POINTER_INDEX_SHIFT), new int[]{0, 1}, both);
+        SystemClock.sleep(30);
+        touch(down, MotionEvent.ACTION_POINTER_UP | (1 << MotionEvent.ACTION_POINTER_INDEX_SHIFT), new int[]{0, 1}, both);
+        SystemClock.sleep(30);
+        touch(down, MotionEvent.ACTION_UP, new int[]{0}, new Rect[]{first});
+        SystemClock.sleep(150);
+    }
+    private void tapAt(float x, float y) {
+        long down = SystemClock.uptimeMillis();
+        touchAt(down, MotionEvent.ACTION_DOWN, new int[]{0}, new float[][]{{x, y}});
+        SystemClock.sleep(20);
+        touchAt(down, MotionEvent.ACTION_UP, new int[]{0}, new float[][]{{x, y}});
+    }
+    private void touchAt(long down, int action, int[] ids, float[][] points) {
+        MotionEvent.PointerProperties[] props = new MotionEvent.PointerProperties[ids.length];
+        MotionEvent.PointerCoords[] coords = new MotionEvent.PointerCoords[ids.length];
+        for (int i=0;i<ids.length;i++) {
+            props[i]=new MotionEvent.PointerProperties(); props[i].id=ids[i]; props[i].toolType=MotionEvent.TOOL_TYPE_FINGER;
+            coords[i]=new MotionEvent.PointerCoords(); coords[i].x=points[i][0]; coords[i].y=points[i][1]; coords[i].pressure=1; coords[i].size=1;
+        }
+        MotionEvent event=MotionEvent.obtain(down,SystemClock.uptimeMillis(),action,ids.length,props,coords,0,0,1,1,0,0,InputDevice.SOURCE_TOUCHSCREEN,0);
+        if (!ui.injectInputEvent(event,false)) throw new AssertionError("Touch injection refused");
+        event.recycle();
     }
     private void cancelPointers() {
         MotionEvent event = MotionEvent.obtain(SystemClock.uptimeMillis(),SystemClock.uptimeMillis(),MotionEvent.ACTION_CANCEL,0f,0f,0);
