@@ -1,8 +1,14 @@
 package com.rheerkens.androidkeyboard.dictionary
 
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
 import java.io.BufferedReader
+import java.io.DataInputStream
+import java.io.DataOutputStream
 import java.io.InputStream
 import java.io.InputStreamReader
+import java.io.OutputStream
+import java.nio.ByteBuffer
 import java.util.zip.GZIPInputStream
 
 /** Autocorrect rules that differ between languages (`languages.txt`). */
@@ -47,6 +53,10 @@ class Lexicon private constructor(
     val folding: AccentFolding,
     /** Language-specific autocorrect rules from the catalog. */
     val rules: SpellingRules = SpellingRules(),
+    /** [poolOrder] and [foldedOrder] as a saved copy stored them, to skip sorting ([read]). */
+    savedPool: IntArray? = null,
+    savedFolded: IntArray? = null,
+    hasSavedFolded: Boolean = false,
 ) {
     val size: Int get() = freqBytes.size
 
@@ -62,9 +72,12 @@ class Lexicon private constructor(
     /** The spelling search's candidates of one length, most frequent first. */
     private class Pool(val indices: IntArray, val words: Array<String>, val lower: Array<String>)
 
+    /** The [CORRECTION_POOL] most frequent words, most frequent first (equal ones in list order). */
+    private val poolOrder: IntArray = savedPool ?: (0 until size).sortedByDescending { freq(it) }.take(CORRECTION_POOL).toIntArray()
+
     /** Built alongside the word list on its loader thread, never lazily on a Space press. */
     private val byLength: Map<Int, Pool> = run {
-        (0 until size).sortedByDescending { freq(it) }.take(CORRECTION_POOL)
+        poolOrder.asList()
             .groupBy { lowerStart[it + 1] - lowerStart[it] }
             .mapValues { (_, v) ->
                 val lower = Array(v.size) { lowerString(v[it]) }
@@ -77,7 +90,7 @@ class Lexicon private constructor(
      * Word indices sorted by their accent-folded lowercase form (`żółw` → `zolw`), so `zol`
      * completes `żółw`. Null when folding changes no word (English).
      */
-    private val foldedOrder: IntArray? = run {
+    private val foldedOrder: IntArray? = if (hasSavedFolded) savedFolded else run {
         if (lowerChars.all { folding.fold(it) == it }) return@run null
         val folded = Array(size) { folding.fold(lowerString(it)) }
         (0 until size).sortedBy { folded[it] }.toIntArray()
@@ -229,6 +242,29 @@ class Lexicon private constructor(
         }
     }
 
+    /**
+     * Saves this list in the binary form [read] loads in a few milliseconds, instead of parsing
+     * and sorting the text list again after every start of the keyboard. [tag] names the source
+     * it was built from; [read] returns null when asked for another.
+     */
+    fun write(out: OutputStream, tag: String) {
+        val data = DataOutputStream(BufferedOutputStream(out, 1 shl 16))
+        data.writeInt(MAGIC)
+        data.writeUTF(tag)
+        fun ints(a: IntArray) { data.writeInt(a.size); val b = ByteBuffer.allocate(a.size * 4); b.asIntBuffer().put(a); data.write(b.array()) }
+        fun text(s: String) { val b = s.toByteArray(Charsets.UTF_8); data.writeInt(b.size); data.write(b) }
+        text(String(lowerChars))
+        ints(lowerStart)
+        data.writeInt(freqBytes.size); data.write(freqBytes)
+        ints(spelledAt)
+        text(spelled.joinToString("\n"))
+        text(whitelist.entries.joinToString("\n") { "${it.key}\t${it.value}" })
+        ints(poolOrder)
+        data.writeBoolean(foldedOrder != null)
+        foldedOrder?.let(::ints)
+        data.flush()
+    }
+
     /** This lexicon plus [extra] words (frequency [frequency]) that it doesn't already know. */
     fun withExtraWords(extra: Collection<String>, frequency: Int): Lexicon {
         val added = extra.distinctBy { it.lowercase() }.filter { !contains(it) }
@@ -264,6 +300,37 @@ class Lexicon private constructor(
 
         fun parseGzip(input: InputStream, folding: AccentFolding = AccentFolding.QWERTY, rules: SpellingRules = SpellingRules()): Lexicon =
             GZIPInputStream(input).use { parse(it, folding, rules) }
+
+        /** Format of [write]; a saved list of another format or [tag] reads as null. */
+        private const val MAGIC = 0x4C4B5801 // "LKX", version 1
+
+        /**
+         * A list saved by [write] with this [tag] and [folding] (the language's, which the saved
+         * accent index depends on), or null if [input] holds another format or source. Throws on
+         * a damaged file.
+         */
+        fun read(input: InputStream, tag: String, folding: AccentFolding, rules: SpellingRules = SpellingRules()): Lexicon? {
+            val data = DataInputStream(BufferedInputStream(input, 1 shl 16))
+            if (data.readInt() != MAGIC || data.readUTF() != tag) return null
+            fun bytes(): ByteArray = ByteArray(data.readInt()).also(data::readFully)
+            fun ints(): IntArray {
+                val raw = ByteArray(data.readInt() * 4).also(data::readFully)
+                return IntArray(raw.size / 4).also { ByteBuffer.wrap(raw).asIntBuffer().get(it) }
+            }
+            fun text(): String = String(bytes(), Charsets.UTF_8)
+            val chars = text().toCharArray()
+            val starts = ints()
+            val freqs = bytes()
+            val spelledAt = ints()
+            val spelled = text().let { if (spelledAt.isEmpty()) emptyArray() else it.split('\n').toTypedArray() }
+            val whitelist = text().let { s ->
+                if (s.isEmpty()) emptyMap() else s.split('\n').associate { it.substringBefore('\t') to it.substringAfter('\t') }
+            }
+            val pool = ints()
+            val folded = if (data.readBoolean()) ints() else null
+            check(starts.size == freqs.size + 1 && starts.last() == chars.size && spelled.size == spelledAt.size) { "Damaged word list cache" }
+            return Lexicon(chars, starts, freqs, spelledAt, spelled, whitelist, folding, rules, pool, folded, hasSavedFolded = true)
+        }
 
         /** A lexicon from a plain list, most frequent first (tests and fallbacks). */
         fun fromWords(
