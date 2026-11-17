@@ -174,6 +174,45 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
     }
 
     /**
+     * The participating language the words in [before] are written in: 0 for the keyboard's
+     * language, n for the nth of [secondaryLexicons]. Each of the last [CONTEXT_WORDS] complete
+     * words votes for the language whose list has it clearly more often than every other's; a
+     * language with at least [MIN_CONTEXT_VOTES] votes and twice as many as any other leads.
+     * Otherwise, and with one language, the keyboard's language leads. The word being typed at
+     * the end of [before] doesn't vote.
+     */
+    fun contextLanguage(before: String): Int {
+        val lexicons = listOf(lexicon()) + secondaryLexicons()
+        if (lexicons.size < 2 || before.isEmpty()) return 0
+        val words = CONTEXT_WORD.findAll(before).map { it.value }.toList()
+            .let { if (before.last().isLetter() || before.last() == '\'') it.dropLast(1) else it }
+        val votes = IntArray(lexicons.size)
+        for (word in words.takeLast(CONTEXT_WORDS)) {
+            if (word.length < 2) continue
+            val frequency = lexicons.map { it.frequency(word) ?: 0 }
+            val best = frequency.indices.maxBy { frequency[it] }
+            if (frequency[best] > 0 && frequency.indices.all { it == best || frequency[it] + VOTE_MARGIN <= frequency[best] }) {
+                votes[best]++
+            }
+        }
+        val lead = votes.indices.maxBy { votes[it] }
+        return if (votes[lead] >= MIN_CONTEXT_VOTES && votes.indices.all { it == lead || 2 * votes[it] <= votes[lead] }) lead else 0
+    }
+
+    /**
+     * This suggester with participating language [lead] ([contextLanguage]) in the keyboard
+     * language's place: its words come first in the strip, and it gets the keyboard language's
+     * edge when autocorrect fixes disagree. Key distances still follow the keyboard.
+     */
+    fun leading(lead: Int): Suggester {
+        if (lead == 0) return this
+        val lexicons = listOf(lexicon()) + secondaryLexicons()
+        val first = lexicons.getOrNull(lead) ?: return this
+        val rest = lexicons.filterIndexed { i, _ -> i != lead }
+        return Suggester({ first }, keys, { rest }, dictionariesReady)
+    }
+
+    /**
      * A saved multiword term that the text just before the cursor spells with different case
      * (`t3 code` → `T3 Code`). Returns the number of characters to replace and the term, or null.
      * Matches only at a word boundary, and never changes text that already matches exactly.
@@ -199,6 +238,20 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
 
         /** Searches kept per word list; the keyboard makes a new suggester for every keystroke. */
         private const val MAX_SEARCHES = 32
+        /** Complete words before the cursor that decide the language written in. */
+        private const val CONTEXT_WORDS = 8
+
+        /** Votes the language written in needs before it leads. */
+        private const val MIN_CONTEXT_VOTES = 2
+
+        /**
+         * Frequency (0–255) by which a word must be more common in one language than in every
+         * other to vote for it: `the` (English 255, 120 as an extra word in Dutch) votes English,
+         * `in`, common in both, votes for neither.
+         */
+        private const val VOTE_MARGIN = 40
+
+        private val CONTEXT_WORD = Regex("""[\p{L}']+""")
 
         /** Score lead a spelling fix needs over a different one from another language. */
         private const val LANGUAGE_MARGIN = 1.0

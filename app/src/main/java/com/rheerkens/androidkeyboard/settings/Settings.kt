@@ -103,6 +103,8 @@ data class Settings(
      */
     val recentScreenshots: Boolean = true,
     val clipExpiry: ClipExpiry = ClipExpiry.ONE_HOUR,
+    /** Languages the phone uses whose suggestion on Home ("Add Dutch") the user declined. */
+    val dismissedLanguageHints: Set<String> = emptySet(),
     // Voice
     val keyboardFirstDictation: Boolean = true,
     val autoStartVoice: Boolean = true,

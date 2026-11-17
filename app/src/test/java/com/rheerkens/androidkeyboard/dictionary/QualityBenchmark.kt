@@ -164,6 +164,45 @@ class QualityBenchmark {
         assertTrue(failures.joinToString("\n"), failures.isEmpty())
     }
 
+    /**
+     * Slips of [ContextCase.words]-language words on a keyboard, each after [CONTEXT_LENGTH]
+     * frequent words of [ContextCase.context] (or none), with the language written in leading as
+     * the app picks it ([Suggester.contextLanguage]). Also returns how often it picked the
+     * context's language.
+     */
+    private fun typosInContext(case: ContextCase): Pair<TypoResult, Int> {
+        val typing = TestLanguages.keyboard(case.keyboard)
+        val enabled = listOf(typing.language.id) + case.others
+        val base = suggester(case.keyboard, case.others)
+        val known = enabled.map(::lexicon)
+        val slips = Slips(typing, SEED + 5)
+        val words = sample(frequent(case.words), SAMPLE, SEED + 5)
+        val contextWords = case.context?.let { frequent(it, CONTEXT_POOL) }
+        val random = Random(SEED + 6)
+        val expectedLead = case.context?.let(enabled::indexOf) ?: 0
+        var fixed = 0; var wrong = 0; var kept = 0; var inStrip = 0; var realWord = 0; var leadRight = 0
+        for (target in words) {
+            val typed = slips.of(target)
+            val before = contextWords?.let { list ->
+                List(CONTEXT_LENGTH) { list[random.nextInt(list.size)] }.joinToString(" ", postfix = " ")
+            }.orEmpty()
+            val lead = base.contextLanguage(before + typed)
+            if (lead == expectedLead) leadRight++
+            val suggester = base.leading(lead)
+            val fix = suggester.autocorrection(typed, emptyList())
+            val strip = Suggester.arrangeForStrip(typed, suggester.suggest(typed, emptyList()), fix?.let { Suggestion(it) })
+            when (fix) {
+                null -> kept++
+                target -> fixed++
+                else -> wrong++
+            }
+            if (strip.any { it?.text.equals(target, ignoreCase = true) }) inStrip++
+            if (known.any { it.contains(typed) }) realWord++
+            record(case, before, target, typed, lead, fix, strip.map { it?.text })
+        }
+        return TypoResult(case.toString(), fixed, wrong, kept, inStrip, realWord, words.size, 0.0, 0.0) to leadRight
+    }
+
     /** How many of [words] (correct in some language) autocorrect changes on [keyboard] with [others]. */
     private fun changed(words: List<String>, keyboard: String, others: List<String>): Pair<Int, List<String>> {
         val suggester = suggester(keyboard, others)
@@ -250,6 +289,23 @@ class QualityBenchmark {
             if (pct < minRestored) failures += "$id: accents restored ${f(pct)}% < $minRestored%"
         }
         line()
+        line("Checksum of the results above: ${String.format(Locale.ROOT, "%08x", checksum.value)}.")
+        line()
+        line("## The language written in")
+        line()
+        line("Each slip follows $CONTEXT_LENGTH frequent words of the context language, as in a sentence.")
+        line()
+        line("| Slips in | Keyboard | Enabled | Context | Context language leads | Fixed | Wrong word | Target in strip |")
+        line("| --- | --- | --- | --- | ---: | ---: | ---: | ---: |")
+        for (case in CONTEXT_CASES) {
+            val (r, leadRight) = typosInContext(case)
+            val enabled = (listOf(case.keyboard) + case.others).joinToString(" + ") { NAMES[it] ?: it }
+            line("| ${NAMES[case.words]} | ${NAMES[case.keyboard]} | $enabled | ${case.context?.let { NAMES[it] } ?: "none"} | " +
+                "${if (case.context == null) "–" else "${f(100.0 * leadRight / r.total)}%"} | ${f(r.pct(r.fixed))}% | ${f(r.pct(r.wrong))}% | ${f(r.pct(r.inStrip))}% |")
+            if (r.pct(r.fixed) < case.minFixed) failures += "$case: fixed ${f(r.pct(r.fixed))}% < ${case.minFixed}%"
+            if (r.pct(r.inStrip) < case.minStrip) failures += "$case: in strip ${f(r.pct(r.inStrip))}% < ${case.minStrip}%"
+        }
+        line()
         line("Checksum of every result: ${String.format(Locale.ROOT, "%08x", checksum.value)}. Run time ${(System.nanoTime() - started) / 1_000_000_000} s.")
         File("build/reports").mkdirs()
         File("build/reports/quality-benchmark.md").writeText(report.toString())
@@ -261,6 +317,10 @@ class QualityBenchmark {
     private data class TypoMix(val keyboard: String, val others: List<String>, val minFixed: Double, val maxWrong: Double, val minStrip: Double)
 
     private data class SecondLanguage(val words: String, val keyboard: String, val others: List<String>, val maxChanged: Int)
+
+    /** Slips of [words] typed after a few words of [context] (null: none); thresholds as in [TypoMix]. */
+    private data class ContextCase(val words: String, val keyboard: String, val others: List<String>, val context: String?,
+        val minFixed: Double = 0.0, val minStrip: Double = 0.0)
 
     private companion object {
         const val SEED = 20_261_116L
@@ -289,5 +349,18 @@ class QualityBenchmark {
             SecondLanguage("en_US", "nl", listOf("en_US"), 5), // 1
         )
         val ACCENT_LANGUAGES = listOf("nl" to 94.0, "pl" to 85.0) // 96.2, 87.4
+        const val CONTEXT_LENGTH = 5
+        const val CONTEXT_POOL = 2_000
+        // With context, the language written in does as well as on its own keyboard; without, it
+        // trails the keyboard's language. Switching languages mid-sentence costs the first word.
+        val CONTEXT_CASES = listOf(
+            ContextCase("nl", "en_US", listOf("nl"), null, 79.0, 88.5), // 80.9, 90.0
+            ContextCase("nl", "en_US", listOf("nl"), "nl", 83.5, 89.5), // 85.1, 90.9
+            ContextCase("nl", "nl", listOf("en_US"), null, 83.5, 89.5), // 85.1, 90.9
+            ContextCase("en_US", "nl", listOf("en_US"), null, 78.0, 87.0), // 79.7, 88.7
+            ContextCase("en_US", "nl", listOf("en_US"), "en_US", 83.5, 89.0), // 85.3, 90.4
+            ContextCase("en_US", "en_US", listOf("nl"), null, 83.5, 89.0), // 85.3, 90.4
+            ContextCase("nl", "nl", listOf("en_US"), "en_US"),
+        )
     }
 }
