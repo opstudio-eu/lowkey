@@ -12,6 +12,7 @@ import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputContentInfo
 import com.rheerkens.androidkeyboard.keyboard.BackspaceScrub
 import com.rheerkens.androidkeyboard.keyboard.NumberPad
+import com.rheerkens.androidkeyboard.keyboard.ui.EditAction
 import com.rheerkens.androidkeyboard.keyboard.ui.EnterKind
 
 /**
@@ -354,11 +355,40 @@ class EditorBridge(private val connection: () -> InputConnection?) {
         }
     }
 
-    private fun sendKey(code: Int) {
+    private fun sendKey(code: Int, meta: Int = 0) {
         val c = ic ?: return
         val now = SystemClock.uptimeMillis()
-        c.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, code, 0, 0, KeyCharacterMap.VIRTUAL_KEYBOARD, 0, KeyEvent.FLAG_SOFT_KEYBOARD or KeyEvent.FLAG_KEEP_TOUCH_MODE))
-        c.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_UP, code, 0, 0, KeyCharacterMap.VIRTUAL_KEYBOARD, 0, KeyEvent.FLAG_SOFT_KEYBOARD or KeyEvent.FLAG_KEEP_TOUCH_MODE))
+        c.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, code, 0, meta, KeyCharacterMap.VIRTUAL_KEYBOARD, 0, KeyEvent.FLAG_SOFT_KEYBOARD or KeyEvent.FLAG_KEEP_TOUCH_MODE))
+        c.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_UP, code, 0, meta, KeyCharacterMap.VIRTUAL_KEYBOARD, 0, KeyEvent.FLAG_SOFT_KEYBOARD or KeyEvent.FLAG_KEEP_TOUCH_MODE))
+    }
+
+    /**
+     * Moves the cursor [steps] characters right, or left when negative, as arrow keys do: a whole
+     * emoji is one step, and a selection collapses first. Arrow keys work in nearly every editor,
+     * including web pages.
+     */
+    fun moveCursor(steps: Int) {
+        val code = if (steps < 0) KeyEvent.KEYCODE_DPAD_LEFT else KeyEvent.KEYCODE_DPAD_RIGHT
+        repeat(kotlin.math.abs(steps)) { sendKey(code) }
+    }
+
+    /**
+     * Runs the editor's own [action], as its text menu would. Undo falls back to Ctrl+Z for editors
+     * without a menu entry for it. Returns false if the editor refused.
+     */
+    fun performEdit(action: EditAction): Boolean {
+        val c = ic ?: return false
+        val id = when (action) {
+            EditAction.SELECT_ALL -> android.R.id.selectAll
+            EditAction.CUT -> android.R.id.cut
+            EditAction.COPY -> android.R.id.copy
+            EditAction.PASTE -> android.R.id.paste
+            EditAction.UNDO -> android.R.id.undo
+        }
+        if (c.performContextMenuAction(id)) return true
+        if (action != EditAction.UNDO) return false
+        sendKey(KeyEvent.KEYCODE_Z, KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON)
+        return true
     }
 
     companion object {
