@@ -8,6 +8,8 @@ For installation, see the [README](../README.md#install).
 2. Open a text field and tap the keyboard's microphone button.
 3. Speak, then tap the **checkmark**. Lowkey transcribes on your phone and inserts the finished text.
 
+Lowkey transcribes while you speak: each time you pause for about a second, what you said so far is turned into text, so after the checkmark only the last part is left and the text arrives quickly. With **Show words as you speak** on, that text appears underlined in the field at each pause and the final text replaces it.
+
 With **Voice → Dictation settings → Dictate from the keys** enabled, keys return after transcription so you can make corrections. This is the default. Turn it off to use mode recall, auto-start, or continuous dictation settings.
 
 Switching to keys, hiding the keyboard, changing editor, moving the cursor, or opening the model picker cancels capture.

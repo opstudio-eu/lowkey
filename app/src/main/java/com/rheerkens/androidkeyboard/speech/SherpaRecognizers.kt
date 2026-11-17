@@ -69,9 +69,11 @@ object SherpaRecognizers {
         SOUND_ANNOTATION.replace(text, " ").trim().replace(Regex("\\s+"), " ")
 
     /**
-     * Final-only recognition. Audio is kept until [finish], except that whenever more than one
-     * piece is buffered, the oldest piece (cut at a quiet point) is decoded right away. That keeps
-     * memory bounded, spreads the work over the capture, and leaves at most one piece for Stop.
+     * Whole-clip recognition, decoded piece by piece while the capture goes on: a piece ends at a
+     * pause of [AudioChunker.PAUSE_SAMPLES] (or, without one, at the model's input limit, cut at
+     * the quietest point). Each decoded piece is reported at once, so words appear as the user
+     * pauses, and Stop leaves only the speech since the last pause to decode. Quiet pieces are
+     * dropped undecoded, so a long silence keeps nothing in memory.
      */
     private class WholeClipRecognizer(private val recognizer: OfflineRecognizer, private val maxChunkSamples: Int) : Recognizer {
         private val audio = SampleBuffer()
@@ -92,6 +94,12 @@ object SherpaRecognizers {
                 audio.dropFront(cut)
                 onLine?.invoke(0L, joined())
             }
+            val pause = AudioChunker.pauseCut(audio.view(), audio.size) ?: return
+            val piece = audio.view().copyOf(pause)
+            audio.dropFront(pause)
+            if (!AudioChunker.hasSpeech(piece)) return
+            texts += decode(piece)
+            onLine?.invoke(0L, joined())
         }
 
         override fun finish() {

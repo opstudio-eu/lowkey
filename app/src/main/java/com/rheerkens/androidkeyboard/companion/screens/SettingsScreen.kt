@@ -402,7 +402,7 @@ private fun LazyListScope.voicePage(s: Settings, models: ModelStoreState, update
         SettingsGroup("While you speak") {
             SwitchRow(
                 "Show words as you speak", s.liveTextInEditor, { v -> update { it.copy(liveTextInEditor = v) } },
-                subtitle = "Provisional words appear underlined until the final text replaces them",
+                subtitle = "At each pause, what you said appears underlined until the final text replaces it",
             )
             ChoiceDialogRow(
                 "Stop after silence", AutoStop.entries, s.autoStop, { it.label }, { v -> update { it.copy(autoStop = v) } },

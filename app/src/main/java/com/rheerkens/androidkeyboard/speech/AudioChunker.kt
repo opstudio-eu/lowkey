@@ -39,6 +39,31 @@ object AudioChunker {
 
     private const val SPEECH_RMS = 0.01
 
+    /** Quiet that ends a spoken piece: 0.7 s, longer than the gaps between words. */
+    const val PAUSE_SAMPLES = 7 * WINDOW
+
+    /** Shortest piece decoded at a pause, the pause included: shorter ones give Whisper too little to go on. */
+    const val MIN_PAUSE_PIECE = 3 * SAMPLE_RATE
+
+    /**
+     * Where to end the first piece of the first [length] samples at a pause, or null: when the
+     * last [PAUSE_SAMPLES] are quiet and the piece is at least [MIN_PAUSE_PIECE] long, the
+     * middle of that pause. Checks only the pause itself, so it is cheap for every new chunk.
+     * The piece may still be all quiet; [hasSpeech] tells.
+     */
+    fun pauseCut(samples: FloatArray, length: Int): Int? {
+        if (length < MIN_PAUSE_PIECE) return null
+        var w = length - PAUSE_SAMPLES
+        while (w < length) {
+            val end = minOf(w + WINDOW, length)
+            var energy = 0.0
+            for (i in w until end) energy += samples[i] * samples[i]
+            if (energy / (end - w) > SPEECH_RMS * SPEECH_RMS) return null
+            w = end
+        }
+        return length - PAUSE_SAMPLES / 2
+    }
+
     /** Where to end the first piece of the first [length] samples (requires `length > maxSamples`). */
     fun cutPoint(samples: FloatArray, length: Int, maxSamples: Int): Int {
         require(length > maxSamples && maxSamples > WINDOW)

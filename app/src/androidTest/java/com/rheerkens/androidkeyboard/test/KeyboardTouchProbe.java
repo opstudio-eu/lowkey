@@ -62,6 +62,10 @@ public final class KeyboardTouchProbe extends Instrumentation {
                 runOnMainSync(() -> savedSettings = TypingProbeConfig.configureDutch());
                 TypingProbeConfig.awaitDutch();
             }
+            if (arguments.getString("probe", "burst").equals("dictation")) {
+                runOnMainSync(() -> {});
+                savedSettings = TypingProbeConfig.configureDictation();
+            }
             if (arguments.getString("probe", "burst").equals("registration")) { registration(result); return; }
             if (arguments.getString("probe", "burst").equals("correction")) { correctionBudget(result); return; }
             if (arguments.getString("probe", "burst").equals("blur")) { blur(result); return; }
@@ -90,6 +94,7 @@ public final class KeyboardTouchProbe extends Instrumentation {
             if (arguments.getString("probe", "burst").equals("trackpad-edit")) { trackpadEdit(result); return; }
             if (arguments.getString("probe", "burst").equals("compounds")) { compounds(result); return; }
             if (arguments.getString("probe", "burst").equals("caps")) { caps(result); return; }
+            if (arguments.getString("probe", "burst").equals("dictation")) { dictation(result); return; }
             if (arguments.getString("probe", "burst").startsWith("autocomplete")) { autocomplete(result); return; }
             if (arguments.getString("probe", "burst").equals("accents")) { accents(result); return; }
             if (arguments.getString("probe", "burst").equals("hold-overlap")) { holdOverlap(result); return; }
@@ -673,6 +678,37 @@ public final class KeyboardTouchProbe extends Instrumentation {
         }
         result.putString("stream", report.toString());
         if (!ok) throw new AssertionError(report.toString());
+        finish(0, result);
+    }
+    /**
+     * Dictates each debug test clip: the clip plays, then 2.5 s of quiet as a speaker pauses before
+     * Stop. Reports whether words showed before Stop and how long the text took after it.
+     */
+    private void dictation(Bundle result) {
+        int count = Integer.parseInt(arguments.getString("count", "4"));
+        StringBuilder report = new StringBuilder("probe=dictation\n");
+        long[] waits = new long[count];
+        for (int i = 0; i < count; i++) {
+            setEditorText("", 800);
+            tap(bounds(waitLabel("Switch to voice typing")));
+            Rect stop = bounds(waitLabel("Stop and insert text"));
+            SystemClock.sleep(6_500 + 2_500);
+            String beforeStop = editorText();
+            long stopAt = SystemClock.uptimeMillis();
+            tap(stop);
+            String text = "";
+            while (SystemClock.uptimeMillis() - stopAt < 30_000) {
+                if (!descriptionContains("Stop and insert text") && !(text = editorText()).isEmpty()) break;
+                SystemClock.sleep(20);
+            }
+            waits[i] = SystemClock.uptimeMillis() - stopAt;
+            report.append("clip ").append(i + 1).append(": before Stop '").append(beforeStop).append("'; ")
+                .append(waits[i]).append(" ms after Stop -> '").append(text).append("'\n");
+            SystemClock.sleep(1_000);
+        }
+        java.util.Arrays.sort(waits);
+        report.append("median wait after Stop ").append(waits[count / 2]).append(" ms\n");
+        result.putString("stream", report.toString());
         finish(0, result);
     }
     private void clickLabel(String label) {
