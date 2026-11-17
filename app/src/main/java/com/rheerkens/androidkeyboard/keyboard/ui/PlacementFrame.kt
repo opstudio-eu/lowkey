@@ -17,6 +17,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -30,9 +34,26 @@ import com.rheerkens.androidkeyboard.settings.InputMode
 import com.rheerkens.androidkeyboard.ui.SlimIcons
 import kotlin.math.roundToInt
 
-/** One coordinate system drives both the visible panel and the IME touch region. */
+/**
+ * The keyboard, laid out left to right whatever the system language (all of Lowkey's keyboards are
+ * written left to right; an RTL language must not mirror the keys), with text that grows with the
+ * system font size up to [MAX_KEYBOARD_FONT_SCALE] (beyond, labels overflow keys of fixed height).
+ */
 @Composable
 fun KeyboardRoot(state: KeyboardUiState, clock: () -> Long, actions: KeyboardActions) {
+    val base = LocalDensity.current
+    CompositionLocalProvider(
+        LocalLayoutDirection provides LayoutDirection.Ltr,
+        LocalDensity provides Density(base.density, base.fontScale.coerceAtMost(MAX_KEYBOARD_FONT_SCALE)),
+    ) { KeyboardFrame(state, clock, actions) }
+}
+
+/** Largest system font scale the keyboard's text follows: a 21 sp key label then still fits a 48 dp key. */
+const val MAX_KEYBOARD_FONT_SCALE = 1.3f
+
+/** One coordinate system drives both the visible panel and the IME touch region. */
+@Composable
+private fun KeyboardFrame(state: KeyboardUiState, clock: () -> Long, actions: KeyboardActions) {
     val density = LocalDensity.current
     val colors = state.colors
     var menu by remember(state.inputSession, state.profile, state.viewportWidthDp, state.viewportHeightDp, state.keyRows) { mutableStateOf(false) }
