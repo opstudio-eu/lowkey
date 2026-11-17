@@ -20,7 +20,7 @@ Install it on an emulator or test device, then enable Lowkey in Android's keyboa
 
 Debug builds use your local debug key and cannot update a release installation. To update a release install, use a signed APK from the [latest release](https://github.com/opstudio-eu/lowkey/releases/latest).
 
-Run `./gradlew testDebugUnitTest` for every change. For UI changes, verify the actual interaction on an emulator. Debug builds include audio clips under **Settings â†’ Diagnostics â†’ Dictation audio** for testing without a microphone. Existing feature checks are recorded in [docs/demos/](docs/demos/).
+Run `./gradlew testDebugUnitTest` for every change. For UI changes, verify the actual interaction on an emulator. Debug builds include audio clips under **Settings → Diagnostics → Dictation audio** for testing without a microphone. Existing feature checks are recorded in [docs/demos/](docs/demos/).
 
 When changing the leak check, also run `python3 -I scripts/test_check_leaks.py`.
 
