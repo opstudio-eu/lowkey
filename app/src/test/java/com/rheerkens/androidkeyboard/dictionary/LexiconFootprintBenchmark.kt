@@ -22,7 +22,8 @@ class LexiconFootprintBenchmark {
     @Test
     fun footprint() {
         assumeTrue("Opt-in: set LOWKEY_BENCH=1", System.getenv("LOWKEY_BENCH") == "1")
-        val report = StringBuilder("# Word list footprint\n\n| Language | Words | Heap kept | Build |\n| --- | ---: | ---: | ---: |\n")
+        val report = StringBuilder("# Word list footprint\n\n" +
+            "| Language | Words | Heap kept | Build from text | Load saved copy | Saved copy |\n| --- | ---: | ---: | ---: | ---: | ---: |\n")
         for (id in listOf("en_US", "nl", "pl")) {
             TestLanguages.lexicon(id) // warm the JIT and class loading
             val heaps = ArrayList<Long>()
@@ -38,8 +39,18 @@ class LexiconFootprintBenchmark {
                 check(lexicon.contains("the")) // keep it reachable until measured
             }
             heaps.sort(); times.sort()
-            report.append(String.format(Locale.ROOT, "| %s | %,d | %.1f MB | %d ms |\n",
-                id, size, heaps[RUNS / 2] / 1_048_576.0, times[RUNS / 2]))
+            // Saved as the app saves it after the first build, then loaded as after a restart.
+            val language = TestLanguages.language(id)
+            val saved = File.createTempFile("lexicon", ".lkx")
+            saved.outputStream().use { TestLanguages.lexicon(id).write(it, "bench") }
+            val loads = List(RUNS) {
+                val start = System.nanoTime()
+                saved.inputStream().use { Lexicon.read(it, "bench", language.folding, language.rules)!! }
+                (System.nanoTime() - start) / 1_000_000
+            }.sorted()
+            report.append(String.format(Locale.ROOT, "| %s | %,d | %.1f MB | %d ms | %d ms | %.1f MB |\n",
+                id, size, heaps[RUNS / 2] / 1_048_576.0, times[RUNS / 2], loads[RUNS / 2], saved.length() / 1_048_576.0))
+            saved.delete()
         }
         File("build/reports").mkdirs()
         File("build/reports/lexicon-footprint.md").writeText(report.toString())
