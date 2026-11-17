@@ -60,6 +60,7 @@ import com.rheerkens.androidkeyboard.keyboard.Layer
 import com.rheerkens.androidkeyboard.keyboard.EmojiSuggestions
 import com.rheerkens.androidkeyboard.keyboard.Layouts
 import com.rheerkens.androidkeyboard.keyboard.ui.ClipChip
+import com.rheerkens.androidkeyboard.keyboard.ui.EditAction
 import com.rheerkens.androidkeyboard.keyboard.ui.EnterKind
 import com.rheerkens.androidkeyboard.keyboard.ui.FanSpec
 import com.rheerkens.androidkeyboard.keyboard.ui.KeyboardActions
@@ -171,6 +172,13 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     private val clipChips = MutableStateFlow<List<ClipChip>>(emptyList())
     /** Bumped each time the keyboard opens, so the clip row starts at the newest item. */
     private val inputSession = MutableStateFlow(0)
+    /**
+     * Counts fields the keyboard is shown for. Unlike [inputSession], an editor that restarts its
+     * input while it stays shown (some apps do after a cut) keeps the keyboard's panels as they
+     * were, such as open Keyboard tools.
+     */
+    private val shownSession = MutableStateFlow(0)
+    private var shownEditor: String? = null
     private lateinit var screenshots: RecentScreenshots
     /** Recent screenshots, when that setting is on and the photos permission is granted. */
     private val recentShots = MutableStateFlow<List<ClipEntry.Screenshot>>(emptyList())
@@ -320,7 +328,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                 val sensitive by sensitiveField.collectAsState()
                 val physical by physicalKeyboard.collectAsState()
                 val clips by clipChips.collectAsState()
-                val session by inputSession.collectAsState()
+                val session by shownSession.collectAsState()
                 val once by keyboardOnce.collectAsState()
                 val fan by fanSpec.collectAsState()
                 val packs by AppGraph.languagePacks.state.collectAsState()
@@ -437,6 +445,28 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
 
     override fun onSetNumberRow(enabled: Boolean) {
         settings.update { it.copy(numberRow = enabled) }
+    }
+
+    override fun onMoveCursor(steps: Int) {
+        if (!inputViewActive) return
+        clearNote()
+        lastCorrection = null
+        autoSpaced = false
+        doubleSpacePeriod.reset()
+        onKeyDown()
+        bridge.moveCursor(steps)
+    }
+
+    override fun onEditAction(action: EditAction) {
+        if (!inputViewActive) return
+        clearNote()
+        lastCorrection = null
+        autoSpaced = false
+        doubleSpacePeriod.reset()
+        markOwnEdit()
+        if (!bridge.performEdit(action)) showNote("This field doesn't support ${action.label.lowercase()}", warn = true)
+        updateShift()
+        refreshStrip()
     }
 
     override fun onPrepareResize() {
@@ -595,6 +625,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         resizeOnOpen = info.privateImeOptions?.contains("lowkey.resize") == true
         placementBounds = null
         inputSession.value++
+        bridge.editorKey().let { editor -> if (editor == null || editor != shownEditor) shownSession.value++; shownEditor = editor }
         // A restart keeps the session only if it's still the same editor at the owned position;
         // otherwise (another field in the same view) the old capture must never write here.
         val keepSession = restarting && voice.currentSessionId != null &&
@@ -634,6 +665,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
 
     override fun onFinishInputView(finishingInput: Boolean) {
         doubleSpacePeriod.reset()
+        shownEditor = null
         menuBackHandler = null
         onLayoutBackHandler(null)
         inputViewActive = false

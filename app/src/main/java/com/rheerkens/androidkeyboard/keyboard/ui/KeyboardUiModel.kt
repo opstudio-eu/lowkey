@@ -49,7 +49,19 @@ sealed interface WordAim {
 val LocalWordAim = androidx.compose.runtime.compositionLocalOf<WordAim?> { null }
 
 /** Callbacks from the keyboard UI into the input method. */
+/** The editor's own editing commands, offered under Keyboard tools. */
+enum class EditAction(val label: String) {
+    SELECT_ALL("Select all"),
+    CUT("Cut"),
+    COPY("Copy"),
+    PASTE("Paste"),
+    UNDO("Undo"),
+}
+
 interface KeyboardActions {
+    /** Moves the cursor [steps] characters (negative: left), from a slide along Space. */
+    fun onMoveCursor(steps: Int) {}
+    fun onEditAction(action: EditAction) {}
     fun onCloseEmoji() {}
     fun onChooseEmoji(value: String) {}
     fun onOpenTools() {}

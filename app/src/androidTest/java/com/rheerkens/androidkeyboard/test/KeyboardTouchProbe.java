@@ -63,6 +63,7 @@ public final class KeyboardTouchProbe extends Instrumentation {
             cancelPointers();
             if (arguments.getString("steady-shift", "0").equals("1")) { waitLabel("Shift on").performAction(AccessibilityNodeInfo.ACTION_CLICK); SystemClock.sleep(300); }
             if (arguments.getString("probe", "burst").equals("numbers")) { numbers(result); return; }
+            if (arguments.getString("probe", "burst").equals("trackpad-edit")) { trackpadEdit(result); return; }
             if (arguments.getString("probe", "burst").startsWith("autocomplete")) { autocomplete(result); return; }
             if (arguments.getString("probe", "burst").equals("accents")) { accents(result); return; }
             if (arguments.getString("probe", "burst").equals("hold-overlap")) { holdOverlap(result); return; }
@@ -249,6 +250,99 @@ public final class KeyboardTouchProbe extends Instrumentation {
         screenshot("clipboard-text-preview.png");
         result.putString("stream", "probe=clipboard PASS: idle/typing transitions, live clip changes, literal text, image thumbnail, image commit with URI permission, unsupported/rejected editors, sensitive clips, password/private fields, clipboard clear\n");
         finish(0,result);
+    }
+    /**
+     * Sliding a finger left along Space moves the cursor without typing a space; Keyboard tools'
+     * editing row selects, copies, pastes and undoes in the field.
+     */
+    private void trackpadEdit(Bundle result) throws Exception {
+        float dp = getTargetContext().getResources().getDisplayMetrics().density;
+        StringBuilder report = new StringBuilder("probe=trackpad-edit\n");
+        boolean ok = true;
+        setEditorText("hello world", 1500);
+        AccessibilityNodeInfo field = waitEditable(); field.refresh();
+
+        Rect space = bounds(waitLabel("Space"));
+        float x = space.left + space.width() * 0.75f, y = space.centerY();
+        long down = SystemClock.uptimeMillis();
+        touchAt(down, MotionEvent.ACTION_DOWN, x, y);
+        for (int i = 1; i <= 13; i++) { SystemClock.sleep(25); touchAt(down, MotionEvent.ACTION_MOVE, x - i * 5 * dp, y); }
+        SystemClock.sleep(25);
+        touchAt(down, MotionEvent.ACTION_UP, x - 65 * dp, y);
+        SystemClock.sleep(600);
+        String text = editorText();
+        // The field doesn't report its cursor to accessibility: a typed letter shows where it is.
+        tap(bounds(waitLabel("x")));
+        SystemClock.sleep(600);
+        String marked = editorText();
+        boolean slid = text.equals("hello world") && marked.length() == 12 && marked.indexOf('x') >= 3 && marked.indexOf('x') <= 7;
+        ok &= slid;
+        report.append("slide 65 dp left on Space, then x: '").append(text).append("' -> '").append(marked).append("'")
+            .append(slid ? "" : " FAIL").append('\n');
+        setEditorText("hello world", 1200);
+        // Editing row under Keyboard tools (hold the microphone).
+        Rect mic = bounds(waitLabel("Switch to voice typing"));
+        long hold = SystemClock.uptimeMillis();
+        touchAt(hold, MotionEvent.ACTION_DOWN, mic.centerX(), mic.centerY());
+        SystemClock.sleep(800);
+        touchAt(hold, MotionEvent.ACTION_UP, mic.centerX(), mic.centerY());
+        SystemClock.sleep(800);
+        screenshot("trackpad-tools.png");
+        boolean tools = descriptionContains("Select all");
+        report.append("editing row in Keyboard tools: ").append(tools ? "yes" : "no").append('\n');
+        if (tools) {
+            // Where the buttons are, read once: the accessibility tree can lag behind after an edit.
+            java.util.Map<String, Rect> button = new java.util.HashMap<>();
+            for (String label : new String[]{"Select all", "Cut", "Copy", "Paste", "Undo"}) button.put(label, bounds(waitLabel(label)));
+            tap(button.get("Select all")); SystemClock.sleep(500);
+            field = waitEditable(); field.refresh();
+            boolean all = field.getTextSelectionStart() == 0 && field.getTextSelectionEnd() == 11 || field.getTextSelectionStart() < 0;
+            tap(button.get("Copy")); SystemClock.sleep(500);
+            tap(button.get("Cut")); SystemClock.sleep(500);
+            boolean cut = editorText().isEmpty();
+            tap(button.get("Paste")); SystemClock.sleep(500);
+            tap(button.get("Paste")); SystemClock.sleep(500);
+            boolean pasted = editorText().equals("hello worldhello world");
+            tap(button.get("Undo")); SystemClock.sleep(500);
+            String undone = editorText();
+            report.append("select all ").append(all).append(", cut -> '").append(cut ? "" : editorText()).append("' ").append(cut)
+                .append(", paste twice ").append(pasted).append(", undo in this Compose field -> '").append(undone).append("'").append('\n');
+            ok &= all && cut && pasted;
+            keyboardTools("Show keyboard");
+            // Undo in an ordinary Android text field (the clipboard test app's).
+            getTargetContext().startActivity(new Intent().setClassName(
+                "com.rheerkens.androidkeyboard.test", "com.rheerkens.androidkeyboard.test.ClipboardFixtureActivity")
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
+            waitLabel("Clipboard integration fixture");
+            waitLabel("Switch to voice typing");
+            clickLabel("Plain editor");
+            for (String k : new String[]{"a", "b"}) { tap(bounds(waitLabel(k))); SystemClock.sleep(400); }
+            String typed = editorText();
+            Rect mic2 = bounds(waitLabel("Switch to voice typing"));
+            long hold2 = SystemClock.uptimeMillis();
+            touchAt(hold2, MotionEvent.ACTION_DOWN, mic2.centerX(), mic2.centerY());
+            SystemClock.sleep(800);
+            touchAt(hold2, MotionEvent.ACTION_UP, mic2.centerX(), mic2.centerY());
+            SystemClock.sleep(800);
+            tap(bounds(waitLabel("Undo"))); SystemClock.sleep(600);
+            String afterUndo = editorText();
+            boolean undid = afterUndo.length() < typed.length();
+            report.append("undo in an Android text field: '").append(typed).append("' -> '").append(afterUndo).append("'")
+                .append(undid ? "" : " FAIL").append('\n');
+            ok &= undid;
+            keyboardTools("Show keyboard");
+        } else ok = false;
+        result.putString("stream", report.toString());
+        if (!ok) throw new AssertionError(report.toString());
+        finish(0, result);
+    }
+    /** Closes Keyboard tools if open: its own tile, or Android's Back. */
+    private void keyboardTools(String close) {
+        for (AccessibilityNodeInfo n : nodes()) {
+            if (close.equals(String.valueOf(n.getContentDescription())) || "Close keyboard tools".equals(String.valueOf(n.getContentDescription()))) {
+                n.performAction(AccessibilityNodeInfo.ACTION_CLICK); SystemClock.sleep(400); return;
+            }
+        }
     }
     private void clickLabel(String label) {
         AccessibilityNodeInfo node = waitLabel(label);

@@ -19,7 +19,7 @@ The app checks for updates automatically. Use **Settings → Updates → Check f
 - Voice typing with downloadable English and multilingual speech models.
 - Suggestions and autocorrect across up to three enabled, installed keyboard languages, with English bundled and Dutch, Polish and 18 more languages to download, plus a personal dictionary for saved terms and dictation casing.
 - Each language's own layout (such as German QWERTZ with Ü, Ö and Ä, or Russian ЙЦУКЕН), plus QWERTY, AZERTY, QWERTZ, Dvorak, and Colemak, with long-press numbers and accents.
-- A minimized keyboard for voice input or use with a physical keyboard, and gestures for deleting words.
+- A minimized keyboard for voice input or use with a physical keyboard, gestures for deleting words, a space bar that moves the cursor when you slide along it, and select, cut, copy, paste and undo in Keyboard tools.
 - Direct resizing and positioning, one-handed and floating modes, a split keyboard for wider screens, and an optional number row.
 - An offline emoji panel with categories, skin-tone variants, and recent choices, plus tap-to-insert emoji suggestions for English and Dutch words (in English also from emoji names, such as thumb for 👍). Hold the emoji key to switch between your keyboard languages.
 - Clipboard history for text and images, with previews and an image editor for cropping, annotation, and blur.

@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -34,8 +35,10 @@ internal fun KeyboardTools(state: KeyboardUiState, actions: KeyboardActions) {
         }
     }
     val panelHeight = state.keyRows * state.rowHeightDp + 4
-    val rowHeight = ((panelHeight - 12) / 3f).coerceAtLeast(60f).dp
+    // The editing row takes a slim strip; the three rows of tiles share the rest.
+    val rowHeight = ((panelHeight - 12 - EDIT_ROW_DP) / 3f).coerceAtLeast(50f).dp
     Column(Modifier.height(panelHeight.dp).verticalScroll(rememberScrollState()).padding(6.dp)) {
+        EditRow(actions)
         val rows = listOf(
             listOf(Tool("Size & position", SlimIcons.Resize, tap = actions::onResizeKeyboard),
                 modeTool("One-handed", SlimIcons.OneHand, PlacementMode.ONE_HANDED),
@@ -65,6 +68,38 @@ internal fun KeyboardTools(state: KeyboardUiState, actions: KeyboardActions) {
     }
 }
 
+/**
+ * The field's own editing commands, which stay open for the next one: Select all, then Cut or
+ * Copy; Paste; Undo.
+ */
+@Composable
+private fun EditRow(actions: KeyboardActions) {
+    val c = LocalKeyboardColors.current
+    Row(Modifier.fillMaxWidth().height(EDIT_ROW_DP.dp)) {
+        for (action in EditAction.entries) {
+            val icon = when (action) {
+                EditAction.SELECT_ALL -> SlimIcons.SelectAll
+                EditAction.CUT -> SlimIcons.Cut
+                EditAction.COPY -> SlimIcons.Copy
+                EditAction.PASTE -> SlimIcons.Clipboard
+                EditAction.UNDO -> SlimIcons.Undo
+            }
+            PressTarget(action.label, Modifier.weight(1f).fillMaxHeight().padding(3.dp), onDown = actions::onKeyDown,
+                onTap = { actions.onEditAction(action) }) { pressed ->
+                Column(
+                    Modifier.fillMaxSize().background(if (pressed) c.keyPressed else c.keyMod, RoundedCornerShape(10.dp)),
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+                ) {
+                    Icon(icon, null, tint = c.keyText, modifier = Modifier.size(18.dp))
+                    Text(action.label, fontSize = 10.sp, lineHeight = 12.sp, color = c.keyText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+    }
+}
+
+private const val EDIT_ROW_DP = 44
+
 private data class Tool(val label: String, val icon: ImageVector, val selected: Boolean = false,
     val enabled: Boolean = true, val status: String? = null, val tap: () -> Unit)
 
@@ -77,14 +112,16 @@ private fun ToolTile(tool: Tool, modifier: Modifier) {
         if (!tool.enabled) disabled()
         tool.status?.let { stateDescription = it; selected = tool.selected }
     }, onTap = if (tool.enabled) tool.tap else null) { pressed ->
-        Box(Modifier.fillMaxSize().background(if (pressed || tool.selected) c.keyPressed else c.key, RoundedCornerShape(10.dp))) {
+        BoxWithConstraints(Modifier.fillMaxSize().background(if (pressed || tool.selected) c.keyPressed else c.key, RoundedCornerShape(10.dp))) {
             if (tool.selected) Icon(SlimIcons.Check, null, tint = tint,
                 modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(14.dp))
+            // A short tile drops its status line: the check and the colour still show what is on.
+            val roomy = maxHeight >= 58.dp
             Column(Modifier.fillMaxSize().padding(horizontal = 4.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                Icon(tool.icon, null, tint = tint, modifier = Modifier.size(23.dp))
-                Text(tool.label, fontSize = 12.sp, color = tint, textAlign = TextAlign.Center,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis)
-                tool.status?.let { Text(if (tool.enabled) it else "Wide only", fontSize = 10.sp, color = tint,
+                Icon(tool.icon, null, tint = tint, modifier = Modifier.size(if (roomy) 23.dp else 20.dp))
+                Text(tool.label, fontSize = 12.sp, lineHeight = 14.sp, color = tint, textAlign = TextAlign.Center,
+                    maxLines = if (roomy) 2 else 1, overflow = TextOverflow.Ellipsis)
+                if (roomy) tool.status?.let { Text(if (tool.enabled) it else "Wide only", fontSize = 10.sp, color = tint,
                     textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
         }

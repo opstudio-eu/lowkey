@@ -174,9 +174,10 @@ private fun KeyView(
             KeyCap(if (pressed) c.keyPressed else c.keyMod) { KeyIcon(SlimIcons.Globe) }
         }
         is Key.Space -> PressTarget(
-            "Space, ${state.keyboard.fullLabel}. Long-press to switch keyboard app", modifier, gestureKey = key,
+            "Space, ${state.keyboard.fullLabel}. Slide to move the cursor. Long-press to switch keyboard app", modifier, gestureKey = key,
             rollover = rollover,
             onDown = actions::onKeyDown, onTap = { actions.onKey(key) }, onLongPress = actions::onSpaceLongPress,
+            onSlide = actions::onMoveCursor,
         ) { pressed ->
             KeyCap(if (pressed) c.keyPressed else c.key) {
                 Text(state.keyboard.spaceLabel, color = c.spaceText, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
