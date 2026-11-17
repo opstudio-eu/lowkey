@@ -158,9 +158,14 @@ object Corrector {
     fun autocorrect(typed: String, lexicon: Lexicon, atSentenceStart: Boolean = true, keys: KeyGrid = KeyGrid.QWERTY,
         checkActive: () -> Unit = {}): String? = autoFix(typed, lexicon, atSentenceStart, keys, checkActive)?.word
 
-    /** [autocorrect] with how sure it is, so that the fixes of several languages can be compared. */
+    /**
+     * [autocorrect] with how sure it is, so that the fixes of several languages can be compared.
+     * [search] returns the [corrections] for [typed] with [AUTOFIX_CANDIDATES]; a caller that also
+     * needs them for suggestions can pass the ones it already has.
+     */
     fun autoFix(typed: String, lexicon: Lexicon, atSentenceStart: Boolean = true, keys: KeyGrid = KeyGrid.QWERTY,
-        checkActive: () -> Unit = {}): AutoFix? {
+        checkActive: () -> Unit = {},
+        search: () -> List<Correction> = { corrections(typed, lexicon, AUTOFIX_CANDIDATES, keys, checkActive) }): AutoFix? {
         checkActive()
         when (val rule = rule(typed, lexicon, atSentenceStart)) {
             Rule.Keep -> return null
@@ -170,7 +175,7 @@ object Corrector {
         val nouns = lexicon.rules.capitalizedNouns
         // Never turn a lowercase word into a capitalized name ("lol" → "Lil"), except where nouns
         // are capitalized; the pronoun's contractions (`ive` → `I've`) are not names.
-        val ranked = corrections(typed, lexicon, 3, keys, checkActive)
+        val ranked = search()
             .filter { nouns || typed[0].isUpperCase() || !it.word[0].isUpperCase() || isPronounI(it.word) }
         val best = ranked.firstOrNull() ?: return null
         val second = ranked.getOrNull(1)
@@ -308,6 +313,8 @@ object Corrector {
     fun looksLikeAWord(s: String): Boolean =
         s.isNotEmpty() && s.all { it.isLetter() || it == '\'' } && s.drop(1).none { it.isUpperCase() }
 
+    /** Spelling candidates [autoFix] compares. */
+    const val AUTOFIX_CANDIDATES = 3
     private const val MIN_TARGET_FREQUENCY = 20
     private const val MIN_MARGIN = 0.35
     /**
