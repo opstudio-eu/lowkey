@@ -17,9 +17,6 @@ import java.io.File
 object SherpaRecognizers {
     private val threads: Int get() = Runtime.getRuntime().availableProcessors().coerceIn(1, 4)
 
-    /** Silence after Stop for whole-clip models, so the last word isn't clipped. */
-    private val TAIL_PADDING = FloatArray(SAMPLE_RATE / 5)
-
     /** Longest piece a whole-clip model decodes at once when it has no tighter limit. */
     const val DEFAULT_MAX_CHUNK_SECONDS = 60
 
@@ -68,45 +65,22 @@ object SherpaRecognizers {
     fun cleanText(text: String): String =
         SOUND_ANNOTATION.replace(text, " ").trim().replace(Regex("\\s+"), " ")
 
-    /**
-     * Whole-clip recognition, decoded piece by piece while the capture goes on: a piece ends at a
-     * pause of [AudioChunker.PAUSE_SAMPLES] (or, without one, at the model's input limit, cut at
-     * the quietest point). Each decoded piece is reported at once, so words appear as the user
-     * pauses, and Stop leaves only the speech since the last pause to decode. Quiet pieces are
-     * dropped undecoded, so a long silence keeps nothing in memory.
-     */
-    private class WholeClipRecognizer(private val recognizer: OfflineRecognizer, private val maxChunkSamples: Int) : Recognizer {
-        private val audio = SampleBuffer()
-        private val texts = mutableListOf<String>()
+    private class WholeClipRecognizer(private val recognizer: OfflineRecognizer, maxChunkSamples: Int) : Recognizer {
+        private val window = WhisperWindow(maxChunkSamples, ::decode)
         private var onLine: ((Long, String) -> Unit)? = null
 
         override fun start(onLine: (Long, String) -> Unit, onError: (Throwable) -> Unit) {
-            audio.clear()
-            texts.clear()
+            window.clear()
             this.onLine = onLine
         }
 
         override fun addAudio(samples: FloatArray) {
-            audio.append(samples)
-            while (audio.size > maxChunkSamples + AudioChunker.SEARCH_SAMPLES) {
-                val cut = AudioChunker.cutPoint(audio.view(), audio.size, maxChunkSamples)
-                texts += decode(audio.view().copyOf(cut))
-                audio.dropFront(cut)
-                onLine?.invoke(0L, joined())
-            }
-            val pause = AudioChunker.pauseCut(audio.view(), audio.size) ?: return
-            val piece = audio.view().copyOf(pause)
-            audio.dropFront(pause)
-            if (!AudioChunker.hasSpeech(piece)) return
-            texts += decode(piece)
-            onLine?.invoke(0L, joined())
+            window.addAudio(samples)?.let { onLine?.invoke(0L, it) }
         }
 
         override fun finish() {
-            audio.append(TAIL_PADDING)
-            AudioChunker.split(audio.toArray(), maxChunkSamples).forEach { texts += decode(it) }
-            audio.clear()
-            onLine?.invoke(0L, joined())
+            val text = window.finish()
+            onLine?.invoke(0L, text)
             onLine = null
         }
 
@@ -123,11 +97,8 @@ object SherpaRecognizers {
             }
         }
 
-        private fun joined() = texts.filter { it.isNotBlank() }.joinToString(" ").trim()
-
         override fun abort() {
-            audio.clear()
-            texts.clear()
+            window.clear()
             onLine = null
         }
 
@@ -162,6 +133,10 @@ class SampleBuffer {
         val count = n.coerceIn(0, size)
         System.arraycopy(data, count, data, 0, size - count)
         size -= count
+    }
+
+    fun truncate(length: Int) {
+        size = length.coerceIn(0, size)
     }
 
     fun clear() {

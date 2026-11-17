@@ -7,6 +7,22 @@ import org.junit.Test
 class AudioChunkerTest {
 
     @Test
+    fun whisperCanReviseTheEndOfAPreviewAfterSpeechResumes() {
+        val inputs = mutableListOf<FloatArray>()
+        val window = WhisperWindow(28 * SAMPLE_RATE) { samples ->
+            inputs += samples
+            if (samples.any { it == 0.4f }) "I think we should go." else "I think."
+        }
+        assertEquals("I think.", window.addAudio(audio(2.5 to 0.3f, 0.7 to 0f)))
+        assertEquals(null, window.addAudio(audio(8.0 to 0f)))
+        assertEquals("I think we should go.", window.addAudio(audio(1.0 to 0.4f, 0.7 to 0f)))
+        assertEquals("I think we should go.", window.finish())
+        assertEquals(2, inputs.size)
+        assertTrue(inputs.last().any { it == 0.3f })
+        assertTrue(inputs.last().size < 5 * SAMPLE_RATE)
+    }
+
+    @Test
     fun shortAudioStaysWhole() {
         val pieces = AudioChunker.split(FloatArray(SAMPLE_RATE * 10) { 0.3f }, maxSamples = SAMPLE_RATE * 30)
         assertEquals(1, pieces.size)
