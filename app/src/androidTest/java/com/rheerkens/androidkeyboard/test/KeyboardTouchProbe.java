@@ -42,6 +42,10 @@ public final class KeyboardTouchProbe extends Instrumentation {
                 runOnMainSync(() -> savedSettings = TypingProbeConfig.configure());
                 TypingProbeConfig.awaitDictionary();
             }
+            if (arguments.getString("probe", "burst").equals("learning")) {
+                runOnMainSync(() -> savedSettings = TypingProbeConfig.configureLearning());
+                TypingProbeConfig.awaitDictionary();
+            }
             if (arguments.getString("probe", "burst").equals("registration")) { registration(result); return; }
             if (arguments.getString("probe", "burst").equals("correction")) { correctionBudget(result); return; }
             if (arguments.getString("probe", "burst").equals("blur")) { blur(result); return; }
@@ -63,6 +67,7 @@ public final class KeyboardTouchProbe extends Instrumentation {
             cancelPointers();
             if (arguments.getString("steady-shift", "0").equals("1")) { waitLabel("Shift on").performAction(AccessibilityNodeInfo.ACTION_CLICK); SystemClock.sleep(300); }
             if (arguments.getString("probe", "burst").equals("numbers")) { numbers(result); return; }
+            if (arguments.getString("probe", "burst").equals("learning")) { learning(result); return; }
             if (arguments.getString("probe", "burst").startsWith("autocomplete")) { autocomplete(result); return; }
             if (arguments.getString("probe", "burst").equals("accents")) { accents(result); return; }
             if (arguments.getString("probe", "burst").equals("hold-overlap")) { holdOverlap(result); return; }
@@ -249,6 +254,34 @@ public final class KeyboardTouchProbe extends Instrumentation {
         screenshot("clipboard-text-preview.png");
         result.putString("stream", "probe=clipboard PASS: idle/typing transitions, live clip changes, literal text, image thumbnail, image commit with URI permission, unsupported/rejected editors, sensitive clips, password/private fields, clipboard clear\n");
         finish(0,result);
+    }
+    /**
+     * With learning on: words typed with Space are learned, and the strip then predicts the next
+     * word after the same words, which a tap inserts. Forgets it all afterwards.
+     */
+    private void learning(Bundle result) {
+        try {
+            for (String text : new String[]{"I will send", "Then I will send"}) {
+                setEditorText(text, 1500);
+                tap(bounds(waitLabel("Space")));
+                SystemClock.sleep(800);
+            }
+            setEditorText("Ok. I will", 1500);
+            tap(bounds(waitLabel("Space")));
+            SystemClock.sleep(1500);
+            boolean predicted = descriptionContains("Insert send");
+            String report = "probe=learning predicted 'send' after 'I will': " + (predicted ? "yes" : "no");
+            if (predicted) {
+                clickLabel("Insert send");
+                SystemClock.sleep(500);
+                report += "; tapped -> '" + editorText() + "'";
+            }
+            result.putString("stream", report + "\n");
+            if (!predicted || !editorText().equals("Ok. I will send ")) throw new AssertionError(report);
+            finish(0, result);
+        } finally {
+            runOnMainSync(TypingProbeConfig::forgetLearning);
+        }
     }
     private void clickLabel(String label) {
         AccessibilityNodeInfo node = waitLabel(label);

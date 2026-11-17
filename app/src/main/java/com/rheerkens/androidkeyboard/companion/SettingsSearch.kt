@@ -55,6 +55,8 @@ val settingsIndex: List<SettingEntry> = listOfNotNull(
     row("Auto-capitalize", Destination.SETTINGS_TYPING, "capitals", "capital letters", "uppercase", "sentence case", "shift"),
     row("Autocorrect", Destination.SETTINGS_TYPING, "auto-correct", "typos", "spelling", "correction", "spell check"),
     row("Suggestion strip", Destination.SETTINGS_TYPING, "word suggestions", "predictions", "next word", "autocomplete"),
+    row("Learn from my typing", Destination.SETTINGS_TYPING, "learning", "personal", "predict", "next word", "privacy"),
+    row("Forget what Lowkey learned", Destination.SETTINGS_TYPING, "clear learned words", "delete", "reset predictions", "privacy"),
     page("Key feedback", Destination.SETTINGS_CUSTOMIZE),
     row("Vibrate on key press", Destination.SETTINGS_CUSTOMIZE, "vibration", "haptic", "haptics", "feedback", "buzz"),
     // Languages

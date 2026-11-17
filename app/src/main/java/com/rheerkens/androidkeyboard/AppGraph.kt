@@ -55,6 +55,8 @@ object AppGraph {
     lateinit var keyboardTheme: KeyboardThemeStore
         private set
     lateinit var dictionary: DictionaryStore
+    /** What the user's typing taught (opt-in, [Settings.learnFromTyping]); see [PersonalModelStore]. */
+    lateinit var personalModel: com.rheerkens.androidkeyboard.dictionary.PersonalModelStore
         private set
     lateinit var models: ModelStore
         private set
@@ -108,6 +110,8 @@ object AppGraph {
         settings = SettingsStore(app)
         keyboardTheme = KeyboardThemeStore(app, appScope)
         dictionary = DictionaryStore(app)
+        personalModel = com.rheerkens.androidkeyboard.dictionary.PersonalModelStore(
+            java.io.File(app.noBackupFilesDir, "personal-model.bin"), appScope)
         models = DiskModelStore(app, appScope)
         sessionLog = SessionLog(app)
         crashLog = CrashLog(app)

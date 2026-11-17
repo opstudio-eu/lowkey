@@ -24,6 +24,8 @@ Run `./gradlew testDebugUnitTest` for every change. For UI changes, verify the a
 
 When changing the leak check, also run `python3 -I scripts/test_check_leaks.py`.
 
+For changes to predictions or learning, `LOWKEY_BENCH=1 ./gradlew testDebugUnitTest --tests '*PredictionBenchmark' --rerun` types a fixed set of short messages (`app/src/test/resources/prediction/`) with learning off and on, and reports how often the next word was predicted and how many keys the strip saved, in `app/build/reports/prediction-benchmark.md`.
+
 ## Prepare a contribution
 
 Keep private hostnames, network addresses, home-directory paths, personal details, and secrets out of files, commits, pull requests, logs, and release notes. Do not commit `local.properties`, model weights, APKs, build outputs, signing keys, or credentials. Check screenshots and videos before attaching them to a pull request; keep demo media out of git.

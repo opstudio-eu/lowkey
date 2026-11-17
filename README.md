@@ -17,7 +17,7 @@ The app checks for updates automatically. Use **Settings → Updates → Check f
 ## Features
 
 - Voice typing with downloadable English and multilingual speech models.
-- Suggestions and autocorrect across up to three enabled, installed keyboard languages, with English bundled and Dutch, Polish and 18 more languages to download, plus a personal dictionary for saved terms and dictation casing.
+- Suggestions and autocorrect across up to three enabled, installed keyboard languages, with English bundled and Dutch, Polish and 18 more languages to download, plus a personal dictionary for saved terms and dictation casing, and optional next-word predictions learned on the phone from your own typing.
 - Each language's own layout (such as German QWERTZ with Ü, Ö and Ä, or Russian ЙЦУКЕН), plus QWERTY, AZERTY, QWERTZ, Dvorak, and Colemak, with long-press numbers and accents.
 - A minimized keyboard for voice input or use with a physical keyboard, and gestures for deleting words.
 - Direct resizing and positioning, one-handed and floating modes, a split keyboard for wider screens, and an optional number row.

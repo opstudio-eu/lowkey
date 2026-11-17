@@ -81,6 +81,11 @@ data class Settings(
     val autocorrect: Boolean = true,
     val suggestionStrip: Boolean = true,
     /**
+     * Learn from what you type (opt-in): next-word predictions, completions in context, and
+     * corrections you undid. Stays on the phone, outside backups; never in sensitive fields.
+     */
+    val learnFromTyping: Boolean = false,
+    /**
      * Ids of the keyboards the globe key cycles through (`TypingKeyboard.id`: `pl` for Polish
      * on its own layout, `en_US:AZERTY` for an alternative one). Only English (US) is built in;
      * a keyboard counts once its language's word list is on the phone.
