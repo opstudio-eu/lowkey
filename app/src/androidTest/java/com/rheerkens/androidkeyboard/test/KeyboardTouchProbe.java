@@ -89,6 +89,7 @@ public final class KeyboardTouchProbe extends Instrumentation {
             if (arguments.getString("probe", "burst").equals("learning")) { learning(result); return; }
             if (arguments.getString("probe", "burst").equals("trackpad-edit")) { trackpadEdit(result); return; }
             if (arguments.getString("probe", "burst").equals("compounds")) { compounds(result); return; }
+            if (arguments.getString("probe", "burst").equals("caps")) { caps(result); return; }
             if (arguments.getString("probe", "burst").startsWith("autocomplete")) { autocomplete(result); return; }
             if (arguments.getString("probe", "burst").equals("accents")) { accents(result); return; }
             if (arguments.getString("probe", "burst").equals("hold-overlap")) { holdOverlap(result); return; }
@@ -649,6 +650,26 @@ public final class KeyboardTouchProbe extends Instrumentation {
             boolean match = actual.equals(c[1]);
             ok &= match;
             report.append("'").append(c[0]).append("' + Space -> '").append(actual).append("'").append(match ? "" : " FAIL").append('\n');
+        }
+        result.putString("stream", report.toString());
+        if (!ok) throw new AssertionError(report.toString());
+        finish(0, result);
+    }
+    /** Shift turns on at a sentence start and off elsewhere, as the editor's own caps mode says. */
+    private void caps(Bundle result) {
+        String[][] cases = {{"", "A"}, {"hello. ", "hello. A"}, {"hello ", "hello a"},
+            {"Mr. Smith said e.g. ", "Mr. Smith said e.g. a"}, {"line one\n", "line one\nA"}};
+        StringBuilder report = new StringBuilder("probe=caps\n");
+        boolean ok = true;
+        for (String[] c : cases) {
+            setEditorText(c[0], 1200);
+            tap(bounds(waitLabel("a")));
+            SystemClock.sleep(600);
+            String actual = editorText();
+            boolean match = actual.equals(c[1]);
+            ok &= match;
+            report.append("'").append(c[0].replace("\n", "\\n")).append("' + a -> '").append(actual.replace("\n", "\\n")).append("'")
+                .append(match ? "" : " FAIL").append('\n');
         }
         result.putString("stream", report.toString());
         if (!ok) throw new AssertionError(report.toString());
