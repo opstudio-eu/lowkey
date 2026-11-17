@@ -62,6 +62,10 @@ Tap **Keyboard tools → Number row** to toggle a dedicated 1–0 row above the 
 
 Open **Dictionary → My words** to add, search, edit or delete saved terms. **Match the spelling of my words** controls whether dictation restores their spelling. Under **Speech rules**, add phrases to replace after dictation. The main switch is off by default; each rule keeps its own on/off choice while the main switch is off. Import and export are not available.
 
+## Back up your words and settings
+
+Android doesn't back up Lowkey, so a new phone or a reinstall starts empty. Under **Settings → Backup**, **Export words and settings** saves your saved words, speech rules and all settings in one file, `lowkey-backup.json`, wherever you choose with Android's file picker. **Import words and settings** reads it back: words and rules you don't have yet are added, and the settings are replaced. Word lists, speech models and the keyboard theme's photo are not in the file; Lowkey says which languages to download again. The file is readable text, so keep it somewhere private.
+
 ## Resize, move and split the keyboard
 
 Hold the microphone to open quick settings. **Size & position** outlines the keyboard: drag the top edge to change height, the bottom edge to leave more or less space underneath, or the centre move handle to reposition it. In Normal and Floating modes, the left and right handles change width independently of height. A narrower Normal keyboard can also move horizontally while remaining docked. **Reset** restores the current mode's default size and position; the checkmark finishes. Completed drags are remembered, including when you press Android's Back button.

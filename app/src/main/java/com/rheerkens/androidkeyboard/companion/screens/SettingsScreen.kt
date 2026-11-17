@@ -50,6 +50,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rheerkens.androidkeyboard.AppGraph
+import kotlinx.coroutines.launch
 import com.rheerkens.androidkeyboard.BuildConfig
 import com.rheerkens.androidkeyboard.clipboard.PhotoAccess
 import com.rheerkens.androidkeyboard.companion.Destination
@@ -234,6 +235,7 @@ private fun LazyListScope.topPage(
             LinkRow("Voice typing", models.activeModel?.name ?: "Not set up") { navigate(Destination.MODELS) }
         }
     }
+    item(key = "backup") { BackupSettings() }
     item(key = "app") {
         SettingsGroup("App") {
             LinkRow(
@@ -505,6 +507,34 @@ private fun InfoRow(title: String, value: String) {
                 Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+    }
+}
+
+/**
+ * Saves the saved words, speech rules and settings to a file the user picks, and reads them back,
+ * through Android's file picker (no storage permission).
+ */
+@Composable
+private fun BackupSettings() {
+    val context = LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var message by rememberSaveable { mutableStateOf<String?>(null) }
+    val export = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument(com.rheerkens.androidkeyboard.backup.BackupFile.MIME),
+    ) { uri -> if (uri != null) scope.launch { message = AppGraph.exportBackup(context, uri) } }
+    val import = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+    ) { uri -> if (uri != null) scope.launch { message = AppGraph.importBackup(context, uri) } }
+    SettingsGroup("Backup") {
+        ActionRow("Export words and settings") { export.launch(com.rheerkens.androidkeyboard.backup.BackupFile.NAME) }
+        ActionRow("Import words and settings") { import.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }
+        Text(
+            message ?: "Your saved words, speech rules and settings, in one file you keep where you like. " +
+                "Word lists and speech models download again.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
     }
 }
 

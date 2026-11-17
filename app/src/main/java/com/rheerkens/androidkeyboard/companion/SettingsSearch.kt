@@ -74,6 +74,9 @@ val settingsIndex: List<SettingEntry> = listOfNotNull(
     themePart("Advanced colors", "colours", "override", *ColorRole.overridable.map { it.label }.toTypedArray()),
     themePart("Contrast", "readable", "readability", "legibility"),
     themePart("Restore default colors", "reset colors", "standard colors"),
+    // Backup
+    row("Export words and settings", Destination.SETTINGS, "backup", "save", "transfer", "new phone", "dictionary"),
+    row("Import words and settings", Destination.SETTINGS, "restore", "backup", "transfer", "new phone", "dictionary"),
     // Clipboard
     page("Clipboard & images", Destination.SETTINGS_CLIPBOARD, "copy", "paste", "clips"),
     row("Keep copied clips", Destination.SETTINGS_CLIPBOARD, "clipboard history", "expire", "forget", "clips", "privacy"),

@@ -274,6 +274,38 @@ object AppGraph {
         if (languagePacks.isInstalled(language)) lexicons.preload(language)
     }
 
+    /** Saves the saved words, speech rules and settings to [uri]; returns what to tell the user. */
+    suspend fun exportBackup(context: Context, uri: android.net.Uri): String = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        runCatching {
+            val d = dictionary.state.value
+            val out = context.contentResolver.openOutputStream(uri, "wt") ?: error("The file couldn't be opened")
+            out.use {
+                com.rheerkens.androidkeyboard.backup.BackupFile.write(it,
+                    com.rheerkens.androidkeyboard.backup.BackupContents(d.terms, d.rules, settings.exportValues()), System.currentTimeMillis())
+            }
+            "Saved ${count(d.terms.size, "word")}, ${count(d.rules.size, "speech rule")} and your settings."
+        }.getOrElse { "Couldn't save the backup: ${it.message}" }
+    }
+
+    /**
+     * Reads a backup from [uri]: adds its words and speech rules that aren't saved yet and takes
+     * its settings. Returns what to tell the user, including languages to download again.
+     */
+    suspend fun importBackup(context: Context, uri: android.net.Uri): String = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        runCatching {
+            val input = context.contentResolver.openInputStream(uri) ?: error("The file couldn't be opened")
+            val contents = input.use(com.rheerkens.androidkeyboard.backup.BackupFile::read)
+            val (terms, rules) = dictionary.import(contents.terms, contents.rules)
+            if (contents.settings.isNotEmpty()) settings.importValues(contents.settings)
+            val missing = settings.current.enabledKeyboards.mapNotNull { languages[it.substringBefore(':')] }
+                .filter { !languagePacks.isInstalled(it) }.distinct().map { it.englishName }
+            "Added ${count(terms, "word")} and ${count(rules, "speech rule")}" + (if (contents.settings.isNotEmpty()) "; settings restored." else ".") +
+                if (missing.isEmpty()) "" else " Download ${missing.joinToString(", ")} again under Languages & layouts."
+        }.getOrElse { it.message ?: "Couldn't read this file" }
+    }
+
+    private fun count(n: Int, thing: String) = if (n == 1) "1 $thing" else "$n ${thing}s"
+
     /**
      * Builds [language]'s full list on the loader thread, or null if it can't be read: from its
      * saved binary copy when that was built from the same source by this install of the app, else

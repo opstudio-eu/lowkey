@@ -56,6 +56,30 @@ object TypingProbeConfig {
     /** Forgets what the learning probe taught, so the device keeps nothing from it. */
     @JvmStatic fun forgetLearning() { AppGraph.personalModel.forget() }
 
+    /**
+     * Exports through the app's own backup code to a file, deletes a saved word and flips a
+     * setting, imports the file again, and reports whether both came back. Cleans up after.
+     */
+    @JvmStatic fun backupRoundTrip(context: android.content.Context): String {
+        val file = java.io.File(context.cacheDir, "probe-backup.json")
+        val uri = android.net.Uri.fromFile(file)
+        val word = "Zorblax"
+        AppGraph.dictionary.addTerm(word)
+        val numberRow = AppGraph.settings.current.numberRow
+        val saved = kotlinx.coroutines.runBlocking { AppGraph.exportBackup(context, uri) }
+        AppGraph.dictionary.state.value.terms.first { it.text == word }.let { AppGraph.dictionary.deleteTerm(it.id) }
+        AppGraph.settings.update { it.copy(numberRow = !numberRow) }
+        val imported = kotlinx.coroutines.runBlocking { AppGraph.importBackup(context, uri) }
+        val wordBack = AppGraph.dictionary.contains(word)
+        val settingBack = AppGraph.settings.current.numberRow == numberRow
+        val again = kotlinx.coroutines.runBlocking { AppGraph.importBackup(context, uri) }
+        AppGraph.dictionary.state.value.terms.firstOrNull { it.text == word }?.let { AppGraph.dictionary.deleteTerm(it.id) }
+        file.delete()
+        val report = "export: $saved | import: $imported | word back: $wordBack, setting back: $settingBack | again: $again"
+        check(wordBack && settingBack && again.startsWith("Added 0 words and 0 speech rules")) { report }
+        return report
+    }
+
     @JvmStatic fun awaitDictionary() {
         val language = AppGraph.currentLanguage(AppGraph.settings.current)
         val deadline = android.os.SystemClock.uptimeMillis() + 60_000
