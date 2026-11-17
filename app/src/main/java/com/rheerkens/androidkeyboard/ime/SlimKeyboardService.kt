@@ -594,6 +594,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         refreshClipChips()
         resizeOnOpen = info.privateImeOptions?.contains("lowkey.resize") == true
         placementBounds = null
+        expectedEchoes.clear()
         inputSession.value++
         // A restart keeps the session only if it's still the same editor at the owned position;
         // otherwise (another field in the same view) the old capture must never write here.
@@ -666,6 +667,14 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             voice.cancel(CancelReason.CURSOR_MOVED)
         }
         if (mode.value != InputMode.KEYS) return
+        // The echo of a letter we typed, where we expected it: Shift and the strip are up to date.
+        expectedEchoes.firstOrNull()?.let { expected ->
+            if (newSelStart == expected && newSelEnd == expected) {
+                expectedEchoes.removeFirst()
+                return
+            }
+            expectedEchoes.clear()
+        }
         // Our own edits update shift synchronously; only react to external cursor moves.
         if (SystemClock.uptimeMillis() - lastOwnEditAt > OWN_EDIT_WINDOW_MS) {
             doubleSpacePeriod.reset()
@@ -1381,12 +1390,28 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         } else if (punctuation) {
             commitWordBoundary(output)
         } else {
-            bridge.commitText(keyboard.applyCase(output))
+            val text = keyboard.applyCase(output)
+            expectEcho(text.length)
+            bridge.commitText(text)
         }
         autoSpaced = false
         keyboard.onCharTyped()
-        updateShift()
-        refreshStrip()
+        // One read of the text before the cursor serves both Shift and the strip.
+        val snapshot = bridge.readContext()
+        updateShift(snapshot.before)
+        refreshStrip(snapshot)
+    }
+
+    /**
+     * Where the editor will report the cursor after each letter just typed, oldest first. Its
+     * report (the selection echo) then carries nothing new, so it reads nothing.
+     */
+    private val expectedEchoes = ArrayDeque<Int>()
+
+    /** A letter of [length] chars is about to be typed at the cursor. */
+    private fun expectEcho(length: Int) {
+        val base = expectedEchoes.lastOrNull() ?: selStart.takeIf { it >= 0 && it == selEnd }
+        if (base == null) expectedEchoes.clear() else expectedEchoes.addLast(base + length)
     }
 
     private fun typeSpace() {
@@ -1469,14 +1494,15 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         suggester.protectedPhrase(before.takeLast(MAX_TERM_CHARS), terms)
             ?.takeIf { before.takeLast(it.first).lowercase() !in rejectedCorrections }
 
-    private fun updateShift() {
-        keyboard.setAutoShift(settings.current.autoCapitalize && bridge.capsModeAtCursor())
+    /** [before]: the text before the cursor if just read, to spare the editor another call. */
+    private fun updateShift(before: String? = null) {
+        keyboard.setAutoShift(settings.current.autoCapitalize && bridge.capsModeAtCursor(before))
     }
 
     /** Recomputes suggestion slots. Notes stay until they expire or the user types. */
-    private fun refreshStrip() {
+    private fun refreshStrip(read: EditorContext? = null) {
         if (mode.value != InputMode.KEYS || isMinimized()) return
-        val snapshot = bridge.readContext()
+        val snapshot = read ?: bridge.readContext()
         val typed = snapshot.word
         if (typed.isEmpty() || bridge.isSensitiveField) {
             invalidateStrip()

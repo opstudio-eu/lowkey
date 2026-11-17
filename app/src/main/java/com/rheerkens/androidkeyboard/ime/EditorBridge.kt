@@ -254,10 +254,18 @@ class EditorBridge(private val connection: () -> InputConnection?) {
         c.endBatchEdit()
     }
 
-    /** True when the editor asks for a capital letter at the cursor (sentence start). */
-    fun capsModeAtCursor(): Boolean {
+    /**
+     * True when the editor asks for a capital letter at the cursor (sentence start). With the text
+     * [before] the cursor already read (an [EditorContext]), this is worked out from it the way
+     * editors do (`TextUtils.getCapsMode`), sparing the editor a second synchronous call per key;
+     * only when that text is cut off and holds nothing but spaces is the editor asked.
+     */
+    fun capsModeAtCursor(before: String? = null): Boolean {
         val info = editorInfo ?: return false
         if (info.inputType and InputType.TYPE_MASK_CLASS != InputType.TYPE_CLASS_TEXT) return false
+        if (before != null && (before.length < EditorContext.LIMIT || before.any { !it.isWhitespace() && it != '"' && it != '\'' })) {
+            return android.text.TextUtils.getCapsMode(before, before.length, info.inputType) != 0
+        }
         return (ic?.getCursorCapsMode(info.inputType) ?: 0) != 0
     }
 
