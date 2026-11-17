@@ -81,6 +81,14 @@ object AppGraph {
 
     val appScope: CoroutineScope = MainScope()
 
+    /**
+     * What happens on the keyboard that the gesture tour in the app waits for. The keyboard and
+     * the app share a process, so the tour hears it directly; nothing is kept when no one listens.
+     */
+    val gestures = kotlinx.coroutines.flow.MutableSharedFlow<com.rheerkens.androidkeyboard.keyboard.KeyboardGesture>(
+        extraBufferCapacity = 32, onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST,
+    )
+
     /** Counts published word lists, so cached results computed on a fallback list can be redone. */
     val lexiconLoads = kotlinx.coroutines.flow.MutableStateFlow(0)
 

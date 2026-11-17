@@ -142,6 +142,8 @@ data class Settings(
     val minimizedWithPhysicalKeyboard: Boolean = true,
     val minimizedWithoutPhysicalKeyboard: Boolean = false,
     val compactExpandHintSeen: Boolean = false,
+    /** The gesture tour has been opened: it opens by itself only once, after the first setup. */
+    val tourSeen: Boolean = false,
 ) {
     /** Selects an installed layout and remembers it, enabling it if necessary. */
     fun selectKeyboard(id: String, usable: List<String>): Settings =
@@ -171,6 +173,18 @@ data class Settings(
         if (stillUsable.isEmpty()) return this
         val current = if (currentKeyboard in stillUsable) currentKeyboard else stillUsable.first()
         return copy(enabledKeyboards = next, currentKeyboard = current)
+    }
+
+    /**
+     * A tap on a layout on the languages page: turns keyboard [id] on or off like
+     * [toggleKeyboard]. Turning on another layout of the language being typed in also switches to
+     * it: that is why it was picked.
+     */
+    fun tapLayout(id: String, usable: List<String>): Settings {
+        val next = toggleKeyboard(id, usable)
+        val turnedOn = id !in enabledKeyboards && id in next.enabledKeyboards
+        val sameLanguage = id.substringBefore(':') == next.currentKeyboard.substringBefore(':')
+        return if (turnedOn && sameLanguage) next.selectKeyboard(id, usable) else next
     }
 
     companion object {

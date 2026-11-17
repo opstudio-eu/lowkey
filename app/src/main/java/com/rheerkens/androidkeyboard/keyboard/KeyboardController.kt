@@ -29,6 +29,13 @@ class KeyboardController(
 
     private var lastShiftTapMs = 0L
 
+    /**
+     * Shift is on for one capital because the user tapped it, not through auto-capitalization or
+     * caps lock. A slide from Space then selects text, as arrow keys do with Shift held.
+     */
+    var shiftTapped = false
+        private set
+
     /** Tap: one capital. Double-tap: caps lock. Tap while on/locked: off. */
     fun onShiftTap() {
         val now = clock()
@@ -42,15 +49,18 @@ class KeyboardController(
             }
             it.copy(shift = next)
         }
+        shiftTapped = _state.value.shift == ShiftState.ONCE
     }
 
     /** Called after a character is typed; one-shot shift turns off. */
     fun onCharTyped() {
+        shiftTapped = false
         _state.update { if (it.shift == ShiftState.ONCE) it.copy(shift = ShiftState.OFF) else it }
     }
 
     /** Applies sentence auto-capitalization unless caps lock is on. */
     fun setAutoShift(capitalize: Boolean) {
+        shiftTapped = false
         _state.update {
             when {
                 it.shift == ShiftState.LOCKED || it.layer != Layer.LETTERS -> it
@@ -63,8 +73,11 @@ class KeyboardController(
     fun setLayer(layer: Layer) = _state.update { it.copy(layer = layer) }
 
     /** A new field opens: on its number [pad] if it has one, else on the letters. */
-    fun reset(pad: NumberPad? = null) = _state.update {
-        it.copy(pad = pad, layer = if (pad != null) Layer.NUMBERS else Layer.LETTERS, shift = ShiftState.OFF)
+    fun reset(pad: NumberPad? = null) {
+        shiftTapped = false
+        _state.update {
+            it.copy(pad = pad, layer = if (pad != null) Layer.NUMBERS else Layer.LETTERS, shift = ShiftState.OFF)
+        }
     }
 
     /** Back to the field's own keys ([KeyboardState.home]). */

@@ -78,6 +78,7 @@ import com.rheerkens.androidkeyboard.settings.LoadedBackground
 import com.rheerkens.androidkeyboard.keyboard.ui.StripNote
 import com.rheerkens.androidkeyboard.keyboard.ui.StripState
 import com.rheerkens.androidkeyboard.keyboard.ui.WordAim
+import com.rheerkens.androidkeyboard.keyboard.KeyboardGesture
 import com.rheerkens.androidkeyboard.keyboard.wordsFrom
 import com.rheerkens.androidkeyboard.settings.InputMode
 import com.rheerkens.androidkeyboard.settings.Settings
@@ -244,6 +245,9 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
 
     /** True right after a suggestion pick added a trailing space (for punctuation swap). */
     private var autoSpaced = false
+
+    /** The slide from Space that is under way selects text (Shift was tapped just before it). */
+    private var slideSelects = false
     private val doubleSpacePeriod = DoubleSpacePeriod()
 
     override fun onCreate() {
@@ -462,14 +466,25 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         settings.update { it.copy(numberRow = enabled) }
     }
 
-    override fun onMoveCursor(steps: Int) {
+    override fun onMoveCursor(chars: Int, lines: Int) {
         if (!inputViewActive) return
         clearNote()
         lastCorrection = null
         autoSpaced = false
         doubleSpacePeriod.reset()
-        onKeyDown()
-        bridge.moveCursor(steps)
+        // No tick where the cursor can't go: at the end of the text, or up and down in a one-line field.
+        if (!bridge.moveCursor(chars, lines, select = slideSelects)) return
+        if (settings.current.vibrateOnKeyPress) composeView?.performHapticFeedback(HapticFeedbackConstants.TEXT_HANDLE_MOVE)
+        AppGraph.gestures.tryEmit(KeyboardGesture.CursorMoved(chars, lines, slideSelects))
+    }
+
+    override fun onCursorSlide(active: Boolean) {
+        // Shift tapped just before the slide: select instead of only moving, for this slide.
+        slideSelects = active && keyboard.shiftTapped
+        if (!active && inputViewActive) {
+            updateShift()
+            refreshStrip()
+        }
     }
 
     override fun onEditAction(action: EditAction) {
@@ -977,6 +992,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         scrub = null
         updateShift()
         refreshStrip()
+        if (scrubKept < s.before.length) AppGraph.gestures.tryEmit(KeyboardGesture.WordsDeleted(wordsFrom(s.before, scrubKept)))
         if (s.top > 0 && scrubLevel == s.top) {
             showNote(if (s.topClearsAll) "All text cleared" else "Deleted everything before the cursor")
         }
@@ -1108,7 +1124,12 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
 
     override fun onOpenKeyboardSettings() {
         emojiOpen.value = false
-        openCompanion(Destination.SETTINGS_KEYBOARDS)
+        openCompanion(Destination.LANGUAGES)
+    }
+
+    override fun onOpenSettings() {
+        emojiOpen.value = false
+        openCompanion(Destination.SETTINGS)
     }
 
     override fun onSuggestion(suggestion: Suggestion) {

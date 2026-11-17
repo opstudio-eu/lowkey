@@ -99,6 +99,7 @@ private fun KeyboardFrame(state: KeyboardUiState, clock: () -> Long, actions: Ke
         }
         override fun onOpenDictionary() { menu = false; actions.onOpenDictionary() }
         override fun onOpenKeyboardSettings() { menu = false; actions.onOpenKeyboardSettings() }
+        override fun onOpenSettings() { menu = false; actions.onOpenSettings() }
         override fun onToggleMode() { menu = false; editing = false; actions.onToggleMode() }
         override fun onOpenVoicePicker() { menu = false; editing = false; actions.onOpenVoicePicker() }
         override fun onOpenVoiceSettings() { menu = false; actions.onOpenVoiceSettings() }

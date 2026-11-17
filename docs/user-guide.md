@@ -2,6 +2,10 @@
 
 For installation, see the [README](../README.md#install).
 
+## Learn the gestures
+
+Much of what Lowkey does is not written on its keys. Once you have chosen Lowkey as your keyboard in the app, a short tour opens by itself, one time. Each of its four steps asks you to do one thing in a practice field and ticks it off when you have done it: move the cursor by sliding from the space bar, select text with Shift and a slide, delete whole words from Backspace, and dictate a sentence. The dictation step offers to set up voice typing if you haven't yet. You can skip a step or the whole tour, and it ends with a list of other things worth trying. It stays on **Home** under **Learn the gestures**. The tour only follows what you do on the keyboard, not what you type.
+
 ## Dictate text
 
 1. Open **Voice** and follow the checklist: allow microphone access, then download a speech model. A completed download becomes active. Open **Voice → Speech models** to see which models are on your phone, switch with **Use**, download others, or delete ones you no longer need. The active model can't be deleted until you choose another.
@@ -10,11 +14,11 @@ For installation, see the [README](../README.md#install).
 
 Lowkey transcribes while you speak. With **Show words as you speak** on, provisional text appears underlined in the field at each pause. If you resume after a pause, Whisper can revise the latest part using audio from both sides of the pause. Tap the checkmark to insert the final text. If you've already paused and the preview is ready, Lowkey can reuse it.
 
-With **Voice → Dictation settings → Dictate from the keys** enabled, keys return after transcription so you can make corrections. This is the default. Turn it off to use mode recall, auto-start, or continuous dictation settings.
+With **Voice → Dictation settings → Dictate from the keys** enabled, keys return after transcription so you can make corrections. This is the default. Turn it off to use a separate voice mode; its settings for mode recall, auto-start and continuous dictation then appear on that page.
 
 Switching to keys, hiding the keyboard, changing editor, moving the cursor, or opening the model picker cancels capture.
 
-Under **Voice → Storage & performance → Keep model loaded**, choose how long to keep an idle model in memory. The default is two minutes. Releasing it does not delete the downloaded files. Recording and transcription do not expire, but changing the model or language can release it, as can Android memory pressure.
+Under **Voice → Dictation settings → Keep model loaded**, choose how long to keep an idle model in memory. The default is two minutes. Releasing it does not delete the downloaded files. Recording and transcription do not expire, but changing the model or language can release it, as can Android memory pressure.
 
 ## Add keyboard languages
 
@@ -34,7 +38,7 @@ Android's input-method menu shows one **Lowkey Keyboard** entry. It opens the la
 
 ## Choose layouts and type accents
 
-Enable layouts under **Settings → Languages & layouts → Layouts**, then choose **Keyboard in use** on that page to select the one you want. Each language on your phone is listed with its own layout first. Languages written in the Latin alphabet also offer QWERTY, AZERTY, QWERTZ, Dvorak and Colemak. With the language-switch key enabled, tap it to cycle through Lowkey layouts. Hold Space to open Android's picker for keyboard apps.
+Under **Settings → Languages & layouts**, each language that is on shows its letter layouts below its name, its own layout first. Languages written in the Latin alphabet also offer QWERTY, AZERTY, QWERTZ, Dvorak and Colemak. Tap a layout to turn it on or off. Turning on another layout of the language you type in also switches to it, and the language's line says which layout is in use. Keep at least one layout on. With the language-switch key enabled, tap it to cycle through Lowkey layouts. Hold Space to open Android's picker for keyboard apps.
 
 The selected keyboard supplies the primary language for suggestions and autocorrect. Changing the letter layout does not change that language.
 
@@ -50,19 +54,19 @@ Press Space twice quickly after a word to insert a period and a space. Backspace
 
 After a space, Lowkey can suggest the next word from repeated wording in the current field and from saved multiword dictionary terms. It looks at up to 2,048 characters before the cursor, without storing that text. These are local phrase matches, not general language-model predictions.
 
-To get predictions from your own typing, turn on **Settings → Keyboard → Typing → Learn from my typing** (off by default). Lowkey then counts which words you type after which one or two words. After a space it suggests the words you usually type next; while you type a word, it puts the completions you usually choose there first. A correction you undo with Backspace is remembered for good, not only for this session. What it learns stays on your phone, outside backups, and fades over time. Nothing is learned in password, private, email or web address fields. **Forget what Lowkey learned** removes it; your saved words stay. Sentence boundaries, private fields and address fields are excluded. When no prediction is available, the strip returns to the clipboard.
+To get predictions from your own typing, turn on **Settings → Keyboard → Learn from my typing** (off by default). Lowkey then counts which words you type after which one or two words. After a space it suggests the words you usually type next; while you type a word, it puts the completions you usually choose there first. A correction you undo with Backspace is remembered for good, not only for this session. What it learns stays on your phone, outside backups, and fades over time. Nothing is learned in password, private, email or web address fields. **Forget what Lowkey learned** removes it; your saved words stay. Sentence boundaries, private fields and address fields are excluded. When no prediction is available, the strip returns to the clipboard.
 
 Word suggestions use up to three enabled languages whose dictionaries are installed: the current keyboard language, then the next two distinct languages in keyboard order, wrapping at the end. Multiple layouts of one language count once. This keeps memory use bounded. You can mix those languages without changing the key layout. A word recognized in another participating language is left alone by autocorrect; conflicting correction candidates also leave your typing unchanged. Lowkey follows the language you are writing in: once two of the last few words are clearly in one of these languages, its words come first in the suggestions and it wins close calls in autocorrect, whichever keyboard is in use. On the English keyboard, `probleen` after `ik heb het al gezien maar` becomes `probleem`. Dictionary-based autocorrect waits until all participating word lists are loaded. The middle suggestion still shows what Space will insert.
 
 Common complete English and Dutch words can also suggest an emoji in the right-hand suggestion slot, for example **hi** or **hoi** for a waving hand, and **coffee** or **koffie** for a hot drink. In English, words from the emoji's own Unicode name also work, so **thumb** suggests a thumbs-up and **pancakes** a stack of pancakes. Plurals match too. Very common words such as **open** or **right**, and words shorter than four letters, are skipped unless they are keywords themselves, such as **dog**. These are local keyword matches, not sentence predictions. Short ambiguous prefixes such as **he** keep their word suggestions. Tap the emoji to replace the current word; Space never inserts the emoji automatically. Only emoji supported by the device are offered, and an emoji you choose joins Recent. Sensitive fields do not show these suggestions.
 
-The top row of **Keyboard tools** (hold the microphone) has the field's own editing commands: **Select all**, **Cut**, **Copy**, **Paste** and **Undo**. The tools stay open, so you can select all and then cut or copy. Undo works where the app offers it: in ordinary Android text fields, not in every app.
+The top row of **Keyboard tools** (tap the three dots beside the microphone, or hold the microphone) has the field's own editing commands: **Select all**, **Cut**, **Copy**, **Paste** and **Undo**. The tools stay open, so you can select all and then cut or copy. Undo works where the app offers it: in ordinary Android text fields, not in every app.
 
 Tap **Keyboard tools → Number row** to toggle a dedicated 1–0 row above the letters. The tile shows **On** or **Off**, and the menu closes so you can continue typing. This is the same setting as **Settings → Keyboard → Number row**. It is off by default and works with every language and keyboard mode. In Split mode the digits divide between the two halves. Symbol layouts keep their existing characters and fill the same panel height, so switching layers does not move the keyboard. The number row has the function-key colour, so it stands apart from the letters; turn off **Settings → Appearance → Shaded number row** to give it the letter-key colour instead.
 
 ## Manage your words
 
-Open **Dictionary → My words** to add, search, edit or delete saved terms. **Match the spelling of my words** controls whether dictation restores their spelling. Under **Speech rules**, add phrases to replace after dictation. The main switch is off by default; each rule keeps its own on/off choice while the main switch is off. Import and export are not available.
+Open **Dictionary → My words** to add, search, edit or delete saved terms. **Match the spelling of my words** controls whether dictation restores their spelling. Under **Speech rules**, add phrases to replace after dictation. The main switch is off by default; each rule keeps its own on/off choice while the main switch is off. To move your words to another phone, see the next section.
 
 ## Back up your words and settings
 
@@ -72,11 +76,11 @@ Android doesn't back up Lowkey, so a new phone or a reinstall starts empty. Unde
 
 The keyboard's text follows Android's font size up to 1.3 times its normal size; larger, labels would no longer fit the keys. For bigger keys, make the keyboard taller as described below. The keys always run left to right, also when the phone uses a right-to-left language.
 
-Hold the microphone to open quick settings. **Size & position** outlines the keyboard: drag the top edge to change height, the bottom edge to leave more or less space underneath, or the centre move handle to reposition it. In Normal and Floating modes, the left and right handles change width independently of height. A narrower Normal keyboard can also move horizontally while remaining docked. **Reset** restores the current mode's default size and position; the checkmark finishes. Completed drags are remembered, including when you press Android's Back button.
+Tap the three dots beside the microphone, or hold the microphone, to open quick settings. **Size & position** outlines the keyboard: drag the top edge to change height, the bottom edge to leave more or less space underneath, or the centre move handle to reposition it. In Normal and Floating modes, the left and right handles change width independently of height. A narrower Normal keyboard can also move horizontally while remaining docked. **Reset** restores the current mode's default size and position; the checkmark finishes. Completed drags are remembered, including when you press Android's Back button.
 
-The same menu offers **One-handed**, **Floating** and **Split**, with an On/Off label and a checkmark for the active mode. Tap an active mode again to return to the normal keyboard. One-handed has side buttons to move it left/right or restore full width. Floating has a drag bar beneath it and leaves the surrounding app usable. Split is available in wide windows (at least 480 dp); narrower windows show it as unavailable. It shares the middle keys between both thumbs (G and V on QWERTY), and keeps one broad spacebar across the bottom. **Settings** opens the keyboard settings; dictionary management stays in the companion app's **Dictionary** tab.
+The same menu offers **One-handed**, **Floating** and **Split**, with an On/Off label and a checkmark for the active mode. Tap an active mode again to return to the normal keyboard. One-handed has side buttons to move it left/right or restore full width. Floating has a drag bar beneath it and leaves the surrounding app usable. Split is available in wide windows (at least 480 dp); narrower windows show it as unavailable. It shares the middle keys between both thumbs (G and V on QWERTY), and keeps one broad spacebar across the bottom. **Settings** opens the app's **Settings** tab; dictionary management stays in the companion app's **Dictionary** tab.
 
-Lowkey remembers size, position and mode separately for small/large screens and portrait/landscape. **Settings → Keyboard → Automatically split on large screens** chooses Split as the large-screen default; your manual choices are remembered. Turning it off does not cancel a manually chosen Split mode. **Size and position** opens the controls in the keyboard lab. **Reset size and position** resets all saved dimensions without changing the selected modes.
+Lowkey remembers size, position and mode separately for small/large screens and portrait/landscape. **Settings → Keyboard → Split on large screens** chooses Split as the large-screen default; your manual choices are remembered. Turning it off does not cancel a manually chosen Split mode. **Resize and move** opens the controls in a test field. **Reset size and position** resets all saved dimensions without changing the selected modes.
 
 When floating, the Backspace gesture can aim at text above the panel; it does not aim through or below it.
 
@@ -86,18 +90,18 @@ The smiley beside Space opens an offline emoji panel. All emoji scroll in one li
 
 With two or more languages or layouts enabled, hold the smiley to choose one; a small mark in its corner shows this. A row of choices opens over the key, the way accents do: your current layout sits over your finger and the next one is to its right. Slide to a layout and let go to switch, or slide away to cancel. If you let go without sliding, the choices stay open: tap one to switch, or tap anywhere else or press Back to close them.
 
-Slide a finger sideways along Space to move the cursor, one character for about every 10 dp (a quarter of a key) you slide; it moves as far as you slide, even past the end of the key, and types no space. Hold Space without sliding to open Android's keyboard-app picker directly. **Settings → Keyboard → Key beside Space** can replace the smiley with the language-switch key; holding Space works with either choice. Tap the language key to cycle through enabled Lowkey layouts, or hold it to open the same Android picker. Manage Lowkey's languages and layouts in Settings. Holding the comma also opens emoji, including when the language-switch key is selected.
+Slide a finger from Space to move the cursor: the keyboard then works as a trackpad, the letters on the keys fade, and no space is typed. Sideways, the cursor moves one character for about every 10 dp (a quarter of a key); a slow slide is exact and a fast one covers up to three times as much. Up or down, every key row is one line, in fields that take several lines. Mostly sideways movement never changes line, so a slanted slide stays on its line. When you run out of room, rest your finger there and the cursor keeps going: at the side of the screen, above the keyboard, or just under Space for the lines below. The cursor stops at the start and end of the text. To select text instead, tap Shift first and then slide; Cut and Copy are in Keyboard tools. A slow slide works too: once your finger moves, holding no longer counts. Hold Space without moving to open Android's keyboard-app picker directly. **Settings → Keyboard → Key beside Space** can replace the smiley with the language-switch key; holding Space works with either choice. Tap the language key to cycle through enabled Lowkey layouts, or hold it to open the same Android picker. Manage Lowkey's languages and layouts in Settings. Holding the comma also opens emoji, including when the language-switch key is selected.
 
 
 ## Minimize the keyboard
 
-Swipe down over the suggestion strip to minimize the keyboard, or swipe up over the minimized bar to expand it. Both forms have a small horizontal grip. You can also hold the microphone and choose **Show keyboard** or **Minimize keyboard** in quick settings.
+Swipe down over the suggestion strip to minimize the keyboard, or swipe up over the minimized bar to expand it. Both forms have a small horizontal grip. You can also open quick settings and choose **Show keyboard** or **Minimize keyboard**.
 
-The microphone stays at the left in both forms. Tap it to start voice typing; hold it for quick settings, including model selection and voice settings. Three small dots beside the microphone show that it opens this menu when held. During dictation, the cancel cross is on the left and the checkmark to stop and insert is on the right. Stopping returns to the previous keyboard form when keyboard-first dictation is enabled.
+The microphone stays at the left in both forms. Tap it to start voice typing. Tap the three small dots beside it, or hold the microphone, for quick settings, including model selection and voice settings. During dictation, the cancel cross is on the left and the checkmark to stop and insert is on the right. Stopping returns to the previous keyboard form when keyboard-first dictation is enabled.
 
 The minimized bar sits at the bottom, above Android's navigation area, even if you moved the full keyboard upward. Expanding restores the keyboard's saved size and position.
 
-With a physical keyboard connected, Lowkey opens minimized by default. **Settings → Keyboard → Show with physical keyboard** controls whether it stays visible. Lowkey remembers your expanded or minimized choice separately for use with and without a physical keyboard.
+With a physical keyboard connected, Lowkey opens minimized by default. **Settings → Keyboard → Show with a physical keyboard** controls whether it stays visible. Lowkey remembers your expanded or minimized choice separately for use with and without a physical keyboard.
 
 ## Delete words with gestures
 
@@ -153,8 +157,10 @@ The preview shows your draft, including a new image, and the keyboard changes on
 
 Type in **Search settings** at the top of the **Settings** tab to find any setting by name or by an everyday word: *dark* finds **Theme**, *haptic* finds **Vibrate on key press**, and *silence* finds **Stop after silence** under Voice. Each result shows where the setting lives. Tap a result to open its page, where the setting is scrolled into view and briefly highlighted. **Back** returns to your results; tapping a tab at the bottom clears the search.
 
+A link to another page, also one on another tab, keeps the page you were on: **Back** returns to it, scrolled to where you left it. Tapping a tab at the bottom starts that tab at its top.
+
 ## Try settings and manage updates
 
 Home offers **Try your keyboard** once Lowkey is set up. The Voice checklist also offers a test after setup. The draft stays available when you close and reopen the test field. **Settings → Try it → Advanced test fields** has additional editor types.
 
-**Settings → Updates → Check for updates** checks manually; the same page can turn automatic checks off. Downloads continue when you leave the app. If Android needs confirmation, tap the ready-to-install notification or the update action in the app. Without notification permission, update notices appear in the app.
+**Settings → About & updates → Check for updates** checks manually; the same page can turn automatic checks off, and ends with crash reports and voice sessions for troubleshooting. Downloads continue when you leave the app. If Android needs confirmation, tap the ready-to-install notification or the update action in the app. Without notification permission, update notices appear in the app.

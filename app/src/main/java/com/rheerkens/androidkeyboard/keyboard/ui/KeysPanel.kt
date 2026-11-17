@@ -49,6 +49,9 @@ import com.rheerkens.androidkeyboard.keyboard.splitRows
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.unit.Dp
+import com.rheerkens.androidkeyboard.keyboard.KEYBOARD_GRIP_SPACE_DP
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -80,9 +83,44 @@ fun KeysPanel(
     keyboards: List<TypingKeyboard> = emptyList(),
     languageMenu: LanguageMenuState? = null,
 ) {
-    val menu = KeyMenus(keyboards, languageMenu)
     val rollover = remember(state.keyboard, state.layer) { KeyRollover() }
     val rowHeight = (rowHeightDp * keyRows.toFloat() / layout.rows.size).dp
+    // While a slide from Space moves the cursor, the key labels fade: the keys are a trackpad then.
+    var trackpad by remember { mutableStateOf(false) }
+    val colors = LocalKeyboardColors.current
+    val shown = remember(colors, trackpad) { if (trackpad) colors.fadedLabels() else colors }
+    // Space is in the bottom row: the rows above it and the strip are the keyboard a slide can cross.
+    val aboveSpace = rowHeight.value * (layout.rows.size - 1) + STRIP_DP
+    val menu = remember(keyboards, languageMenu, aboveSpace) { KeyMenus(keyboards, languageMenu, aboveSpace) { trackpad = it } }
+    CompositionLocalProvider(LocalKeyboardColors provides shown) {
+        KeyRows(layout, state, rowHeight, enterKind, actions, splitGapDp, menu, rollover)
+    }
+}
+
+/** The suggestion strip above the keys, with its grip (`KeyboardContent`). */
+private const val STRIP_DP = 44 + KEYBOARD_GRIP_SPACE_DP
+
+/** The palette with the text on the keys faded, for while the keys work as a trackpad. */
+private fun KeyboardColors.fadedLabels(): KeyboardColors = copy(
+    keyText = keyText.copy(alpha = keyText.alpha * TRACKPAD_LABEL_ALPHA),
+    spaceText = spaceText.copy(alpha = spaceText.alpha * TRACKPAD_LABEL_ALPHA),
+    muted = muted.copy(alpha = muted.alpha * TRACKPAD_LABEL_ALPHA),
+    enterInk = enterInk.copy(alpha = enterInk.alpha * TRACKPAD_LABEL_ALPHA),
+)
+
+private const val TRACKPAD_LABEL_ALPHA = 0.25f
+
+@Composable
+private fun KeyRows(
+    layout: KeyboardLayout,
+    state: KeyboardState,
+    rowHeight: Dp,
+    enterKind: EnterKind,
+    actions: KeyboardActions,
+    splitGapDp: Float,
+    menu: KeyMenus,
+    rollover: KeyRollover,
+) {
     // A number pad stays whole: its digits are never far apart.
     if (splitGapDp > 0f && state.layer != Layer.NUMBERS) {
         val rows = remember(layout, state.keyboard, state.layer) { splitRows(layout, state.keyboard, state.layer) }
@@ -187,7 +225,11 @@ private fun KeyView(
             "Space, ${state.keyboard.fullLabel}. Slide to move the cursor. Long-press to switch keyboard app", modifier, gestureKey = key,
             rollover = rollover,
             onDown = actions::onKeyDown, onTap = { actions.onKey(key) }, onLongPress = actions::onSpaceLongPress,
-            onSlide = actions::onMoveCursor,
+            slide = KeySlide(
+                onMove = actions::onMoveCursor,
+                onActive = { active -> menu.onTrackpad(active); actions.onCursorSlide(active) },
+                aboveDp = menu.aboveSpaceDp,
+            ),
         ) { pressed ->
             KeyCap(if (pressed) c.keyPressed else c.key) {
                 if (key.showsLanguage) {
@@ -213,8 +255,16 @@ private fun KeyView(
     }
 }
 
-/** What the emoji key's hold menu offers, and where it draws. */
-private data class KeyMenus(val keyboards: List<TypingKeyboard>, val languages: LanguageMenuState?)
+/**
+ * What the keys need from the panel: what the emoji key's hold menu offers and where it draws, and
+ * for Space how much keyboard lies above it and whom to tell that a slide makes the keys a trackpad.
+ */
+private class KeyMenus(
+    val keyboards: List<TypingKeyboard>,
+    val languages: LanguageMenuState?,
+    val aboveSpaceDp: Float = 0f,
+    val onTrackpad: (Boolean) -> Unit = {},
+)
 
 /**
  * The emoji key: tap for emoji. With two or more keyboards, hold for a popup of keyboard languages

@@ -58,13 +58,16 @@ fun UpdateBanner(modifier: Modifier = Modifier) {
     SlimCard(modifier) { UpdateActions(state) }
 }
 
-/** Settings → Updates: the automatic-check switch, the current state, and the update itself. */
+/**
+ * About & updates, under the app's name and version: the current state, the update itself, and
+ * the automatic-check switch.
+ */
 @Composable
 fun UpdatesSection() {
     if (!acceptsReleaseUpdates(BuildConfig.APPLICATION_ID)) {
-        SettingsGroup {
+        SettingsGroup("Updates") {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Version ${BuildConfig.VERSION_NAME} · UI Preview", style = MaterialTheme.typography.bodyLarge)
+                Text("UI Preview", style = MaterialTheme.typography.bodyLarge)
                 Text(
                     "Install preview updates by hand. Automatic updates belong to the regular Lowkey app.",
                     style = MaterialTheme.typography.bodyMedium,
@@ -98,13 +101,11 @@ fun UpdatesSection() {
     fun check() { scope.launch { AppGraph.updates.check(userStarted = true) } }
 
     Column {
-        Column(
-            Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 4.dp)
-                .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
-        ) {
-            Text("Version ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleMedium)
-            Text(statusLine(state), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        Text(
+            statusLine(state), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 4.dp)
+                .semantics { liveRegion = LiveRegionMode.Polite },
+        )
         if (state.update != null) {
             // The update itself is the main action; checking again stays quiet.
             SlimCard(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) { UpdateActions(state) }
@@ -118,7 +119,7 @@ fun UpdatesSection() {
                 Note((state.status as UpdateStatus.Failed).message, Modifier.padding(horizontal = 4.dp))
             }
         }
-        SettingsGroup("Automatic checks") {
+        SettingsGroup("Updates") {
             SwitchRow(
                 "Check for updates automatically", settings.checkForUpdates,
                 { v -> AppGraph.settings.update { it.copy(checkForUpdates = v) } },

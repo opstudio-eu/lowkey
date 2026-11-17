@@ -371,13 +371,44 @@ class EditorBridge(private val connection: () -> InputConnection?) {
     }
 
     /**
-     * Moves the cursor [steps] characters right, or left when negative, as arrow keys do: a whole
-     * emoji is one step, and a selection collapses first. Arrow keys work in nearly every editor,
-     * including web pages.
+     * Moves the cursor [chars] characters right and [lines] lines down (negative: left, up), as
+     * arrow keys do: a whole emoji is one step, and a selection collapses first. Arrow keys work in
+     * nearly every editor, including web pages. With [select], Shift is held, so the selection
+     * grows or shrinks instead.
+     *
+     * An arrow the field can't use moves the focus to another field in some apps. So lines move
+     * only in fields that take several lines, and nothing moves past the start or end of the text.
+     * Returns whether an arrow was sent.
      */
-    fun moveCursor(steps: Int) {
-        val code = if (steps < 0) KeyEvent.KEYCODE_DPAD_LEFT else KeyEvent.KEYCODE_DPAD_RIGHT
-        repeat(kotlin.math.abs(steps)) { sendKey(code) }
+    fun moveCursor(chars: Int, lines: Int, select: Boolean = false): Boolean {
+        val c = ic ?: return false
+        val sideways = room(c, forward = chars > 0, wanted = kotlin.math.abs(chars))
+        // A line can wrap, so its length says nothing: any text that way is room for a line.
+        val vertical = if (isMultiLine && room(c, forward = lines > 0, wanted = kotlin.math.abs(lines)) > 0) kotlin.math.abs(lines) else 0
+        if (sideways == 0 && vertical == 0) return false
+        val meta = if (select) KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON else 0
+        // Android's own text fields extend a selection only while they have seen Shift go down.
+        if (select) sendKeyAction(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_SHIFT_LEFT, meta)
+        repeat(vertical) { sendKey(if (lines < 0) KeyEvent.KEYCODE_DPAD_UP else KeyEvent.KEYCODE_DPAD_DOWN, meta) }
+        repeat(sideways) { sendKey(if (chars < 0) KeyEvent.KEYCODE_DPAD_LEFT else KeyEvent.KEYCODE_DPAD_RIGHT, meta) }
+        if (select) sendKeyAction(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_SHIFT_LEFT, 0)
+        return true
+    }
+
+    /** How many of [wanted] steps fit before the end ([forward]) or start of the text. */
+    private fun room(c: InputConnection, forward: Boolean, wanted: Int): Int {
+        if (wanted == 0) return 0
+        // An arrow collapses or resizes a selection, whatever the text around it.
+        if (hasSelection()) return wanted
+        // An editor that won't say gets its arrows, as before.
+        val text = (if (forward) c.getTextAfterCursor(wanted * 2, 0) else c.getTextBeforeCursor(wanted * 2, 0)) ?: return wanted
+        return minOf(wanted, Character.codePointCount(text, 0, text.length))
+    }
+
+    private fun sendKeyAction(action: Int, code: Int, meta: Int) {
+        val c = ic ?: return
+        val now = SystemClock.uptimeMillis()
+        c.sendKeyEvent(KeyEvent(now, now, action, code, 0, meta, KeyCharacterMap.VIRTUAL_KEYBOARD, 0, KeyEvent.FLAG_SOFT_KEYBOARD or KeyEvent.FLAG_KEEP_TOUCH_MODE))
     }
 
     /**

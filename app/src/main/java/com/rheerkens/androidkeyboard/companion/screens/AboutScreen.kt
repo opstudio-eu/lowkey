@@ -4,14 +4,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -23,7 +20,6 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
@@ -76,14 +72,9 @@ private val references = listOf(
 @Composable
 fun AboutScreen(modifier: Modifier) {
     val context = LocalContext.current
-    val uri = LocalUriHandler.current
     val version = remember { appVersion(context) }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
-
     var openLicense by rememberSaveable { mutableStateOf<String?>(null) }
-    var licensesOpen by rememberSaveable { mutableStateOf(false) }
-    var creditsOpen by rememberSaveable { mutableStateOf(false) }
-    var trademarksOpen by rememberSaveable { mutableStateOf(false) }
     openLicense?.let { file ->
         LicenseDialog(
             title = licenseTitle(file),
@@ -92,28 +83,59 @@ fun AboutScreen(modifier: Modifier) {
         )
     }
 
-    Column(modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
-        Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text("Lowkey Keyboard", style = MaterialTheme.typography.titleMedium)
-            Text("Version $version · made by OpStudio", style = MaterialTheme.typography.bodyMedium, color = muted)
-            Spacer(Modifier.height(6.dp))
+    // One page for what you rarely need: the version and its updates first, then what the app is
+    // and does with your data, and troubleshooting last.
+    val list = rememberLazyListState()
+    RevealSettingHighlight(list)
+    LazyColumn(modifier.fillMaxWidth(), state = list, contentPadding = PaddingValues(bottom = 24.dp)) {
+        item(key = "version") {
+            Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 2.dp)) {
+                Text("Lowkey Keyboard", style = MaterialTheme.typography.titleMedium)
+                Text("Version $version · made by OpStudio", style = MaterialTheme.typography.bodyMedium, color = muted)
+            }
+        }
+        item(key = "updates") { UpdatesSection() }
+        item(key = "about") { AboutSection(onLicense = { openLicense = it }) }
+        item(key = "diagnostics") { DiagnosticsSection() }
+        item(key = "package") {
             Text(
-                "A slim keyboard with on-device voice typing. Speech recognition, suggestions and autocorrect run on your phone.",
-                style = MaterialTheme.typography.bodyMedium,
+                "Package ${context.packageName}",
+                style = MaterialTheme.typography.bodySmall,
+                color = muted,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
             )
         }
+    }
+}
+
+/** What Lowkey is, what it does with your data, and whose work it builds on. */
+@Composable
+private fun AboutSection(onLicense: (String) -> Unit) {
+    val context = LocalContext.current
+    val uri = LocalUriHandler.current
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    var licensesOpen by rememberSaveable { mutableStateOf(false) }
+    var creditsOpen by rememberSaveable { mutableStateOf(false) }
+    var trademarksOpen by rememberSaveable { mutableStateOf(false) }
+    Column {
+        GroupTitle("About")
+        Text(
+            "A slim keyboard with on-device voice typing. Speech recognition, suggestions and autocorrect run on your phone.",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp),
+        )
 
         SettingsGroup("Privacy") {
             GroupText(
                 "Typed text, audio, dictation and your dictionary stay on your phone. Lowkey goes online only to " +
                     "download the speech models and keyboard languages you choose, to check for a newer version about " +
-                    "once a day (unless you turn it off in Settings → Updates), and to download an update when you tap " +
+                    "once a day (unless you turn it off above), and to download an update when you tap " +
                     "Update. Audio is recorded only while you dictate and is not saved.",
             )
         }
 
         SettingsGroup("Open source") {
-            LinkRow("Apache License 2.0", "Lowkey's license. It comes with no warranty.") { openLicense = APACHE_ASSET }
+            LinkRow("Apache License 2.0", "Lowkey's license. It comes with no warranty.") { onLicense(APACHE_ASSET) }
             LinkRow("Source code", SOURCE_URL.removePrefix("https://")) { uri.openUri(SOURCE_URL) }
             DisclosureRow("Third-party licenses", licensesOpen, { licensesOpen = !licensesOpen },
                 summary = "Full license texts of bundled components")
@@ -121,7 +143,7 @@ fun AboutScreen(modifier: Modifier) {
                 val licenseFiles = remember { licenseAssets(context) }
                 licenseFiles.forEach { file ->
                     TextButton(
-                        onClick = { openLicense = file },
+                        onClick = { onLicense(file) },
                         modifier = Modifier.padding(horizontal = 8.dp).heightIn(min = 48.dp),
                     ) { Text(licenseTitle(file)) }
                 }
@@ -179,12 +201,6 @@ fun AboutScreen(modifier: Modifier) {
                 )
             }
         }
-        Text(
-            "Package ${context.packageName}",
-            style = MaterialTheme.typography.bodySmall,
-            color = muted,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-        )
     }
 }
 

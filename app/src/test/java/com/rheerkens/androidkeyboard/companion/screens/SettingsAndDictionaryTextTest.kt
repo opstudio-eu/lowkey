@@ -52,9 +52,4 @@ class SettingsAndDictionaryTextTest {
         assertEquals("1 rule · 1 on", rulesSummary(1, 1, true))
         assertEquals("3 rules · inactive", rulesSummary(3, 2, false))
     }
-
-    @Test fun dependentVoiceSettingsNameTheirSavedValue() {
-        assertEquals("Applies in separate voice mode, where it's on.", keptChoiceNote(true))
-        assertEquals("Applies in separate voice mode, where it's off.", keptChoiceNote(false))
-    }
 }

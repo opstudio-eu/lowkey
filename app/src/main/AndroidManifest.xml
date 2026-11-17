@@ -2,7 +2,7 @@
 
     <!-- Requested at runtime from Home. Audio is recorded only while voice mode is listening. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <!-- Speech model downloads and the update check (Settings → Updates). -->
+    <!-- Speech model downloads and the update check (Settings → About & updates). -->
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Installs Lowkey's own updates from its GitHub releases; the user allows it once. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
@@ -11,7 +11,7 @@
     <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
     <!-- Lets the daily update check wait for a network connection. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <!-- Keeps an update download running when the user leaves the app (Settings → Updates). -->
+    <!-- Keeps an update download running when the user leaves the app (Settings → About & updates). -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!-- Optional: the "update available" notification. -->
@@ -68,7 +68,7 @@
             android:taskAffinity="${applicationId}.editor"
             android:windowSoftInputMode="adjustResize" />
 
-        <!-- Daily check for a newer release (Settings → Updates). -->
+        <!-- Daily check for a newer release (Settings → About & updates). -->
         <service
             android:name=".updates.UpdateCheckJob"
             android:exported="false"
