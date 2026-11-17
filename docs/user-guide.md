@@ -58,6 +58,8 @@ Open **Dictionary → My words** to add, search, edit or delete saved terms. **M
 
 ## Resize, move and split the keyboard
 
+The keyboard's text follows Android's font size up to 1.3 times its normal size; larger, labels would no longer fit the keys. For bigger keys, make the keyboard taller as described below. The keys always run left to right, also when the phone uses a right-to-left language.
+
 Hold the microphone to open quick settings. **Size & position** outlines the keyboard: drag the top edge to change height, the bottom edge to leave more or less space underneath, or the centre move handle to reposition it. In Normal and Floating modes, the left and right handles change width independently of height. A narrower Normal keyboard can also move horizontally while remaining docked. **Reset** restores the current mode's default size and position; the checkmark finishes. Completed drags are remembered, including when you press Android's Back button.
 
 The same menu offers **One-handed**, **Floating** and **Split**, with an On/Off label and a checkmark for the active mode. Tap an active mode again to return to the normal keyboard. One-handed has side buttons to move it left/right or restore full width. Floating has a drag bar beneath it and leaves the surrounding app usable. Split is available in wide windows (at least 480 dp); narrower windows show it as unavailable. It shares the middle keys between both thumbs (G and V on QWERTY), and keeps one broad spacebar across the bottom. **Settings** opens the keyboard settings; dictionary management stays in the companion app's **Dictionary** tab.

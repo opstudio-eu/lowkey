@@ -50,6 +50,7 @@ public final class KeyboardTouchProbe extends Instrumentation {
             info.flags |= AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS;
             ui.setServiceInfo(info);
             if (arguments.getString("probe", "burst").equals("latency")) { latency(result); return; }
+            if (arguments.getString("probe", "burst").equals("layout")) { layout(result); return; }
             if (arguments.getString("probe", "burst").equals("clipboard")) { clipboard(result); return; }
             startActivitySync(new Intent().setClassName(getTargetContext(), "com.rheerkens.androidkeyboard.companion.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             AccessibilityNodeInfo launch = waitLabel("Try your keyboard");
@@ -249,6 +250,31 @@ public final class KeyboardTouchProbe extends Instrumentation {
         screenshot("clipboard-text-preview.png");
         result.putString("stream", "probe=clipboard PASS: idle/typing transitions, live clip changes, literal text, image thumbnail, image commit with URI permission, unsupported/rejected editors, sensitive clips, password/private fields, clipboard clear\n");
         finish(0,result);
+    }
+    /**
+     * The keyboard as the system's font size and layout direction leave it: saves a screenshot and
+     * checks that the letters run left to right (q left of p, a left of l).
+     */
+    private void layout(Bundle result) throws Exception {
+        // The latency test app's editor gets the keyboard at once, whatever the app's own screens look like.
+        startActivitySync(new Intent().setClassName(getTargetContext(),
+            "com.rheerkens.androidkeyboard.companion.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        getTargetContext().startActivity(new Intent().setClassName(
+            getContext().getPackageName(), "com.rheerkens.androidkeyboard.test.LatencyFixtureActivity")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
+        waitLabel("Latency fixture");
+        waitLabel("Switch to voice typing");
+        SystemClock.sleep(1500);
+        Rect q = bounds(waitLabel("q")), p = bounds(waitLabel("p")), a = bounds(waitLabel("a")), l = bounds(waitLabel("l"));
+        screenshot("keyboard-layout.png");
+        android.content.res.Configuration config = getTargetContext().getResources().getConfiguration();
+        boolean ltr = q.centerX() < p.centerX() && a.centerX() < l.centerX();
+        String report = "probe=layout fontScale=" + config.fontScale + " systemDirection=" +
+            (config.getLayoutDirection() == android.view.View.LAYOUT_DIRECTION_RTL ? "rtl" : "ltr") +
+            " q=" + q.centerX() + " p=" + p.centerX() + " keys " + (ltr ? "left to right" : "MIRRORED");
+        result.putString("stream", report + "\n");
+        if (!ltr) throw new AssertionError(report);
+        finish(0, result);
     }
     private void clickLabel(String label) {
         AccessibilityNodeInfo node = waitLabel(label);
