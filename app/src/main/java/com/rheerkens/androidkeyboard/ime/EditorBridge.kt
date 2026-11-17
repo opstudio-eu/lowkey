@@ -11,6 +11,7 @@ import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputContentInfo
 import com.rheerkens.androidkeyboard.keyboard.BackspaceScrub
+import com.rheerkens.androidkeyboard.keyboard.NumberPad
 import com.rheerkens.androidkeyboard.keyboard.ui.EnterKind
 
 /**
@@ -294,6 +295,15 @@ class EditorBridge(private val connection: () -> InputConnection?) {
                 InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS,
                 InputType.TYPE_TEXT_VARIATION_FILTER,
             )
+        }
+
+    /** The number pad of a number, phone or date field, which the keyboard opens on; null for text. */
+    val numberPad: NumberPad?
+        get() = when ((editorInfo?.inputType ?: 0) and InputType.TYPE_MASK_CLASS) {
+            InputType.TYPE_CLASS_NUMBER -> NumberPad.NUMBER
+            InputType.TYPE_CLASS_PHONE -> NumberPad.PHONE
+            InputType.TYPE_CLASS_DATETIME -> NumberPad.DATETIME
+            else -> null
         }
 
     private val isMultiLine: Boolean

@@ -67,6 +67,7 @@ object SlimIcons {
         filled = "M12 4l7.5 7.5h-4v4h-7v-4h-4z",
     )
     val Enter = stroke("enter", "M19 6v5.5a2 2 0 0 1 -2 2H6", "M9.5 10L6 13.5 9.5 17")
+    val Space = stroke("space", "M4.5 10.5v4h15v-4")
     val Book = stroke(
         "book",
         "M5 5a2 2 0 0 1 2 -2h12v14H7a2 2 0 0 0 -2 2z",

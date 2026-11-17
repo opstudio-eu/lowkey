@@ -339,8 +339,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                     if (image != null && custom != null) KeyboardBackgroundImage(image.bitmap, custom.dim) else null
                 }
                 val (viewportWidth, viewportHeight) = placementViewport()
-                val layout = remember(kb.layer, kb.keyboard, s.numberRow, s.bottomKey, s.shadeNumberRow) {
-                    Layouts.forLayer(kb.layer, kb.keyboard, s.numberRow, s.bottomKey, s.shadeNumberRow)
+                val layout = remember(kb.layer, kb.keyboard, s.numberRow, s.bottomKey, s.shadeNumberRow, kb.pad) {
+                    Layouts.forLayer(kb.layer, kb.keyboard, s.numberRow, s.bottomKey, s.shadeNumberRow, kb.pad)
                 }
                 val profile = PlacementProfile.forSize(viewportWidth, viewportHeight)
                 val placement = s.placement.get(profile)
@@ -611,7 +611,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         }
         enterKind.value = bridge.enterKind()
         if (keepSession) return
-        keyboard.reset()
+        keyboard.reset(bridge.numberPad)
         keyboard.setKeyboard(AppGraph.currentKeyboard())
         preloadLanguages()
         autoSpaced = false
@@ -941,7 +941,11 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             FanCommand.KEYBOARD_ONCE, FanCommand.NUMBERS_ONCE -> {
                 keyboardOnceEditor = bridge.editorKey()
                 keyboardOnce.value = true
-                keyboard.setLayer(if (command == FanCommand.NUMBERS_ONCE) Layer.SYMBOLS else Layer.LETTERS)
+                when {
+                    command == FanCommand.KEYBOARD_ONCE -> keyboard.showHome()
+                    keyboard.state.value.pad != null -> keyboard.setLayer(Layer.NUMBERS)
+                    else -> keyboard.setLayer(Layer.SYMBOLS)
+                }
                 updateShift()
                 refreshStrip()
             }
@@ -1028,7 +1032,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
 
     override fun onCloseEmoji() {
         emojiOpen.value = false
-        keyboard.setLayer(Layer.LETTERS)
+        keyboard.showHome()
     }
 
     override fun onChooseEmoji(value: String) {
@@ -1077,7 +1081,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         if (suggestion.emojiName != null) {
             settings.update { it.copy(recentEmoji = EmojiHistory.record(it.recentEmoji, suggestion.text)) }
         }
-        keyboard.setLayer(Layer.LETTERS)
+        keyboard.leaveSymbols()
         keyboard.onCharTyped()
         updateShift()
         refreshStrip()
@@ -1402,7 +1406,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             if (shortcuts) doubleSpacePeriod.spaceCommitted(bridge.textBeforeCursor(DoubleSpacePeriod.CONTEXT_LIMIT))
         }
         autoSpaced = false
-        keyboard.setLayer(Layer.LETTERS)
+        keyboard.leaveSymbols()
         updateShift()
         refreshStrip()
     }
@@ -1636,6 +1640,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     private fun initialMode(): InputMode = when {
         settings.current.keyboardFirstDictation -> InputMode.KEYS
         bridge.isSensitiveField -> InputMode.KEYS
+        // A number, phone or date field opens on its number pad.
+        bridge.numberPad != null -> InputMode.KEYS
         settings.current.rememberLastMode -> settings.current.lastMode
         else -> InputMode.KEYS
     }
