@@ -58,6 +58,10 @@ public final class KeyboardTouchProbe extends Instrumentation {
                 finish(0, result);
                 return;
             }
+            if (arguments.getString("probe", "burst").equals("compounds")) {
+                runOnMainSync(() -> savedSettings = TypingProbeConfig.configureDutch());
+                TypingProbeConfig.awaitDutch();
+            }
             if (arguments.getString("probe", "burst").equals("registration")) { registration(result); return; }
             if (arguments.getString("probe", "burst").equals("correction")) { correctionBudget(result); return; }
             if (arguments.getString("probe", "burst").equals("blur")) { blur(result); return; }
@@ -84,6 +88,7 @@ public final class KeyboardTouchProbe extends Instrumentation {
             if (arguments.getString("probe", "burst").equals("context-language")) { contextLanguage(result); return; }
             if (arguments.getString("probe", "burst").equals("learning")) { learning(result); return; }
             if (arguments.getString("probe", "burst").equals("trackpad-edit")) { trackpadEdit(result); return; }
+            if (arguments.getString("probe", "burst").equals("compounds")) { compounds(result); return; }
             if (arguments.getString("probe", "burst").startsWith("autocomplete")) { autocomplete(result); return; }
             if (arguments.getString("probe", "burst").equals("accents")) { accents(result); return; }
             if (arguments.getString("probe", "burst").equals("hold-overlap")) { holdOverlap(result); return; }
@@ -625,6 +630,29 @@ public final class KeyboardTouchProbe extends Instrumentation {
                 n.performAction(AccessibilityNodeInfo.ACTION_CLICK); SystemClock.sleep(400); return;
             }
         }
+    }
+    /** Dutch keyboard: a compound the word list lacks stays, and a slip in one of its parts is repaired. */
+    private void compounds(Bundle result) {
+        String[][] cases = {
+            {"thuiswerkdag", "thuiswerkdag "},
+            {"toetsenbordinstellingen", "toetsenbordinstellingen "},
+            {"toetsenbrodinstellingen", "toetsenbordinstellingen "},
+            {"klembordgeschiedenus", "klembordgeschiedenis "},
+        };
+        StringBuilder report = new StringBuilder("probe=compounds\n");
+        boolean ok = true;
+        for (String[] c : cases) {
+            setEditorText(c[0], 3000);
+            tap(bounds(waitLabel("Space")));
+            SystemClock.sleep(700);
+            String actual = editorText();
+            boolean match = actual.equals(c[1]);
+            ok &= match;
+            report.append("'").append(c[0]).append("' + Space -> '").append(actual).append("'").append(match ? "" : " FAIL").append('\n');
+        }
+        result.putString("stream", report.toString());
+        if (!ok) throw new AssertionError(report.toString());
+        finish(0, result);
     }
     private void clickLabel(String label) {
         AccessibilityNodeInfo node = waitLabel(label);

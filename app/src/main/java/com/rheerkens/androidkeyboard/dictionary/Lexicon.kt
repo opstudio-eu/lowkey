@@ -24,6 +24,11 @@ data class SpellingRules(
      * words. Elsewhere a lowercase word never becomes a capitalized one (`lol` → `Lil`).
      */
     val capitalizedNouns: Boolean = false,
+    /**
+     * The language writes compounds as one word (Dutch, German): the letters that may join two
+     * words besides none (Dutch `s`, `e`, `en`), or null when it doesn't. See [Compounds].
+     */
+    val compoundLinkers: List<String>? = null,
 )
 
 /**
