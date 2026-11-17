@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
 
 /** A chip in the minimized bar: a remembered clip, or a recent screenshot from the media library. */
 sealed interface ClipEntry {
@@ -51,12 +52,16 @@ sealed interface ClipEntry {
  * The last clips copied while Lowkey Keyboard is the active keyboard, newest first, for the minimized
  * bar. Kept in memory for the process lifetime only. The system revokes access to a clip's image
  * when the next clip replaces it, so image bytes are copied into the app cache, served through
- * this app's FileProvider, and deleted on eviction and at start-up. Sensitive clips are not kept.
+ * this app's FileProvider, and deleted on eviction and at start-up. Sensitive clips and text
+ * longer than [MAX_TEXT_CHARS] are not kept, and clips older than [maxAgeMs] are forgotten
+ * ([prune]).
  */
 class ClipboardHistory(
     private val context: Context,
     private val max: Int = MAX_ENTRIES,
     private val clock: () -> Long = System::currentTimeMillis,
+    /** How long a clip is kept, or null to keep it until the process ends. */
+    private val maxAgeMs: () -> Long? = { null },
 ) {
     private val dir = File(context.cacheDir, DIR).apply {
         deleteRecursively()
@@ -65,6 +70,8 @@ class ClipboardHistory(
     private val _entries = MutableStateFlow<List<ClipEntry>>(emptyList())
     val entries: StateFlow<List<ClipEntry>> = _entries.asStateFlow()
     private var nextId = 0L
+    /** When a clip was last pasted or put in the history, by key, if later than its copy time. */
+    private val usedAt = ConcurrentHashMap<String, Long>()
 
     /** Call on an IO dispatcher: copying an image reads it from the source app's provider. */
     @Synchronized
@@ -75,7 +82,7 @@ class ClipboardHistory(
         val current = _entries.value
         val entry = when (content) {
             is ClipboardContent.Text -> {
-                if (content.text.isBlank()) return
+                if (content.text.isBlank() || content.text.length > MAX_TEXT_CHARS) return
                 current.filterIsInstance<ClipEntry.Text>().firstOrNull { it.text == content.text }?.copy(timeMs = now)
                     ?: ClipEntry.Text(nextId++, content.text, now)
             }
@@ -85,6 +92,25 @@ class ClipboardHistory(
                     ?: return
         }
         push(entry)
+        prune()
+    }
+
+    /**
+     * Forgets clips older than [maxAgeMs] since they were copied or last pasted, deleting their
+     * cached images. Returns when the oldest remaining clip expires, or null if none will. Call
+     * on an IO dispatcher: it waits for an image copy in progress.
+     */
+    @Synchronized
+    fun prune(): Long? {
+        val age = maxAgeMs() ?: return null
+        val cutoff = clock() - age
+        val (kept, expired) = _entries.value.partition { lastUse(it) > cutoff }
+        if (expired.isNotEmpty()) {
+            _entries.value = kept
+            deleteImages(expired)
+            expired.forEach { usedAt.remove(it.key) }
+        }
+        return kept.minOfOrNull { lastUse(it) }?.plus(age)
     }
 
     /**
@@ -98,8 +124,26 @@ class ClipboardHistory(
             ?: copyImage(shot.mediaUri, shot.mimeType, shot.thumbnail, shot.timeMs)
             ?: return null
         push(entry)
+        // An older screenshot is kept as long as a fresh clip, so it outlives the paste.
+        usedAt[entry.key] = clock()
         return entry
     }
+
+    /**
+     * [entry] was pasted: it is kept as long as a clip copied now, so the editor can still read it.
+     * Doesn't wait for a copy in progress, so it is safe on the main thread.
+     */
+    fun markUsed(entry: ClipEntry) {
+        if (_entries.value.any { it.key == entry.key }) usedAt[entry.key] = clock()
+    }
+
+    /** The clips not yet expired, without waiting for a copy in progress (for the main thread). */
+    fun current(): List<ClipEntry> {
+        val cutoff = clock() - (maxAgeMs() ?: return _entries.value)
+        return _entries.value.filter { lastUse(it) > cutoff }
+    }
+
+    private fun lastUse(entry: ClipEntry) = maxOf(entry.timeMs, usedAt[entry.key] ?: 0L)
 
     /**
      * Forgets every clip and returns them, so [restore] can bring them back. Their cached images
@@ -119,6 +163,7 @@ class ClipboardHistory(
         val kept = all.distinctBy { it.key }.take(max)
         _entries.value = kept
         deleteImages(all.filter { e -> kept.none { it.key == e.key } })
+        prune()
     }
 
     /** Deletes the cached images of cleared clips that won't come back. */
@@ -173,6 +218,8 @@ class ClipboardHistory(
 
     companion object {
         const val MAX_ENTRIES = 10
+        /** Longer text (about ten pages) is pasted from the system clip but not kept. */
+        const val MAX_TEXT_CHARS = 20_000
         const val AUTHORITY_SUFFIX = ".clipboard"
         private const val DIR = "clipboard"
         private const val MAX_IMAGE_BYTES = 20L * 1024 * 1024

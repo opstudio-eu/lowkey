@@ -25,6 +25,12 @@ sealed interface ClipboardContent {
     ) : ClipboardContent
 }
 
+/** The same clip, treated like one an app marked sensitive: not kept, and shown without a preview. */
+fun ClipboardContent.asSensitive(): ClipboardContent = when (this) {
+    is ClipboardContent.Text -> copy(sensitive = true)
+    is ClipboardContent.Image -> copy(sensitive = true, thumbnail = null)
+}
+
 /** Call on an IO dispatcher: provider queries and image decoding must not block typing. */
 class ClipboardReader(private val resolver: ContentResolver) {
     fun read(clip: ClipData?): ClipboardContent? {

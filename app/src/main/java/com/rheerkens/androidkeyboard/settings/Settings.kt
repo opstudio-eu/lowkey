@@ -35,6 +35,14 @@ enum class AutoStop(val label: String, val millis: Long) {
     FOUR_SECONDS("4 s", 4_000),
 }
 
+/** How long copied clips stay in the keyboard's clipboard history, since copied or last pasted. */
+enum class ClipExpiry(val label: String, val millis: Long?) {
+    TEN_MINUTES("10 minutes", 600_000),
+    ONE_HOUR("1 hour", 3_600_000),
+    ONE_DAY("1 day", 86_400_000),
+    UNTIL_RESTART("Until the keyboard restarts", null),
+}
+
 /** Time to keep native model resources after a dictation ends, not after hiding the IME. */
 enum class ModelRetention(val label: String, val millis: Long?) {
     IMMEDIATE("Release after dictation", 0),
@@ -94,6 +102,7 @@ data class Settings(
      * appear once all photos are allowed (Home's setup step 5 or the Settings switch asks).
      */
     val recentScreenshots: Boolean = true,
+    val clipExpiry: ClipExpiry = ClipExpiry.ONE_HOUR,
     // Voice
     val keyboardFirstDictation: Boolean = true,
     val autoStartVoice: Boolean = true,

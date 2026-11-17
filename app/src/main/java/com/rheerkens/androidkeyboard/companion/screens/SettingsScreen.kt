@@ -59,6 +59,7 @@ import com.rheerkens.androidkeyboard.models.SpeechLanguage
 import com.rheerkens.androidkeyboard.models.resolveLanguage
 import com.rheerkens.androidkeyboard.models.speechLanguageCode
 import com.rheerkens.androidkeyboard.settings.AutoStop
+import com.rheerkens.androidkeyboard.settings.ClipExpiry
 import com.rheerkens.androidkeyboard.settings.KeyArrangement
 import com.rheerkens.androidkeyboard.settings.BottomKey
 import com.rheerkens.androidkeyboard.settings.LoupeCorners
@@ -108,6 +109,12 @@ fun SettingsScreen(
             SettingsFocus.CLIPBOARD -> {
                 item {
                     SettingsGroup("Clipboard") {
+                        ChoiceDialogRow(
+                            "Keep copied clips", ClipExpiry.entries, s.clipExpiry, { it.label },
+                            { v -> update { it.copy(clipExpiry = v) } },
+                            subtitle = "Since copied or last pasted. Nothing copied in password or private fields is kept.",
+                            detail = { if (it.millis == null) "Kept until Android stops the keyboard" else "Then forgotten, images included" },
+                        )
                         SwitchRow(
                             "Recent screenshots", s.recentScreenshots && photosGranted,
                             { v ->

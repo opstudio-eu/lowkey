@@ -263,26 +263,14 @@ class EditorBridge(private val connection: () -> InputConnection?) {
     }
 
     val isPasswordField: Boolean
-        get() {
-            val type = editorInfo?.inputType ?: return false
-            val variation = type and InputType.TYPE_MASK_VARIATION
-            return when (type and InputType.TYPE_MASK_CLASS) {
-                InputType.TYPE_CLASS_TEXT ->
-                    variation == InputType.TYPE_TEXT_VARIATION_PASSWORD ||
-                        variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
-                        variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD
-                InputType.TYPE_CLASS_NUMBER -> variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD
-                else -> false
-            }
-        }
+        get() = isPassword(editorInfo)
 
     /**
      * Password fields and fields that ask keyboards not to learn (incognito / private).
      * Voice input is never offered there.
      */
     val isSensitiveField: Boolean
-        get() = isPasswordField ||
-            (editorInfo?.imeOptions ?: 0) and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING != 0
+        get() = isSensitive(editorInfo)
 
     /** Prose shortcuts are inappropriate in passwords, URLs, addresses and numeric fields. */
     val allowsTextShortcuts: Boolean
@@ -384,6 +372,23 @@ class EditorBridge(private val connection: () -> InputConnection?) {
         /** Deleting everything before the cursor stops after this many [MAX_SCRUB] pieces (a million characters). */
         private const val MAX_DELETE_CHUNKS = 100
         fun isWordChar(ch: Char): Boolean = ch.isLetterOrDigit() || ch == '_' || ch == '\''
+
+        fun isPassword(info: EditorInfo?): Boolean {
+            val type = info?.inputType ?: return false
+            val variation = type and InputType.TYPE_MASK_VARIATION
+            return when (type and InputType.TYPE_MASK_CLASS) {
+                InputType.TYPE_CLASS_TEXT ->
+                    variation == InputType.TYPE_TEXT_VARIATION_PASSWORD ||
+                        variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
+                        variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD
+                InputType.TYPE_CLASS_NUMBER -> variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD
+                else -> false
+            }
+        }
+
+        /** A password field, or one that asks keyboards not to learn (incognito, private). */
+        fun isSensitive(info: EditorInfo?): Boolean =
+            isPassword(info) || (info?.imeOptions ?: 0) and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING != 0
 
         /** Identifies a field across connections, e.g. the chat box an image editor returns to. */
         fun keyOf(info: EditorInfo): String =
