@@ -321,10 +321,34 @@ private fun LazyListScope.typingPage(s: Settings, update: Update, navigate: (Des
             )
         }
     }
+    item { LearningSettings(s, update) }
     item {
         SettingsGroup {
             LinkRow("My words", "Words that keep their exact spelling") { navigate(Destination.DICTIONARY) }
         }
+    }
+}
+
+/** Learning from typing (opt-in), and forgetting what was learned. */
+@Composable
+private fun LearningSettings(s: Settings, update: Update) {
+    var confirm by rememberSaveable { mutableStateOf(false) }
+    SettingsGroup("Learning") {
+        SwitchRow(
+            "Learn from my typing", s.learnFromTyping, { v -> update { it.copy(learnFromTyping = v) } },
+            subtitle = "Suggests the words you usually type next and remembers corrections you undo. " +
+                "Stays on this phone and is never backed up. Nothing is learned in password, private, email or web address fields.",
+        )
+        ActionRow("Forget what Lowkey learned") { confirm = true }
+    }
+    if (confirm) {
+        AlertDialog(
+            onDismissRequest = { confirm = false },
+            title = { Text("Forget what Lowkey learned?") },
+            text = { Text("This removes the words Lowkey learned from your typing and the corrections you undid. Your saved words stay.") },
+            confirmButton = { TextButton(onClick = { AppGraph.personalModel.forget(); confirm = false }) { Text("Forget") } },
+            dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } },
+        )
     }
 }
 

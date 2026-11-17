@@ -55,6 +55,7 @@ class SettingsStore(context: Context) {
             autoCapitalize = prefs.getBoolean(K_AUTOCAP, d.autoCapitalize),
             autocorrect = prefs.getBoolean(K_AUTOCORRECT, d.autocorrect),
             suggestionStrip = prefs.getBoolean(K_STRIP, d.suggestionStrip),
+            learnFromTyping = prefs.getBoolean(K_LEARN, d.learnFromTyping),
             enabledKeyboards = enabled,
             currentKeyboard = current,
             showWithPhysicalKeyboard = prefs.getBoolean(K_SHOW_WITH_PHYSICAL, d.showWithPhysicalKeyboard),
@@ -93,6 +94,7 @@ class SettingsStore(context: Context) {
         putBoolean(K_AUTOCAP, s.autoCapitalize)
         putBoolean(K_AUTOCORRECT, s.autocorrect)
         putBoolean(K_STRIP, s.suggestionStrip)
+        putBoolean(K_LEARN, s.learnFromTyping)
         putStringSet(K_KEYBOARDS, s.enabledKeyboards)
         putString(K_KEYBOARD, s.currentKeyboard)
         remove(K_LAYOUTS)
@@ -162,6 +164,7 @@ class SettingsStore(context: Context) {
         const val K_AUTOCAP = "auto_capitalize"
         const val K_AUTOCORRECT = "autocorrect"
         const val K_STRIP = "suggestion_strip"
+        const val K_LEARN = "learn_from_typing"
         /** Language-only keys from before arrangements; read once to migrate. */
         const val K_LAYOUTS = "enabled_layouts"
         const val K_LAYOUT = "current_layout"

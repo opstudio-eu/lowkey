@@ -44,6 +44,18 @@ object TypingProbeConfig {
         }
     }
 
+    /** Typing defaults with learning on, starting from nothing learned. */
+    @JvmStatic fun configureLearning(): Settings {
+        val before = configure()
+        AppGraph.settings.update { it.copy(learnFromTyping = true) }
+        AppGraph.personalModel.forget()
+        AppGraph.personalModel.model()
+        return before
+    }
+
+    /** Forgets what the learning probe taught, so the device keeps nothing from it. */
+    @JvmStatic fun forgetLearning() { AppGraph.personalModel.forget() }
+
     @JvmStatic fun awaitDictionary() {
         val language = AppGraph.currentLanguage(AppGraph.settings.current)
         val deadline = android.os.SystemClock.uptimeMillis() + 60_000

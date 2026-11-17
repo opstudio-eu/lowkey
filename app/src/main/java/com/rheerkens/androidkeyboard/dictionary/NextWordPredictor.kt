@@ -39,7 +39,7 @@ object NextWordPredictor {
     private val TOKEN = Regex("\\S+|\\n")
 
     /** Nulls preserve sentence boundaries and prevent learning fragments of URLs or addresses. */
-    private fun tokens(text: String): List<String?> = buildList {
+    internal fun tokens(text: String): List<String?> = buildList {
         for (match in TOKEN.findAll(text)) {
             val raw = match.value
             val word = raw.trim('"', '\'', '“', '”', '‘', '’', '(', ')', '[', ']', '{', '}', ',', '.', '!', '?', ';', ':')

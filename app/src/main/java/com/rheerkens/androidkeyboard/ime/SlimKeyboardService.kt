@@ -53,6 +53,9 @@ import com.rheerkens.androidkeyboard.dictionary.Suggester
 import com.rheerkens.androidkeyboard.dictionary.Corrector
 import com.rheerkens.androidkeyboard.dictionary.Suggestion
 import com.rheerkens.androidkeyboard.dictionary.NextWordPredictor
+import com.rheerkens.androidkeyboard.dictionary.PersonalPredictions
+import com.rheerkens.androidkeyboard.dictionary.WordContextModel
+import com.rheerkens.androidkeyboard.keyboard.ShiftState
 import com.rheerkens.androidkeyboard.keyboard.BackspaceScrub
 import com.rheerkens.androidkeyboard.keyboard.FanCommand
 import com.rheerkens.androidkeyboard.keyboard.Key
@@ -648,6 +651,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
 
     override fun onFinishInputView(finishingInput: Boolean) {
         doubleSpacePeriod.reset()
+        AppGraph.personalModel.flush()
         menuBackHandler = null
         onLayoutBackHandler(null)
         inputViewActive = false
@@ -750,6 +754,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         if (undo != null && undo.stillAtCursor()) {
             bridge.replaceBeforeCursor(undo.corrected.length + undo.separator.length, undo.original)
             rejectedCorrections += undo.original.lowercase()
+            unlearnCorrection(undo.original, undo.corrected)
             showNote("Kept “${undo.original}”")
         } else {
             bridge.deleteBackward(emojiCatalog.value?.suffixOf(bridge.textBeforeCursor(64)))
@@ -1094,6 +1099,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         autoSpaced = true
         if (suggestion.emojiName != null) {
             settings.update { it.copy(recentEmoji = EmojiHistory.record(it.recentEmoji, suggestion.text)) }
+        } else {
+            learnLastWord()
         }
         keyboard.leaveSymbols()
         keyboard.onCharTyped()
@@ -1402,6 +1409,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         } else {
             bridge.commitText(keyboard.applyCase(output))
         }
+        if (punctuation) learnLastWord()
         autoSpaced = false
         keyboard.onCharTyped()
         updateShift()
@@ -1420,6 +1428,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             commitWordBoundary(" ")
             if (shortcuts) doubleSpacePeriod.spaceCommitted(bridge.textBeforeCursor(DoubleSpacePeriod.CONTEXT_LIMIT))
         }
+        learnLastWord()
         autoSpaced = false
         keyboard.leaveSymbols()
         updateShift()
@@ -1471,7 +1480,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
      */
     private fun correctionKey(snapshot: EditorContext, context: CorrectionKey): CorrectionKey? {
         val word = snapshot.word
-        if (word.isEmpty() || word.lowercase() in rejectedCorrections) return null
+        if (word.isEmpty() || rejected(word)) return null
         if (!Corrector.isStandaloneWord(snapshot.token, word)) return null
         return context
     }
@@ -1487,7 +1496,44 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     private fun savedPhrase(suggester: Suggester, terms: List<PersonalTerm>,
         before: String = bridge.textBeforeCursor(MAX_TERM_CHARS)): Pair<Int, String>? =
         suggester.protectedPhrase(before.takeLast(MAX_TERM_CHARS), terms)
-            ?.takeIf { before.takeLast(it.first).lowercase() !in rejectedCorrections }
+            ?.takeIf { !rejected(before.takeLast(it.first)) }
+
+    /** The user undid this word's autocorrection: in this session, or ever when learning is on. */
+    private fun rejected(word: String): Boolean = word.lowercase() in rejectedCorrections ||
+        (settings.current.learnFromTyping && AppGraph.personalModel.model()?.isRejected(word) == true)
+
+    /** The learned model, when learning is on and this field is ordinary text; else null. */
+    private fun learnedModel(): WordContextModel? =
+        if (settings.current.learnFromTyping && bridge.allowsTextShortcuts) AppGraph.personalModel.model() else null
+
+    /** Where the last learned word ended, so a second boundary after it (`word.` then Space) adds nothing. */
+    private var lastLearned: String? = null
+
+    /** Teaches the learned model the word just completed before the cursor, with the words before it. */
+    private fun learnLastWord() {
+        val model = learnedModel() ?: return
+        val before = bridge.textBeforeCursor(PersonalPredictions.CONTEXT_CHARS)
+        val (previous, word) = PersonalPredictions.justTyped(before) ?: return
+        val trailing = before.length - 1 - before.indexOfLast { it.isLetter() || it == '\'' || it == '’' }
+        val end = bridge.currentSelection()?.first?.minus(trailing) ?: return
+        val at = "${bridge.editorKey()}|$end|$word"
+        if (at == lastLearned) return
+        lastLearned = at
+        model.learn(previous, word)
+        AppGraph.personalModel.changed()
+    }
+
+    /** An undone autocorrection: forget the learned [corrected] word, and never correct [original] again. */
+    private fun unlearnCorrection(original: String, corrected: String) {
+        if (!settings.current.learnFromTyping) return
+        val model = AppGraph.personalModel.model() ?: return
+        model.reject(original)
+        if (learnedModel() != null) {
+            model.unlearn(PersonalPredictions.sentenceWords(bridge.textBeforeCursor(PersonalPredictions.CONTEXT_CHARS)).takeLast(2), corrected)
+        }
+        lastLearned = null
+        AppGraph.personalModel.changed()
+    }
 
     private fun updateShift() {
         keyboard.setAutoShift(settings.current.autoCapitalize && bridge.capsModeAtCursor())
@@ -1503,7 +1549,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             cachedCorrection = null
             val predictions = if (typed.isEmpty() && bridge.allowsTextShortcuts &&
                 settings.current.suggestionStrip && !bridge.hasSelection()) {
-                NextWordPredictor.suggest(bridge.textBeforeCursor(NextWordPredictor.CONTEXT_LIMIT), dictionary.state.value.terms)
+                PersonalPredictions.nextWords(bridge.textBeforeCursor(NextWordPredictor.CONTEXT_LIMIT), dictionary.state.value.terms,
+                    learnedModel(), capitalize = keyboard.state.value.shift != ShiftState.OFF)
             } else emptyList()
             val image = strip.value.clipboard as? ClipboardContent.Image
             strip.value = strip.value.copy(
@@ -1530,6 +1577,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         val suggester = suggester().leading(context.lead)
         val session = inputSession.value
         val emoji = EmojiSuggestions.suggest(typed, context.languages, emojiCatalog.value)
+        val learned = learnedModel()
         // Space recases a saved multi-word term first (see typeSpace); show that in the middle.
         val phrase = if (correcting) savedPhrase(suggester, terms, snapshot.before) else null
         val key = if (correcting && phrase == null) correctionKey(snapshot, context) else null
@@ -1542,7 +1590,9 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             if (inputSession.value != session || stripGeneration != generation) return@launch
             if (key != null) cachedCorrection = CachedCorrection(key, fix)
             val ranked = withContext(Dispatchers.Default) {
-                if (request.enabled) suggester.suggest(typed, terms, checkActive = { ensureActive() }) else emptyList()
+                if (request.enabled) {
+                    PersonalPredictions.rank(typed, suggester.suggest(typed, terms, checkActive = { ensureActive() }), snapshot.before, learned)
+                } else emptyList()
             }
             if (inputSession.value != session || stripGeneration != generation) return@launch
             val middle = phrase?.let { Suggestion(it.second, isPersonal = true, replaceChars = it.first) } ?: fix?.let { Suggestion(it) }
