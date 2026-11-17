@@ -139,10 +139,9 @@ fun ModelsScreen(modifier: Modifier, navigate: (Destination) -> Unit, tryKeyboar
         if (showModelManagement) {
             item(key = "speech-models") {
                 LinkRow("Speech models", listOfNotNull(setup.activeModel?.let { "${it.name} active" },
-                    "${state.installed.size} on this phone").joinToString(" \u00b7 ")) { navigate(Destination.SPEECH_MODELS) }
+                    "${state.installed.size} on this phone", "${state.usedMb} MB").joinToString(" \u00b7 ")) { navigate(Destination.SPEECH_MODELS) }
             }
-            item { LinkRow("Dictation settings", "Language, starting and stopping") { navigate(Destination.SETTINGS_VOICE) } }
-            item { LinkRow("Storage & performance", "${state.usedMb} MB on this device") { navigate(Destination.SETTINGS_STORAGE) } }
+            item { LinkRow("Dictation settings", "Language, starting, stopping and model memory") { navigate(Destination.SETTINGS_VOICE) } }
         } else item {
             Text("Typing works without voice.", color = colors.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 24.dp, bottom = 16.dp))

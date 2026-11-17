@@ -1,13 +1,21 @@
 package com.rheerkens.androidkeyboard.companion.screens
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -23,8 +31,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -33,24 +43,26 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rheerkens.androidkeyboard.AppGraph
-import com.rheerkens.androidkeyboard.companion.Destination
 import com.rheerkens.androidkeyboard.dictionary.KeyboardLanguage
 import com.rheerkens.androidkeyboard.dictionary.LanguagePackState
+import com.rheerkens.androidkeyboard.keyboard.TypingKeyboard
+import com.rheerkens.androidkeyboard.settings.KeyArrangement
 import com.rheerkens.androidkeyboard.ui.SlimIcons
 
 /**
- * Your languages first: use, turn on or off, or remove them here. The download catalog stays
- * behind Add a language; downloads in progress or failed stay visible while it is closed.
+ * Your languages first: use, turn on or off, or remove them here, and pick the letter layouts of
+ * each language that is on. The download catalog stays behind Add a language; downloads in
+ * progress or failed stay visible while it is closed.
  */
 @Composable
-fun LanguagesScreen(modifier: Modifier, navigate: (Destination) -> Unit) {
+fun LanguagesScreen(modifier: Modifier) {
     val s by AppGraph.settings.settings.collectAsStateWithLifecycle()
     val packs by AppGraph.languagePacks.state.collectAsStateWithLifecycle()
     val all = AppGraph.languages.languages
     val onPhone = all.filter { it.bundled || it.id in packs.installed }
     val available = all.filter { !it.bundled && it.id !in packs.installed }
     val current = AppGraph.currentKeyboard(s)
-    val installed = AppGraph.installedKeyboards()
+    val installed = remember(packs.installed) { AppGraph.installedKeyboards() }
     val usableIds = installed.map { it.id }
     var removing by remember { mutableStateOf<KeyboardLanguage?>(null) }
     var catalogOpen by rememberSaveable { mutableStateOf(false) }
@@ -72,25 +84,33 @@ fun LanguagesScreen(modifier: Modifier, navigate: (Destination) -> Unit) {
         )
     }
 
-    LazyColumn(modifier.fillMaxWidth()) {
+    val list = rememberLazyListState()
+    RevealSettingHighlight(list)
+    LazyColumn(modifier.fillMaxWidth(), state = list) {
         item(key = "summary") { PageSummary("Typing in ${current.fullLabel}.") }
         item(key = "yours") {
             val anyLast = onPhone.any { language -> isLastLanguage(language, installed, s.enabledKeyboards) }
+            val layoutsOn = usableIds.count { it in s.enabledKeyboards }
             val hints = listOfNotNull(
                 "Tap a language to use it.".takeIf { onPhone.size > 1 },
                 "Keep at least one language on.".takeIf { anyLast },
+                "Layouts change only the letter keys; suggestions and autocorrect follow the language.",
+                switchHint(s.bottomKey).takeIf { layoutsOn > 1 },
             )
-            SettingsGroup("Your languages", footer = hints.takeIf { it.isNotEmpty() }?.joinToString(" ")) {
-                onPhone.forEach { language ->
+            SettingsGroup("Your languages", footer = hints.joinToString(" ")) {
+                onPhone.forEachIndexed { index, language ->
+                    val options = installed.filter { it.language.id == language.id }
+                    val enabled = options.any { it.id in s.enabledKeyboards }
+                    val inUse = current.language.id == language.id
+                    if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
                     InstalledLanguageRow(
                         language = language,
-                        enabled = installed.any { it.language.id == language.id && it.id in s.enabledKeyboards },
-                        inUse = current.language.id == language.id,
+                        enabled = enabled,
+                        inUse = inUse,
                         last = isLastLanguage(language, installed, s.enabledKeyboards),
                         layoutLabel = current.layoutLabel,
                         onUse = {
                             // As before: the current layout, else the first one that's on, else its own.
-                            val options = installed.filter { it.language.id == language.id }
                             val preferred = current.takeIf { it.language.id == language.id }
                                 ?: options.firstOrNull { it.id in s.enabledKeyboards } ?: options.firstOrNull()
                             if (preferred != null) AppGraph.settings.update { it.selectKeyboard(preferred.id, usableIds) }
@@ -98,9 +118,14 @@ fun LanguagesScreen(modifier: Modifier, navigate: (Destination) -> Unit) {
                         onEnabled = { on -> AppGraph.settings.update { it.setLanguageEnabled(language.id, on, usableIds) } },
                         onRemove = { removing = language },
                     )
-                }
-                LinkRow("Layouts", "${current.layoutLabel} · choose letter layouts per language") {
-                    navigate(Destination.SETTINGS_KEYBOARDS)
+                    // A language written in the Latin alphabet also offers the other letter layouts.
+                    if (enabled && options.size > 1) {
+                        LayoutChips(
+                            language, options, s.enabledKeyboards, onlyOneOn = layoutsOn == 1,
+                            // A search for layouts lands on those of the language you type in.
+                            modifier = if (inUse) settingHighlight("Layouts") else Modifier,
+                        ) { keyboard -> AppGraph.settings.update { it.tapLayout(keyboard.id, usableIds) } }
+                    }
                 }
             }
         }
@@ -152,11 +177,59 @@ fun LanguagesScreen(modifier: Modifier, navigate: (Destination) -> Unit) {
 
 private fun isLastLanguage(
     language: KeyboardLanguage,
-    installed: List<com.rheerkens.androidkeyboard.keyboard.TypingKeyboard>,
+    installed: List<TypingKeyboard>,
     enabledKeyboards: Collection<String>,
 ): Boolean {
     val enabled = installed.any { it.language.id == language.id && it.id in enabledKeyboards }
     return enabled && installed.none { it.language.id != language.id && it.id in enabledKeyboards }
+}
+
+/**
+ * A chip per letter layout of [language]: its own first, then the alternatives. Every chip that's
+ * on is one stop of the language switcher. Chips sit in a fixed grid, so a checkmark appearing
+ * never moves the others.
+ */
+@Composable
+private fun LayoutChips(
+    language: KeyboardLanguage,
+    options: List<TypingKeyboard>,
+    enabledKeyboards: Set<String>,
+    onlyOneOn: Boolean,
+    modifier: Modifier,
+    onTap: (TypingKeyboard) -> Unit,
+) {
+    val fontScale = LocalDensity.current.fontScale
+    BoxWithConstraints(modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 8.dp)) {
+        val columns = when {
+            fontScale >= 1.6f -> 1
+            fontScale >= 1.2f -> 2
+            maxWidth >= 560.dp -> KeyArrangement.entries.size
+            else -> 3
+        }
+        Column {
+            options.chunked(columns).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEach { keyboard ->
+                        val on = keyboard.id in enabledKeyboards
+                        val required = on && onlyOneOn
+                        FilterChip(
+                            selected = on,
+                            onClick = { onTap(keyboard) },
+                            enabled = !required,
+                            // The chip's description names the language too; don't read the label twice.
+                            label = { Text(keyboard.layoutLabel, Modifier.clearAndSetSemantics {}, maxLines = 1) },
+                            leadingIcon = if (on) ({ Icon(SlimIcons.Check, null, Modifier.size(FilterChipDefaults.IconSize)) }) else null,
+                            modifier = Modifier.weight(1f).semantics {
+                                contentDescription = "${language.name}, ${keyboard.layoutLabel}"
+                                if (required) stateDescription = "On, required: the last layout that's on"
+                            },
+                        )
+                    }
+                    repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+        }
+    }
 }
 
 @Composable

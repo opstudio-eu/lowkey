@@ -23,30 +23,34 @@ import com.rheerkens.androidkeyboard.ui.SlimIcons
 import com.rheerkens.androidkeyboard.voice.VoiceState
 
 /**
- * Shared entry point in the compact bar and the expanded keyboard's top row. Three small dots beside
- * the microphone show that holding it opens a menu ([moreLabel]).
+ * Shared entry point in the compact bar and the expanded keyboard's top row: the microphone, and
+ * three small dots beside it that open a menu ([moreLabel]). Holding the microphone opens the
+ * same menu.
  */
 @Composable
 fun VoiceEntryButton(state: VoiceState, actions: KeyboardActions, onTap: () -> Unit, onMore: () -> Unit,
     moreLabel: String = "Open keyboard tools") {
     val c = LocalKeyboardColors.current
     val permission = state == VoiceState.NoPermission
-    PressTarget("Switch to voice typing", Modifier.width(58.dp).fillMaxHeight().semantics {
-        stateDescription = when (state) {
-            VoiceState.NoPermission -> "Microphone permission needed"
-            VoiceState.NoModel -> "No model selected"
-            else -> "Ready"
-        }
-    }, onDown = actions::onKeyDown,
-        onTap = onTap, onLongPress = onMore, longPressLabel = moreLabel) { pressed ->
-        Box(Modifier.padding(start = 4.dp).size(48.dp, 36.dp), contentAlignment = Alignment.Center) {
+    Row(Modifier.fillMaxHeight()) {
+        PressTarget("Switch to voice typing", Modifier.width(40.dp).fillMaxHeight().semantics {
+            stateDescription = when (state) {
+                VoiceState.NoPermission -> "Microphone permission needed"
+                VoiceState.NoModel -> "No model selected"
+                else -> "Ready"
+            }
+        }, onDown = actions::onKeyDown,
+            onTap = onTap, onLongPress = onMore, longPressLabel = moreLabel) { pressed ->
             Icon(SlimIcons.Mic, null, tint = when {
                 pressed -> c.enter
                 permission -> c.muted
                 state == VoiceState.NoModel -> c.amber
                 else -> c.keyText
-            }, modifier = Modifier.size(22.dp))
-            MenuDots(if (pressed) c.enter else c.muted, Modifier.align(Alignment.CenterEnd).padding(end = 3.dp))
+            }, modifier = Modifier.padding(start = 12.dp).size(22.dp))
+        }
+        // Dots look like a menu button, so they are one: a tap opens what holding the microphone opens.
+        PressTarget(moreLabel, Modifier.width(22.dp).fillMaxHeight(), onDown = actions::onKeyDown, onTap = onMore) { pressed ->
+            MenuDots(if (pressed) c.enter else c.muted, Modifier)
         }
     }
 }

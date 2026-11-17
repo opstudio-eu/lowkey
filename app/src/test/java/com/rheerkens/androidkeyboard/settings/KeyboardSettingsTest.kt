@@ -71,6 +71,22 @@ class KeyboardSettingsTest {
     }
 
     @Test
+    fun tappingALayoutOfTheLanguageInUseSwitchesToIt() {
+        val usable = listOf("en_US", "en_US:AZERTY", "nl", "nl:AZERTY")
+        val azerty = defaults.tapLayout("en_US:AZERTY", usable)
+        assertEquals("en_US:AZERTY", azerty.currentKeyboard)
+        assertEquals(setOf("en_US", "en_US:AZERTY"), azerty.enabledKeyboards)
+        // A layout of another language only joins the ones to switch between.
+        val withDutch = defaults.copy(enabledKeyboards = setOf("en_US", "nl")).tapLayout("nl:AZERTY", usable)
+        assertEquals("en_US", withDutch.currentKeyboard)
+        assertTrue("nl:AZERTY" in withDutch.enabledKeyboards)
+        // Turning the layout in use off moves to one that is still on, as before.
+        val off = azerty.tapLayout("en_US:AZERTY", usable)
+        assertEquals("en_US", off.currentKeyboard)
+        assertFalse("en_US:AZERTY" in off.enabledKeyboards)
+    }
+
+    @Test
     fun choosingDutchEnablesItAndRemembersItsLayoutAfterReload() {
         val chosen = defaults.selectKeyboard("nl:AZERTY", listOf("en_US", "nl", "nl:AZERTY"))
         assertEquals("nl:AZERTY", chosen.currentKeyboard)

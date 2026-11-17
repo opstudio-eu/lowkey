@@ -175,6 +175,13 @@ fun HomeScreen(
                                 KeyboardSetupState.NOT_SELECTED -> SystemImeStatus.showPicker(context)
                             }
                         }
+                        // The tour needs the keyboard in use: it waits for what you do on it.
+                        if (setup == KeyboardSetupState.READY) {
+                            HorizontalDivider(color = colors.outlineVariant)
+                            HomeShortcut(SlimIcons.Move, "Learn the gestures", "A short tour: move the cursor, select, delete words, dictate") {
+                                navigate(Destination.TOUR)
+                            }
+                        }
                         HorizontalDivider(color = colors.outlineVariant)
                         HomeShortcut(SlimIcons.Globe, "Languages & layouts", AppGraph.currentKeyboard(settings).fullLabel) {
                             navigate(Destination.LANGUAGES)

@@ -47,7 +47,7 @@ internal fun KeyboardTools(state: KeyboardUiState, actions: KeyboardActions) {
                 Tool("Number row", SlimIcons.Keyboard, state.numberRow, status = if (state.numberRow) "On" else "Off") {
                     actions.onSetNumberRow(!state.numberRow)
                 },
-                Tool("Settings", SlimIcons.Settings, tap = actions::onOpenKeyboardSettings)),
+                Tool("Settings", SlimIcons.Settings, tap = actions::onOpenSettings)),
             listOf(
                 Tool(if (state.toolsReturnToMinimized) "Show keyboard" else "Minimize keyboard",
                     if (state.toolsReturnToMinimized) SlimIcons.Keyboard else SlimIcons.ChevronDown) {

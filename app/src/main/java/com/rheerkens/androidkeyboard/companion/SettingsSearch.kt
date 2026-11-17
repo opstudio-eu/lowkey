@@ -18,11 +18,11 @@ data class SettingEntry(
     /** A part of the page the setting is in, such as a tab, added to [location]. */
     val section: String? = null,
 ) {
-    /** Where the setting lives, e.g. "Settings › Keyboard › Typing", for the result's second line. */
+    /** Where the setting lives, e.g. "Settings › Keyboard", for the result's second line. */
     val location: String
         get() = destinationPath(destination)
             // A page result names where the page is; anything on a page names the page.
-            .let { if (highlight || section != null) it else it.dropLast(1) }
+            .let { if (highlight || section != null || title != destination.title) it else it.dropLast(1) }
             .ifEmpty { listOf(destination) }
             .map { it.title }
             .plus(listOfNotNull(section))
@@ -44,25 +44,23 @@ private fun row(title: String, destination: Destination, vararg keywords: String
  */
 val settingsIndex: List<SettingEntry> = listOfNotNull(
     // Keyboard
-    page("Keyboard", Destination.SETTINGS_KEYBOARD, "keys", "size"),
+    page("Keyboard", Destination.SETTINGS_KEYBOARD, "keys", "size", "typing"),
+    row("Auto-capitalize", Destination.SETTINGS_KEYBOARD, "capitals", "capital letters", "uppercase", "sentence case", "shift", "typing"),
+    row("Autocorrect", Destination.SETTINGS_KEYBOARD, "auto-correct", "typos", "spelling", "correction", "spell check", "typing"),
+    row("Suggestion strip", Destination.SETTINGS_KEYBOARD, "word suggestions", "predictions", "next word", "autocomplete", "typing"),
+    row("Learn from my typing", Destination.SETTINGS_KEYBOARD, "learning", "personal", "predict", "next word", "privacy"),
+    row("Forget what Lowkey learned", Destination.SETTINGS_KEYBOARD, "clear learned words", "delete", "reset predictions", "privacy"),
+    row("Number row", Destination.SETTINGS_KEYBOARD, "numbers", "digits", "1-0"),
+    row("Key beside Space", Destination.SETTINGS_KEYBOARD, "emoji key", "globe", "language switch key", "smiley", "spacebar"),
+    row("Vibrate on key press", Destination.SETTINGS_KEYBOARD, "vibration", "haptic", "haptics", "feedback", "buzz", "key feedback"),
     row("Resize and move", Destination.SETTINGS_KEYBOARD, "size", "height", "width", "position", "bigger", "smaller", "one-handed", "floating"),
     row("Split on large screens", Destination.SETTINGS_KEYBOARD, "split keyboard", "tablet", "foldable"),
     row("Reset size and position", Destination.SETTINGS_KEYBOARD, "default size", "restore"),
-    row("Number row", Destination.SETTINGS_KEYBOARD, "numbers", "digits", "1-0"),
-    row("Key beside Space", Destination.SETTINGS_KEYBOARD, "emoji key", "globe", "language switch key", "smiley", "spacebar"),
     row("Show with a physical keyboard", Destination.SETTINGS_KEYBOARD, "hardware keyboard", "bluetooth", "external keyboard", "minimized"),
-    page("Typing", Destination.SETTINGS_TYPING),
-    row("Auto-capitalize", Destination.SETTINGS_TYPING, "capitals", "capital letters", "uppercase", "sentence case", "shift"),
-    row("Autocorrect", Destination.SETTINGS_TYPING, "auto-correct", "typos", "spelling", "correction", "spell check"),
-    row("Suggestion strip", Destination.SETTINGS_TYPING, "word suggestions", "predictions", "next word", "autocomplete"),
-    row("Learn from my typing", Destination.SETTINGS_TYPING, "learning", "personal", "predict", "next word", "privacy"),
-    row("Forget what Lowkey learned", Destination.SETTINGS_TYPING, "clear learned words", "delete", "reset predictions", "privacy"),
-    page("Key feedback", Destination.SETTINGS_CUSTOMIZE),
-    row("Vibrate on key press", Destination.SETTINGS_CUSTOMIZE, "vibration", "haptic", "haptics", "feedback", "buzz"),
     // Languages
-    page("Keyboard languages", Destination.LANGUAGES, "languages & layouts", "add a language", "download", "remove", "word list", "dictionary"),
-    page("Keyboard layouts", Destination.SETTINGS_KEYBOARDS, "qwerty", "azerty", "qwertz", "dvorak", "colemak", "switch language"),
-    row("Keyboard in use", Destination.SETTINGS_KEYBOARDS, "current layout", "language", "layout"),
+    page("Languages & layouts", Destination.LANGUAGES, "keyboard languages", "add a language", "download", "remove", "word list", "dictionary"),
+    // The layout chips under the language you type in.
+    row("Layouts", Destination.LANGUAGES, "keyboard layouts", "qwerty", "azerty", "qwertz", "dvorak", "colemak", "switch language", "keyboard in use"),
     // Appearance
     page("Appearance", Destination.SETTINGS_APPEARANCE, "look", "colors", "colours"),
     row("Theme", Destination.SETTINGS_APPEARANCE, "dark mode", "light mode", "night", "dark theme", "system"),
@@ -84,8 +82,9 @@ val settingsIndex: List<SettingEntry> = listOfNotNull(
     row("Magnifier position", Destination.SETTINGS_CLIPBOARD, "loupe", "zoom", "image editor", "draw", "markup"),
     // Voice
     page("Voice typing", Destination.MODELS, "speech recognition", "voice", "microphone", "mic"),
-    page("Speech models", Destination.SPEECH_MODELS, "speech model", "whisper", "download model", "delete model", "change model", "offline"),
-    page("Dictation", Destination.SETTINGS_VOICE, "dictation settings", "voice settings", "speech", "microphone"),
+    page("Speech models", Destination.SPEECH_MODELS, "speech model", "whisper", "download model", "delete model", "change model", "offline",
+        "storage", "space", "free space", "disk"),
+    page("Dictation settings", Destination.SETTINGS_VOICE, "dictation", "voice settings", "speech", "microphone"),
     row("Dictate from the keys", Destination.SETTINGS_VOICE, "keyboard-first", "mic", "microphone", "voice mode"),
     row("Start recording right away", Destination.SETTINGS_VOICE, "auto-start", "autostart", "listen", "voice mode"),
     row("Remember keys or voice", Destination.SETTINGS_VOICE, "last mode", "reopen", "voice mode"),
@@ -93,22 +92,25 @@ val settingsIndex: List<SettingEntry> = listOfNotNull(
     row("Show words as you speak", Destination.SETTINGS_VOICE, "live text", "preview", "provisional", "underline"),
     row("Stop after silence", Destination.SETTINGS_VOICE, "auto stop", "silence", "timeout", "pause"),
     row("Voice language", Destination.SETTINGS_VOICE, "speech language", "dictation language", "same as keyboard"),
-    page("Storage & performance", Destination.SETTINGS_STORAGE, "space", "free space", "disk"),
-    row("Keep model loaded", Destination.SETTINGS_STORAGE, "memory", "ram", "unload", "model memory", "speed", "faster"),
+    row("Keep model loaded", Destination.SETTINGS_VOICE, "memory", "ram", "unload", "model memory", "speed", "faster", "performance"),
     // Dictionary
     page("My words", Destination.DICTIONARY, "dictionary", "personal dictionary", "custom words", "names", "add word"),
     row("Match the spelling of my words", Destination.DICTIONARY, "capitals", "case", "dictation", "spelling").copy(section = "My words"),
     row("Use speech rules", Destination.DICTIONARY, "speech rules", "replace", "phrase", "replacement", "dictation").copy(section = "Speech rules"),
     // App
-    page("Updates", Destination.SETTINGS_UPDATES, "check for updates", "new version", "upgrade", "install update"),
-    // UI Preview builds install updates by hand, so their Updates page has no automatic checks.
-    row("Check for updates automatically", Destination.SETTINGS_UPDATES, "automatic updates", "notifications", "auto update")
-        .takeIf { acceptsReleaseUpdates(BuildConfig.APPLICATION_ID) },
     page("Try it", Destination.TRY_IT, "test", "test typing", "test dictation", "test fields"),
-    page("Diagnostics", Destination.DIAGNOSTICS, "crash reports", "crashes", "voice sessions", "logs", "debug", "bug report"),
+    page("Learn the gestures", Destination.TOUR, "tour", "tutorial", "help", "how to", "tips", "move the cursor", "select text",
+        "delete words", "slide", "swipe", "trackpad"),
+    page("About & updates", Destination.ABOUT, "about", "version", "privacy", "licenses", "open source", "source code", "credits"),
+    // At the top of About & updates.
+    page("Updates", Destination.ABOUT, "check for updates", "new version", "upgrade", "install update"),
+    // UI Preview builds install updates by hand, so they have no automatic checks.
+    row("Check for updates automatically", Destination.ABOUT, "automatic updates", "notifications", "auto update")
+        .takeIf { acceptsReleaseUpdates(BuildConfig.APPLICATION_ID) },
+    // At the end of About & updates.
+    row("Diagnostics", Destination.ABOUT, "crash reports", "crashes", "voice sessions", "logs", "debug", "bug report"),
     // Debug builds only, where the bundled test clips exist.
-    row("Dictation audio", Destination.DIAGNOSTICS, "test clips", "microphone", "emulator").takeIf { BuildConfig.DEBUG },
-    page("About and licenses", Destination.ABOUT, "about", "version", "privacy", "licenses", "open source", "source code", "credits"),
+    row("Dictation audio", Destination.ABOUT, "test clips", "microphone", "emulator").takeIf { BuildConfig.DEBUG },
 )
 
 /** The back stack for a result opened from the Settings search: the results, then the page. */

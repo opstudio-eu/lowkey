@@ -48,7 +48,6 @@ sealed interface WordAim {
 /** The current [WordAim] while Backspace aims into the editor, for the key's bubble. */
 val LocalWordAim = androidx.compose.runtime.compositionLocalOf<WordAim?> { null }
 
-/** Callbacks from the keyboard UI into the input method. */
 /** The editor's own editing commands, offered under Keyboard tools. */
 enum class EditAction(val label: String) {
     SELECT_ALL("Select all"),
@@ -58,9 +57,15 @@ enum class EditAction(val label: String) {
     UNDO("Undo"),
 }
 
+/** Callbacks from the keyboard UI into the input method. */
 interface KeyboardActions {
-    /** Moves the cursor [steps] characters (negative: left), from a slide along Space. */
-    fun onMoveCursor(steps: Int) {}
+    /**
+     * Moves the cursor [chars] characters right and [lines] lines down (negative: left, up), from
+     * a slide that began on Space.
+     */
+    fun onMoveCursor(chars: Int, lines: Int) {}
+    /** A slide from Space began to move the cursor ([active]) or ended. */
+    fun onCursorSlide(active: Boolean) {}
     fun onEditAction(action: EditAction) {}
     fun onCloseEmoji() {}
     fun onChooseEmoji(value: String) {}
@@ -101,8 +106,10 @@ interface KeyboardActions {
     fun onSelectKeyboard(id: String) {}
     /** Long-press on Space opens Android's input-method picker directly. */
     fun onSpaceLongPress()
-    /** Settings, scrolled to the keyboard layouts. */
+    /** The app's page for languages and their layouts. */
     fun onOpenKeyboardSettings()
+    /** The app's Settings tab. */
+    fun onOpenSettings() {}
     fun onSuggestion(suggestion: Suggestion)
     fun onPasteClipboard(content: ClipboardContent)
     fun onPasteHistory(entry: ClipEntry)

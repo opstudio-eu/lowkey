@@ -26,7 +26,11 @@ class SettingsSearchTest {
         assertEquals("Theme", titles("dark mode")[0])
         assertEquals("Vibrate on key press", titles("haptic")[0])
         assertEquals("Keep model loaded", titles("ram")[0])
-        assertTrue("Keyboard layouts" in titles("qwerty"))
+        assertTrue("Layouts" in titles("qwerty"))
+        // Words for pages that became part of another page still find their settings.
+        assertEquals("Vibrate on key press", titles("key feedback")[0])
+        assertTrue("Speech models" in titles("storage"))
+        assertEquals("Learn the gestures", titles("tutorial")[0])
     }
 
     @Test fun everyWordMustMatch() {
@@ -43,10 +47,16 @@ class SettingsSearchTest {
     @Test fun locationNamesThePageOrItsParent() {
         val number = settingsIndex.first { it.title == "Number row" }
         assertEquals("Settings › Keyboard", number.location)
-        val typing = settingsIndex.first { it.title == "Typing" }
-        assertEquals("Settings › Keyboard", typing.location)
+        assertEquals("Settings › Keyboard", settingsIndex.first { it.title == "Autocorrect" }.location)
+        assertEquals("Settings", settingsIndex.first { it.title == "Keyboard" }.location)
+        assertEquals("Home", settingsIndex.first { it.title == "Learn the gestures" }.location)
         val dictation = settingsIndex.first { it.title == "Stop after silence" }
-        assertEquals("Voice › Dictation", dictation.location)
+        assertEquals("Voice › Dictation settings", dictation.location)
+        assertEquals("Voice › Dictation settings", settingsIndex.first { it.title == "Keep model loaded" }.location)
+        // A part of a page names the page it is on.
+        assertEquals("Settings › About & updates", settingsIndex.first { it.title == "Updates" }.location)
+        assertEquals("Settings › About & updates", settingsIndex.first { it.title == "Diagnostics" }.location)
+        assertEquals("Settings › Languages & layouts", settingsIndex.first { it.title == "Layouts" }.location)
         assertEquals("Voice", settingsIndex.first { it.title == "Voice typing" }.location)
         assertEquals("Dictionary › Speech rules", settingsIndex.first { it.title == "Use speech rules" }.location)
     }
@@ -54,7 +64,7 @@ class SettingsSearchTest {
     @Test fun resultsOpenOverTheSettingsTabSoBackReturnsToThem() {
         assertEquals(listOf(Destination.SETTINGS, Destination.SETTINGS_VOICE), searchResultRoute(Destination.SETTINGS_VOICE))
         assertEquals(listOf(Destination.SETTINGS, Destination.DICTIONARY), searchResultRoute(Destination.DICTIONARY))
-        assertEquals(listOf(Destination.SETTINGS, Destination.SETTINGS_TYPING), searchResultRoute(Destination.SETTINGS_TYPING))
+        assertEquals(listOf(Destination.SETTINGS, Destination.SETTINGS_KEYBOARD), searchResultRoute(Destination.SETTINGS_KEYBOARD))
     }
 
     @Test fun titlesAreUnique() {
@@ -64,15 +74,14 @@ class SettingsSearchTest {
 
     private val screens = File("src/main/java/com/rheerkens/androidkeyboard/companion/screens")
 
-    /** The screen file that draws a destination's rows. */
-    private fun screenOf(destination: Destination): String = File(screens, when (destination) {
-        Destination.SETTINGS_UPDATES -> "UpdateCard.kt"
-        Destination.DICTIONARY -> "DictionaryScreen.kt"
-        Destination.DIAGNOSTICS -> "DiagnosticsScreen.kt"
-        Destination.KEYBOARD_THEME -> "KeyboardThemeScreen.kt"
-        Destination.LANGUAGES -> "LanguagesScreen.kt"
-        else -> "SettingsScreen.kt"
-    }).readText()
+    /** The screen files that draw a destination's rows. */
+    private fun screenOf(destination: Destination): String = when (destination) {
+        Destination.ABOUT -> listOf("AboutScreen.kt", "UpdateCard.kt", "DiagnosticsScreen.kt")
+        Destination.DICTIONARY -> listOf("DictionaryScreen.kt")
+        Destination.KEYBOARD_THEME -> listOf("KeyboardThemeScreen.kt")
+        Destination.LANGUAGES -> listOf("LanguagesScreen.kt")
+        else -> listOf("SettingsScreen.kt")
+    }.joinToString("\n") { File(screens, it).readText() }
 
     private val rowCall = Regex("""(SwitchRow|ChoiceDialogRow|ActionRow|LinkRow)\(\s*(?:title\s*=\s*)?"([^"]+)"""")
 
