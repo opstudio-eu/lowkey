@@ -164,6 +164,36 @@ class QualityBenchmark {
         assertTrue(failures.joinToString("\n"), failures.isEmpty())
     }
 
+    /** Dutch compounds the word list lacks, real ones (that it doesn't have) or made of two common words. */
+    private fun compounds(): Pair<List<String>, List<String>> {
+        val dutch = lexicon("nl")
+        val real = REAL_COMPOUNDS.filter { !dutch.contains(it) }
+        val parts = frequent("nl", 3_000).filter { it.length in 4..8 }
+        val random = Random(SEED + 7)
+        val made = LinkedHashSet<String>()
+        while (made.size < ACCENT_SAMPLE) {
+            val word = parts[random.nextInt(parts.size)] + listOf("", "", "s", "en")[random.nextInt(4)] + parts[random.nextInt(parts.size)]
+            if (word.length >= 8 && !dutch.contains(word)) made += word
+        }
+        return real to made.toList()
+    }
+
+    /** Of [words], how many autocorrect leaves alone, and how many it restores after one slip. */
+    private fun compoundResults(words: List<String>): Pair<Int, Int> {
+        val suggester = suggester("nl", emptyList())
+        val slips = Slips(TestLanguages.keyboard("nl"), SEED + 8)
+        var kept = 0; var restored = 0
+        for (word in words) {
+            val asTyped = suggester.autocorrection(word, emptyList(), atSentenceStart = false)
+            if (asTyped == null) kept++
+            val typed = slips.of(word)
+            val fix = suggester.autocorrection(typed, emptyList(), atSentenceStart = false)
+            if (fix == word) restored++
+            record("compound", word, asTyped, typed, fix)
+        }
+        return kept to restored
+    }
+
     /** How many of [words] (correct in some language) autocorrect changes on [keyboard] with [others]. */
     private fun changed(words: List<String>, keyboard: String, others: List<String>): Pair<Int, List<String>> {
         val suggester = suggester(keyboard, others)
@@ -250,6 +280,22 @@ class QualityBenchmark {
             if (pct < minRestored) failures += "$id: accents restored ${f(pct)}% < $minRestored%"
         }
         line()
+        line("Checksum of the results above: ${String.format(Locale.ROOT, "%08x", checksum.value)}.")
+        line()
+        line("## Dutch compounds the word list lacks")
+        line()
+        line("| Compounds | Words | Left alone | Restored after one slip |")
+        line("| --- | ---: | ---: | ---: |")
+        val (real, made) = compounds()
+        for ((name, words, minKept, minRestored) in listOf(
+            listOf("Real", real, MIN_REAL_KEPT, MIN_REAL_RESTORED), listOf("Two common words", made, MIN_MADE_KEPT, MIN_MADE_RESTORED))) {
+            @Suppress("UNCHECKED_CAST") val list = words as List<String>
+            val (kept, restored) = compoundResults(list)
+            line("| $name | ${list.size} | $kept | $restored |")
+            if (100.0 * kept / list.size < minKept as Double) failures += "$name compounds: $kept of ${list.size} left alone"
+            if (100.0 * restored / list.size < minRestored as Double) failures += "$name compounds: $restored of ${list.size} restored"
+        }
+        line()
         line("Checksum of every result: ${String.format(Locale.ROOT, "%08x", checksum.value)}. Run time ${(System.nanoTime() - started) / 1_000_000_000} s.")
         File("build/reports").mkdirs()
         File("build/reports/quality-benchmark.md").writeText(report.toString())
@@ -275,11 +321,11 @@ class QualityBenchmark {
         // About 1.5 points of slack on the results when the benchmark was added (in comments).
         val TYPO_MIXES = listOf(
             TypoMix("en_US", emptyList(), 83.5, 8.5, 90.0), // 85.3, 7.2, 91.8
-            TypoMix("nl", emptyList(), 85.5, 7.0, 91.5), // 87.4, 5.7, 93.1
+            TypoMix("nl", emptyList(), 85.5, 7.0, 91.5), // 87.4, 5.7, 93.1; 87.1 with compounds
             TypoMix("pl", emptyList(), 85.5, 6.5, 92.5), // 87.4, 4.9, 94.1
             TypoMix("en_US", listOf("nl"), 82.0, 9.0, 86.5), // 83.9, 7.4, 88.0
             TypoMix("en_US", listOf("nl", "pl"), 81.5, 9.0, 86.0), // 83.2, 7.4, 87.7
-            TypoMix("nl", listOf("en_US"), 84.5, 7.5, 88.5), // 86.3, 6.1, 90.3
+            TypoMix("nl", listOf("en_US"), 84.5, 7.5, 88.5), // 86.3, 6.1, 90.3; 86.1 with compounds
         )
         const val MAX_CORRECT_CHANGED = 5 // 0
         val SECOND_LANGUAGE = listOf(
@@ -289,5 +335,21 @@ class QualityBenchmark {
             SecondLanguage("en_US", "nl", listOf("en_US"), 5), // 1
         )
         val ACCENT_LANGUAGES = listOf("nl" to 94.0, "pl" to 85.0) // 96.2, 87.4
+        /** Thresholds in percent of the compounds; when added 13 of 13 and 6 of 13 real, 500 and 318 of 500 made. */
+        const val MIN_REAL_KEPT = 90.0
+        const val MIN_REAL_RESTORED = 30.0
+        const val MIN_MADE_KEPT = 99.0
+        const val MIN_MADE_RESTORED = 60.0
+        /** Everyday Dutch compounds; the ones the word list has are left out. */
+        val REAL_COMPOUNDS = listOf(
+            "toetsenbordinstellingen", "klembordgeschiedenis", "thuiswerkdag", "laadpaal", "spraakherkenning",
+            "wachtwoordbeheerder", "oplaadkabel", "vakantiefoto", "verjaardagsfeest", "fietsenstalling",
+            "schermafbeelding", "telefoonnummer", "boodschappenlijst", "werkoverleg", "zwemles",
+            "voetbaltraining", "ouderavond", "treinkaartje", "parkeerplaats", "koffiezetapparaat",
+            "zonnepaneel", "warmtepomp", "energierekening", "sleutelbos", "regenjas",
+            "fietsband", "nieuwsbrief", "klantenservice", "softwareupdate", "projectleider",
+            "taakverdeling", "weekplanning", "werkruimte", "spellingcontrole", "woordvoorspelling",
+            "toetsenbordindeling", "typefout", "zoekbalk", "berichtenapp", "beltegoed",
+        )
     }
 }

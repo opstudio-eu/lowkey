@@ -23,6 +23,26 @@ object TypingProbeConfig {
 
     @JvmStatic fun restore(before: Settings) { AppGraph.settings.update { before } }
 
+    /** The Dutch keyboard alone. Dutch must be downloaded. */
+    @JvmStatic fun configureDutch(): Settings {
+        val before = AppGraph.settings.current
+        check(AppGraph.languagePacks.isInstalled(AppGraph.languages["nl"]!!)) { "Download Dutch on the device first" }
+        AppGraph.settings.update {
+            it.copy(autocorrect = true, suggestionStrip = true, autoCapitalize = true, enabledKeyboards = setOf("nl"), currentKeyboard = "nl")
+        }
+        return before
+    }
+
+    /** Waits until Dutch's full word list is loaded. */
+    @JvmStatic fun awaitDutch() {
+        val language = AppGraph.languages["nl"]!!
+        val deadline = android.os.SystemClock.uptimeMillis() + 60_000
+        while (AppGraph.lexicon(language).size < 100_000) {
+            check(android.os.SystemClock.uptimeMillis() < deadline) { "Full Dutch dictionary not ready" }
+            android.os.SystemClock.sleep(100)
+        }
+    }
+
     @JvmStatic fun awaitDictionary() {
         val language = AppGraph.currentLanguage(AppGraph.settings.current)
         val deadline = android.os.SystemClock.uptimeMillis() + 60_000

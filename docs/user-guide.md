@@ -20,7 +20,7 @@ English (US) is built in. Dutch, Polish, English (UK), German, French, Spanish, 
 
 Tap a language's name to switch to it. Lowkey remembers the choice and turns the language on if needed. Turn a language's switch off to remove all its layouts from the keyboard switcher. **English (US) can also be turned off**; its bundled word list stays on the phone. Keep at least one language on. The trash icon beside a downloaded language deletes its word list after confirmation. If it is your last active language, turn on another language first.
 
-Each language has its own suggestions, autocorrect, layout and accents. Words typed without their accents get them back (`zolw` becomes `żółw`, `konnen` becomes `können`), and suggestions ignore missing accents. Polish also restores the accents of common words such as `juz` → `już`, and German capitalizes nouns typed in lowercase (`zeit` → `Zeit`).
+Each language has its own suggestions, autocorrect, layout and accents. Words typed without their accents get them back (`zolw` becomes `żółw`, `konnen` becomes `können`), and suggestions ignore missing accents. Polish also restores the accents of common words such as `juz` → `już`, and German capitalizes nouns typed in lowercase (`zeit` → `Zeit`). In Dutch, two common words written as one, with or without a linking `s`, `e` or `en`, count as a word even when the word list lacks the compound (`thuiswerkdag`, `verjaardagsfeest`), and a slip in one of its parts is repaired (`toetsenbrodinstellingen` → `toetsenbordinstellingen`).
 
 To dictate in the language you type in, set **Voice → Dictation settings → Voice language** to **Same as keyboard**. Switching languages then reloads the speech model in the new language.
 

@@ -135,6 +135,9 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
         }
         // Preserve language-specific casing/accent rules for known words in the active language.
         if (primaryRule == Corrector.Rule.Keep && lex.contains(word)) return null
+        // Two common words written as one (Dutch `thuiswerkdag`) are a word, though not in the list,
+        // unless a common whole word is very close: `onderwerk` is a slip of `onderwerp`.
+        val compound = (listOf(lex) + secondary).any { Compounds.isCompound(word, it) }
         val fixes = (listOf(lex) + secondary).mapNotNull { language ->
             checkActive()
             if (search) {
@@ -147,7 +150,11 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
             }
         }
         // Without the search a sure fix still wins over any found later; anything else is unsure.
-        return pick(if (search) fixes else fixes.filter { it.certain })
+        if (!search) return pick(fixes.filter { it.certain })
+        if (compound) return pick(fixes.filter { it.certain || it.score >= COMPOUND_OVERRIDE })
+        if (fixes.isNotEmpty()) return pick(fixes)
+        // No whole word is close: a slip in one part of a compound (`toetsenbrodinstellingen`).
+        return pick((listOf(lex) + secondary).mapNotNull { language -> Compounds.repair(word, language, keys, checkActive) })
     }
 
     /**
@@ -173,6 +180,13 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
          * in the keyboard's language: Polish `im` (159) stays, the Dutch list's `im` (119) doesn't.
          */
         private const val RARE_IN_OTHER_LANGUAGE = 128
+
+        /**
+         * Score a whole-word fix needs to win over reading the word as a compound. Up to 2 every
+         * swapped-letter slip of a long Dutch word was still fixed and no compound of two common
+         * words was changed; higher, slips start to be read as compounds.
+         */
+        private const val COMPOUND_OVERRIDE = 2.0
 
         /** Score lead a spelling fix needs over a different one from another language. */
         private const val LANGUAGE_MARGIN = 1.0
