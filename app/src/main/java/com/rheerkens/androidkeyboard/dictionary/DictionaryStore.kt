@@ -67,6 +67,13 @@ class DictionaryStore(context: Context, private val clock: () -> Long = System::
 
     fun deleteRule(id: Long) = mutate { s -> s.copy(rules = s.rules.filterNot { it.id == id }) }
 
+    /** Adds a backup's terms and rules that aren't saved yet; returns how many terms and rules were added. */
+    fun import(terms: List<PersonalTerm>, rules: List<PhraseRule>): Pair<Int, Int> {
+        var added = 0 to 0
+        mutate { s -> s.withImported(terms, rules, nextId()).also { added = it.second to it.third }.first }
+        return added
+    }
+
     private fun nextId(): Long {
         val s = _state.value
         return maxOf(s.terms.maxOfOrNull { it.id } ?: 0, s.rules.maxOfOrNull { it.id } ?: 0) + 1
@@ -131,8 +138,9 @@ class DictionaryStore(context: Context, private val clock: () -> Long = System::
         return DictionaryState(terms, rules)
     }
 
-    private companion object {
-        const val KEY = "dictionary_v1"
+    companion object {
+        private const val KEY = "dictionary_v1"
+        /** Longest saved term, in characters. */
         const val MAX_TERM_LENGTH = 48
     }
 }

@@ -42,6 +42,13 @@ public final class KeyboardTouchProbe extends Instrumentation {
                 runOnMainSync(() -> savedSettings = TypingProbeConfig.configure());
                 TypingProbeConfig.awaitDictionary();
             }
+            if (arguments.getString("probe", "burst").equals("backup")) {
+                String[] report = new String[1];
+                runOnMainSync(() -> report[0] = TypingProbeConfig.backupRoundTrip(getTargetContext()));
+                result.putString("stream", "probe=backup " + report[0] + "\n");
+                finish(0, result);
+                return;
+            }
             if (arguments.getString("probe", "burst").equals("registration")) { registration(result); return; }
             if (arguments.getString("probe", "burst").equals("correction")) { correctionBudget(result); return; }
             if (arguments.getString("probe", "burst").equals("blur")) { blur(result); return; }

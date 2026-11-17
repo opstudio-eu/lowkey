@@ -25,3 +25,27 @@ data class DictionaryState(
     val terms: List<PersonalTerm> = emptyList(),
     val rules: List<PhraseRule> = emptyList(),
 )
+
+/**
+ * [this] with the [terms] and [rules] of a backup added, skipping blank or too long ones and
+ * ones already saved (the same term, or the same spoken and written text). New entries get ids
+ * from [firstId] on; terms keep when they were added. Returns the result and how many terms and
+ * rules were added.
+ */
+fun DictionaryState.withImported(terms: List<PersonalTerm>, rules: List<PhraseRule>, firstId: Long): Triple<DictionaryState, Int, Int> {
+    var id = firstId
+    val newTerms = ArrayList(this.terms)
+    for (term in terms) {
+        val text = term.text.trim()
+        if (text.isEmpty() || text.length > DictionaryStore.MAX_TERM_LENGTH || newTerms.any { it.text == text }) continue
+        newTerms += PersonalTerm(id++, text, term.addedAt)
+    }
+    val newRules = ArrayList(this.rules)
+    for (rule in rules) {
+        val spoken = rule.spoken.trim()
+        val written = rule.written.trim()
+        if (spoken.isEmpty() || written.isEmpty() || newRules.any { it.spoken == spoken && it.written == written }) continue
+        newRules += PhraseRule(id++, spoken, written, rule.enabled)
+    }
+    return Triple(DictionaryState(newTerms, newRules), newTerms.size - this.terms.size, newRules.size - this.rules.size)
+}

@@ -34,6 +34,31 @@ class SettingsStore(context: Context) {
 
     private val lock = Any()
 
+    /** Every stored setting as SharedPreferences holds it, for a backup. */
+    fun exportValues(): Map<String, Any> = synchronized(lock) { prefs.all.filterValues { it != null }.mapValues { it.value!! } }
+
+    /**
+     * Replaces the stored settings with a backup's [values] (Boolean, Int, Long, Float, String
+     * or a set of strings) and loads them, as if the app had started with them.
+     */
+    fun importValues(values: Map<String, Any>) = synchronized(lock) {
+        prefs.edit(commit = true) {
+            clear()
+            for ((key, value) in values) {
+                @Suppress("UNCHECKED_CAST")
+                when (value) {
+                    is Boolean -> putBoolean(key, value)
+                    is Int -> putInt(key, value)
+                    is Long -> putLong(key, value)
+                    is Float -> putFloat(key, value)
+                    is String -> putString(key, value)
+                    is Set<*> -> putStringSet(key, value.filterIsInstance<String>().toSet())
+                }
+            }
+        }
+        _settings.value = load()
+    }
+
     private fun load(): Settings {
         val d = Settings()
         // Before keyboards had arrangements, only languages were stored (always QWERTY).
