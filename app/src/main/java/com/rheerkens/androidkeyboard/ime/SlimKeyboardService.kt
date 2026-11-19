@@ -97,6 +97,7 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
@@ -114,7 +115,6 @@ import com.rheerkens.androidkeyboard.BuildConfig
 import com.rheerkens.androidkeyboard.ai.ImageApi
 import com.rheerkens.androidkeyboard.ai.ImageGenerator
 import com.rheerkens.androidkeyboard.ai.ImageJob
-import com.rheerkens.androidkeyboard.ai.ImageQuality
 import com.rheerkens.androidkeyboard.ai.ImageReply
 import com.rheerkens.androidkeyboard.ai.imageJob
 import com.rheerkens.androidkeyboard.ai.saveToGallery
@@ -124,18 +124,21 @@ import com.rheerkens.androidkeyboard.ai.AiAction
 import com.rheerkens.androidkeyboard.ai.AiTask
 import com.rheerkens.androidkeyboard.keyboard.ui.AiFailure
 import com.rheerkens.androidkeyboard.ai.MAX_AI_TASKS
-import com.rheerkens.androidkeyboard.ai.AiConnection
 import com.rheerkens.androidkeyboard.ai.AiService
 import com.rheerkens.androidkeyboard.ai.AiSetup
 import com.rheerkens.androidkeyboard.ai.Secret
 import com.rheerkens.androidkeyboard.ai.mayReplaceClip
+import com.rheerkens.androidkeyboard.ai.AiComposerHost
+import com.rheerkens.androidkeyboard.ai.AiComposerLink
+import com.rheerkens.androidkeyboard.ai.AiPromptActivity
+import com.rheerkens.androidkeyboard.ai.aiSetupOf
 
 /**
  * Slim Keyboard input method: keys mode with suggestions, and a one-row voice mode with an
  * in-keyboard model picker, backed by the (fake) speech engine. UI is Compose hosted in the
  * IME window.
  */
-class SlimKeyboardService : InputMethodService(), KeyboardActions {
+class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHost {
     private val owner = ImeLifecycleOwner()
     private val scope = MainScope()
     private val settings get() = AppGraph.settings
@@ -222,16 +225,6 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             if (inputViewActive) refreshScreenshots()
         }
     }
-    /** An AI action's prompt while it is open: the keys type into it instead of the editor. */
-    private val aiPrompt = MutableStateFlow<String?>(null)
-    /** The action [aiPrompt] is for. */
-    private var aiPromptAction = AiAction.CREATE_IMAGE
-    /** The defaults chip's choices are open in place of the keys. */
-    private val aiOptionsOpen = MutableStateFlow(false)
-    /** Where typing goes in the prompt: a character index, moved by a tap on the prompt or the pointing stick. */
-    private val aiCursor = MutableStateFlow(0)
-    /** Dictated words still being heard for the prompt. */
-    private val aiPromptProvisional = MutableStateFlow("")
     /** The image that just finished, offered with Insert above the strip. */
     private val aiReady = MutableStateFlow<AiReady?>(null)
     /** A key or token the service refused, with the saved hint it had then: until it changes, setup says so. */
@@ -256,14 +249,22 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         var job: Job? = null)
     /** When Lowkey last put a created image on the system clipboard ([ClipDescription] time), or 0. */
     private var lastOwnClipAt = 0L
-    /** Physical keys whose press went into the AI prompt: their repeats and release are swallowed too. */
-    private val promptHardwareKeys = HashSet<Int>()
-    /** The Backspace press under way began while the AI prompt was open: its release is the prompt's. */
-    private var backspaceForPrompt = false
-    /** A dead key (such as ^) typed into the AI prompt, waiting for the letter it accents. */
-    private var promptDeadChar = 0
     /** A prompt that failed, was stopped or was closed unsent, offered again by the next prompt. */
     private var retryPrompt: RetryPrompt? = null
+    /** The focused field is the image prompt window's own ([AiPromptActivity]), not an app's. */
+    private val inAiPrompt = MutableStateFlow(false)
+    /** That field is empty: Create (Enter) shows dimmed. */
+    private val aiPromptEmpty = MutableStateFlow(true)
+    /** The app's field the prompt window was opened from, where its image goes. */
+    private var composerEditor: String? = null
+    /**
+     * A card (or a note) for [composerEditor] that came while the prompt window had the keys; it shows
+     * once that field is back.
+     */
+    private var pendingAiCard: PendingAiCard? = null
+
+    private class PendingAiCard(val editor: String?, val ready: AiReady? = null, val failure: AiFailure? = null,
+        val note: String? = null)
 
     /** Words to offer again, only in the field ([editor], `EditorBridge.editorKey`) they were typed for. */
     private data class RetryPrompt(val editor: String?, val text: String)
@@ -319,6 +320,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         super.onCreate()
         AppGraph.init(this)
         owner.onCreate()
+        AiComposerLink.host = this
         bridge = EditorBridge { currentInputConnection }
         clipboardManager = getSystemService(ClipboardManager::class.java)
         clipboardReader = ClipboardReader(contentResolver)
@@ -346,7 +348,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         voice = VoiceSessionController(
             scope = scope,
             engine = AppGraph.speechEngine,
-            sink = routedVoiceSink,
+            sink = voiceSink,
             config = ::voiceConfig,
             readiness = ::voiceReadiness,
             clock = System::currentTimeMillis,
@@ -358,8 +360,6 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         mode.value = initialMode()
         pickerOpen.onEach(::updatePickerBack).launchIn(scope)
         emojiOpen.onEach(::updateEmojiBack).launchIn(scope)
-        aiPrompt.onEach { updatePromptBack(it != null) }.launchIn(scope)
-        aiOptionsOpen.onEach(::updateAiOptionsBack).launchIn(scope)
         // Refresh suggestions when the dictionary changes; readiness when models change.
         dictionary.state.drop(1).onEach { refreshStrip() }.launchIn(scope)
         // Follow keyboards changed in Settings while the keyboard is open (e.g. the current one
@@ -417,10 +417,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                 val session by shownSession.collectAsState()
                 val once by keyboardOnce.collectAsState()
                 val fan by fanSpec.collectAsState()
-                val prompt by aiPrompt.collectAsState()
-                val options by aiOptionsOpen.collectAsState()
-                val provisional by aiPromptProvisional.collectAsState()
-                val cursor by aiCursor.collectAsState()
+                val inPrompt by inAiPrompt.collectAsState()
+                val promptEmpty by aiPromptEmpty.collectAsState()
                 val ready by aiReady.collectAsState()
                 val failure by aiFailure.collectAsState()
                 val savedSecrets by AppGraph.secrets.saved.collectAsState()
@@ -468,7 +466,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                         voice = vs,
                         models = models,
                         pickerOpen = picker && m == InputMode.VOICE,
-                        enterKind = prompt?.let { promptEnterKind(aiSetup(s, savedSecrets, refused), it) } ?: ek,
+                        // In the image prompt window, Enter is its Create button.
+                        enterKind = if (inPrompt) promptEnterKind(aiSetup(s, savedSecrets, refused), promptEmpty) else ek,
                         rowHeightDp = s.keyboardHeight.rowHeightDp,
                         colors = colors,
                         background = background,
@@ -491,29 +490,13 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                         wordAim = aim,
                         keyboards = keyboards,
                         ai = run {
-                            val available = s.aiKeyboard && !sensitive && kb.pad == null
-                            // The composer stays while dictating into it (voice mode).
-                            val composing = available && prompt != null
+                            // Not in the prompt window itself: its own box shows what is running.
+                            val available = s.aiKeyboard && !sensitive && kb.pad == null && !inPrompt
                             AiUi(
                                 available = available,
-                                promptAction = aiPromptAction.takeIf { composing },
-                                prompt = prompt.orEmpty(),
-                                cursor = cursor,
-                                provisional = if (composing) provisional else "",
-                                optionsOpen = options && composing && m == InputMode.KEYS,
                                 tasks = tasks,
                                 ready = ready.takeIf { available },
                                 failure = failure.takeIf { available },
-                                // Notes (a failure, the limit) show in the composer, which covers the strip's.
-                                note = st.note.takeIf { composing },
-                                dictating = composing && routedVoiceSink.intoPrompt &&
-                                    (vs is VoiceState.Listening || vs is VoiceState.Finalizing),
-                                service = s.aiService,
-                                imageModel = s.imageModel,
-                                imageQuality = s.imageQuality,
-                                serverModel = s.imageServerModel,
-                                setup = aiSetup(s, savedSecrets, refused),
-                                serverHost = serverHost(s),
                             )
                         },
                     ),
@@ -574,12 +557,6 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
 
     override fun onMoveCursor(chars: Int, lines: Int) {
         if (!inputViewActive) return
-        if (aiPrompt.value != null) {
-            if (movePromptCursor(chars) && settings.current.vibrateOnKeyPress) {
-                composeView?.performHapticFeedback(HapticFeedbackConstants.TEXT_HANDLE_MOVE)
-            }
-            return
-        }
         clearNote()
         lastCorrection = null
         autoSpaced = false
@@ -593,7 +570,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     override fun onCursorSlide(active: Boolean) {
         // Shift tapped just before the slide: select instead of only moving, for this slide.
         slideSelects = active && keyboard.shiftTapped
-        if (!active && inputViewActive && aiPrompt.value == null) {
+        if (!active && inputViewActive) {
             updateShift()
             refreshStrip()
         }
@@ -601,8 +578,6 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
 
     override fun onEditAction(action: EditAction) {
         if (!inputViewActive) return
-        closeAiPrompt()
-        closeAiOptions()
         clearNote()
         lastCorrection = null
         autoSpaced = false
@@ -614,8 +589,6 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onPrepareResize() {
-        closeAiPrompt()
-        closeAiOptions()
         voice.cancel(CancelReason.SWITCHED_TO_KEYS)
         mode.value = InputMode.KEYS
         pickerOpen.value = false
@@ -774,24 +747,18 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         placementBounds = null
         expectedEchoes.clear()
         inputSession.value++
+        inAiPrompt.value = AiComposerLink.isPromptField(info, packageName)
+        if (inAiPrompt.value) aiPromptEmpty.value = editorEmpty()
         bridge.editorKey().let { editor ->
             if (editor == null || editor != shownEditor) {
                 shownSession.value++
-                // Another field: the AI prompt was meant for the last one, and its words don't follow
-                // into this field; they come back only there (a trip to Settings to add a key keeps them).
-                closeAiPrompt(retryEditor = shownEditor)
-                closeAiOptions()
+                // Another field: a card was about the last one.
                 clearAiCards()
             }
             shownEditor = editor
         }
         // A web page that sends a message may restart the field instead of moving its cursor.
         retireAiCardOnSend()
-        // The minimized bar (also when a physical keyboard connects) has no room for either.
-        if (bridge.isSensitiveField || bridge.numberPad != null || isMinimized()) {
-            closeAiPrompt()
-            aiOptionsOpen.value = false
-        }
         // A restart keeps the session only if it's still the same editor at the owned position;
         // otherwise (another field in the same view) the old capture must never write here.
         val keepSession = restarting && voice.currentSessionId != null &&
@@ -827,6 +794,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         refreshClipboard()
         recordClipboard(changed = false)
         refreshScreenshots()
+        showPendingAiCard()
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
@@ -845,8 +813,6 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         pickerOpen.value = false
         emojiOpen.value = false
         clearPrompt()
-        closeAiPrompt()
-        closeAiOptions()
         clearAiCards()
         owner.onHide()
         super.onFinishInputView(finishingInput)
@@ -860,12 +826,11 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         selStart = newSelStart
         selEnd = newSelEnd
         if (inputViewActive) retireAiCardOnSend()
+        if (inputViewActive && inAiPrompt.value) aiPromptEmpty.value = editorEmpty()
         if (voice.currentSessionId == null) {
             // In either mode, an update outside a session settles our earlier writes.
             voiceSink.ownership.observedIdle()
-        } else if (!routedVoiceSink.intoPrompt &&
-            !voiceSink.ownership.owns(newSelStart, newSelEnd, candidatesStart, candidatesEnd)) {
-            // (A dictation into the AI prompt doesn't depend on the app's cursor: tapping the app's field is fine.)
+        } else if (!voiceSink.ownership.owns(newSelStart, newSelEnd, candidatesStart, candidatesEnd)) {
             // The cursor must stay where dictation started (or at the end of its composing text).
             // Any other move cancels, so late results can't land where the user didn't expect.
             voice.cancel(CancelReason.CURSOR_MOVED)
@@ -889,6 +854,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onDestroy() {
+        if (AiComposerLink.host === this) AiComposerLink.host = null
         aiRuns.values.forEach { it.generator.cancel() }
         clipboardManager.removePrimaryClipChangedListener(clipboardListener)
         contentResolver.unregisterContentObserver(mediaObserver)
@@ -907,26 +873,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         }
     }
 
-    override fun onPromptPasteHistory(entry: ClipEntry) {
-        if (aiPrompt.value == null) return
-        onPasteHistory(entry)
-    }
-
-    override fun onPromptMoveCursor(chars: Int, lines: Int) {
-        if (aiPrompt.value == null) return
-        onMoveCursor(chars, lines)
-    }
-
-    override fun onPromptKey(key: Key) {
-        // Released after the prompt closed: it was the prompt's, so the app doesn't get it.
-        if (aiPrompt.value == null) return
-        onKey(key)
-    }
-
     override fun onKey(key: Key) {
-        // The prompt only takes keys while the feature is on and the field may have it.
-        if (aiPrompt.value != null && (!settings.current.aiKeyboard || bridge.isSensitiveField)) closeAiPrompt()
-        if (aiPrompt.value != null && typeIntoAiPrompt(key)) return
         if (key !is Key.Space) doubleSpacePeriod.reset()
         if (key !is Key.Emoji) emojiOpen.value = false
         clearPrompt()
@@ -960,15 +907,6 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onBackspace() {
-        if (aiPrompt.value != null) {
-            deleteFromAiPrompt()
-            return
-        }
-        // Held while another finger closed the prompt: it was meant for the prompt, not the app.
-        if (backspaceForPrompt) {
-            backspaceForPrompt = false
-            return
-        }
         doubleSpacePeriod.reset()
         clearNote()
         markOwnEdit()
@@ -990,13 +928,10 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onBackspaceHoldStarted() {
-        // Holding Backspace over the AI prompt deletes nothing in the editor.
-        backspaceForPrompt = aiPrompt.value != null
-        backspaceTarget = if (backspaceForPrompt) null else bridge.captureTarget()
+        backspaceTarget = bridge.captureTarget()
     }
 
     override fun onBackspaceHoldEnded() {
-        backspaceForPrompt = false
         backspaceTarget = null
         scrub = null
         endWordAim()
@@ -1172,8 +1107,6 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onFanCommand(command: FanCommand) {
-        // The fan acts on the app; while an AI prompt is open, keys belong to the prompt.
-        if (aiPrompt.value != null) return
         clearPrompt()
         when (command) {
             FanCommand.WORDS -> Unit
@@ -1288,10 +1221,6 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
 
     override fun onChooseEmoji(value: String) {
         if (!inputViewActive || !emojiOpen.value || emojiCatalog.value?.find(value) == null) return
-        if (aiPrompt.value != null) {
-            insertIntoPrompt(value)
-            return
-        }
         clearPrompt()
         clearNote()
         lastCorrection = null
@@ -1312,8 +1241,6 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onSuggestion(suggestion: Suggestion) {
-        // The AI prompt replaced the strip: a chip released just after ✨ was meant for neither.
-        if (aiPrompt.value != null) return
         doubleSpacePeriod.reset()
         if (suggestion.emojiName != null) {
             if (!inputViewActive || bridge.isSensitiveField || !settings.current.suggestionStrip) return
@@ -1352,7 +1279,6 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onPasteClipboard(content: ClipboardContent) {
-        if (aiPrompt.value != null) return
         if (!inputViewActive || mode.value != InputMode.KEYS || bridge.isSensitiveField ||
             !settings.current.suggestionStrip || bridge.currentWordBeforeCursor().isNotEmpty() ||
             strip.value.clipboard != content) return
@@ -1384,13 +1310,6 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onPasteHistory(entry: ClipEntry) {
-        if (aiPrompt.value != null) {
-            // While composing, a copied text goes into the prompt at its cursor; images stay out of it.
-            if (entry is ClipEntry.Text && clipChips.value.any { it.entry == entry }) {
-                insertWordsIntoPrompt(entry.text.replace(Regex("\\s+"), " ").trim())
-            }
-            return
-        }
         if (!inputViewActive || bridge.isSensitiveField || clipChips.value.none { it.entry == entry }) return
         val target = bridge.captureTarget() ?: return
         if (entry is ClipEntry.Screenshot) {
@@ -1474,8 +1393,6 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
 
     override fun onToggleMode() {
         clearPrompt()
-        // The prompt stays open: the mic dictates into it.
-        closeAiOptions()
         pickerOpen.value = false
         emojiOpen.value = false
         if (mode.value == InputMode.KEYS) {
@@ -1499,8 +1416,6 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onSetMinimized(minimized: Boolean) {
-        closeAiPrompt()
-        closeAiOptions()
         keyboardOnce.value = false
         emojiOpen.value = false
         clearPrompt()
@@ -1527,8 +1442,6 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     }
 
     override fun onOpenVoicePicker() {
-        closeAiPrompt()
-        closeAiOptions()
         if (bridge.isSensitiveField) {
             showNote(SENSITIVE_NOTE, warn = true)
             return
@@ -1610,39 +1523,6 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         }
     }
 
-    private var promptBackCallback: Any? = null
-    private var aiOptionsBackCallback: Any? = null
-
-    /** Back closes the defaults chip's choices instead of the keyboard (Android 13+, like emoji). */
-    private fun updateAiOptionsBack(open: Boolean) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
-        val dispatcher = window.onBackInvokedDispatcher
-        val current = aiOptionsBackCallback as OnBackInvokedCallback?
-        if (open && current == null) {
-            val cb = OnBackInvokedCallback { closeAiOptions() }
-            dispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, cb)
-            aiOptionsBackCallback = cb
-        } else if (!open && current != null) {
-            dispatcher.unregisterOnBackInvokedCallback(current)
-            aiOptionsBackCallback = null
-        }
-    }
-
-    /** Back closes the AI prompt instead of the keyboard (Android 13+, like emoji). */
-    private fun updatePromptBack(open: Boolean) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
-        val dispatcher = window.onBackInvokedDispatcher
-        val current = promptBackCallback as OnBackInvokedCallback?
-        if (open && current == null) {
-            val cb = OnBackInvokedCallback { closeAiPrompt() }
-            dispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, cb)
-            promptBackCallback = cb
-        } else if (!open && current != null) {
-            dispatcher.unregisterOnBackInvokedCallback(current)
-            promptBackCallback = null
-        }
-    }
-
     private fun updatePickerBack(open: Boolean) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
         val dispatcher = window.onBackInvokedDispatcher
@@ -1661,39 +1541,11 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
 
     /** Back closes our panels before it closes the keyboard; Android owns its keyboard picker. */
     private fun backClosesPanel() =
-        (pickerOpen.value || emojiOpen.value || layoutBackHandler != null || menuBackHandler != null ||
-            aiPrompt.value != null || aiOptionsOpen.value) && isInputViewShown
+        (pickerOpen.value || emojiOpen.value || layoutBackHandler != null || menuBackHandler != null) && isInputViewShown
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         if (keyCode == KeyEvent.KEYCODE_BACK && backClosesPanel()) {
             event.startTracking()
-            return true
-        }
-        // Repeats of a key the prompt took (Enter closes it on the first press) stay out of the app.
-        if (keyCode in promptHardwareKeys) {
-            // Repeats after the prompt closed (Enter closes it) stay out of the app; while it is
-            // open they type on, below. A fresh press means its last release never arrived.
-            if (event.repeatCount > 0 && aiPrompt.value == null) return true
-            if (event.repeatCount == 0) promptHardwareKeys -= keyCode
-        }
-        if (promptTakesHardwareKey(keyCode, event)) {
-            promptHardwareKeys += keyCode
-            if (event.isCtrlPressed || event.isMetaPressed) {
-                // Shortcuts act on the prompt, never on the app behind it: paste and create work,
-                // the rest (select all, undo, …) do nothing here.
-                when (keyCode) {
-                    KeyEvent.KEYCODE_V -> if (event.repeatCount == 0) pasteTextIntoPrompt()
-                    KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> if (event.repeatCount == 0) onAiPromptSubmit()
-                }
-                return true
-            }
-            when (keyCode) {
-                KeyEvent.KEYCODE_FORWARD_DEL -> Unit
-                KeyEvent.KEYCODE_ESCAPE -> closeAiPrompt()
-                KeyEvent.KEYCODE_DEL -> deleteFromAiPrompt()
-                KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> onAiPromptSubmit()
-                else -> typeHardwareCharIntoPrompt(event.getUnicodeChar(event.metaState))
-            }
             return true
         }
         return super.onKeyDown(keyCode, event)
@@ -1702,16 +1554,6 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
         if (keyCode == KeyEvent.KEYCODE_BACK && backClosesPanel()) {
             if (!event.isCanceled) {
-                if (aiOptionsOpen.value) {
-                    closeAiOptions()
-                    return true
-                }
-                // A panel over the prompt (emoji) closes first, back to typing the prompt.
-                if (aiPrompt.value != null && !pickerOpen.value && !emojiOpen.value &&
-                    layoutBackHandler == null && menuBackHandler == null) {
-                    closeAiPrompt()
-                    return true
-                }
                 menuBackHandler?.let { it(); return true }
                 layoutBackHandler?.invoke()
                 pickerOpen.value = false
@@ -1719,100 +1561,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             }
             return true
         }
-        if (promptHardwareKeys.remove(keyCode)) return true
         return super.onKeyUp(keyCode, event)
-    }
-
-    /**
-     * A physical keyboard types into the open image prompt too: printable keys (also with AltGr, and
-     * dead accents), Backspace and Enter; Ctrl or Meta shortcuts never reach the app meanwhile (Ctrl+V
-     * pastes text into the prompt). Navigation keys and Tab still go to the app.
-     */
-    private fun promptTakesHardwareKey(keyCode: Int, event: KeyEvent): Boolean {
-        if (aiPrompt.value == null || !isInputViewShown) return false
-        if (!settings.current.aiKeyboard || bridge.isSensitiveField || isMinimized()) {
-            closeAiPrompt()
-            return false
-        }
-        // Ctrl and Meta shortcuts, and Forward Delete, are the prompt's too (see onKeyDown). Alt
-        // (AltGr) types characters such as € or @, so it counts as typing below.
-        if (event.isCtrlPressed || event.isMetaPressed || keyCode == KeyEvent.KEYCODE_FORWARD_DEL) return true
-        // Dead keys (accents) have the combining bit set, so they count too; control characters
-        // (Tab) go to the app, and Escape closes the prompt.
-        val char = event.getUnicodeChar(event.metaState)
-        return keyCode == KeyEvent.KEYCODE_DEL || keyCode == KeyEvent.KEYCODE_ENTER ||
-            keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER || keyCode == KeyEvent.KEYCODE_ESCAPE ||
-            char < 0 || char >= ' '.code && char != 0x7F
-    }
-
-    /** Ctrl+V while the AI prompt is open: the clipboard's text, on one line, into the prompt. */
-    private fun pasteTextIntoPrompt() {
-        if (aiPrompt.value == null) return
-        val text = try {
-            clipboardManager.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString()
-        } catch (_: RuntimeException) {
-            null
-        } ?: return
-        insertIntoPrompt(text.replace(Regex("\\s+"), " "))
-    }
-
-    /** A physical key's character into the prompt, combining a dead accent with the letter after it. */
-    private fun typeHardwareCharIntoPrompt(unicode: Int) {
-        if (aiPrompt.value == null) return
-        if (unicode and android.view.KeyCharacterMap.COMBINING_ACCENT != 0) {
-            promptDeadChar = unicode and android.view.KeyCharacterMap.COMBINING_ACCENT_MASK
-            return
-        }
-        val accent = promptDeadChar
-        promptDeadChar = 0
-        val combined = if (accent != 0) KeyEvent.getDeadChar(accent, unicode).takeIf { it != 0 } else null
-        val text = combined?.let { String(Character.toChars(it)) }
-            ?: ((if (accent != 0) String(Character.toChars(accent)) else "") + String(Character.toChars(unicode)))
-        insertIntoPrompt(text)
-    }
-
-    /** [text] into the prompt at its cursor, which moves past it; the prompt keeps to its length limit. */
-    private fun insertIntoPrompt(text: String) {
-        val prompt = aiPrompt.value ?: return
-        val at = aiCursor.value.coerceIn(0, prompt.length)
-        val add = text.take((ImageApi.MAX_PROMPT_CHARS - prompt.length).coerceAtLeast(0))
-        if (add.isEmpty()) return
-        aiPrompt.value = prompt.substring(0, at) + add + prompt.substring(at)
-        aiCursor.value = at + add.length
-    }
-
-    /** Words (a dictation, a text clip) at the cursor, with a space before them unless one is there. */
-    private fun insertWordsIntoPrompt(words: String) {
-        val prompt = aiPrompt.value ?: return
-        if (words.isEmpty()) return
-        val at = aiCursor.value.coerceIn(0, prompt.length)
-        val before = prompt.getOrNull(at - 1)
-        val after = prompt.getOrNull(at)
-        insertIntoPrompt((if (before == null || before == ' ') "" else " ") + words + (if (after != null && after != ' ') " " else ""))
-    }
-
-    /** A tap on the prompt: typing goes there. */
-    override fun onAiPromptCursor(index: Int) {
-        val prompt = aiPrompt.value ?: return
-        closeAiOptions()
-        aiCursor.value = index.coerceIn(0, prompt.length)
-        keyboard.setAutoShift(settings.current.autoCapitalize && prompt.substring(0, aiCursor.value).isBlank())
-    }
-
-    /** The pointing stick while the prompt is open: the prompt's cursor moves, by whole characters. */
-    private fun movePromptCursor(chars: Int): Boolean {
-        val prompt = aiPrompt.value ?: return false
-        val marks = java.text.BreakIterator.getCharacterInstance().apply { setText(prompt) }
-        var at = aiCursor.value.coerceIn(0, prompt.length)
-        repeat(kotlin.math.abs(chars)) {
-            val next = if (chars > 0) (if (at >= prompt.length) java.text.BreakIterator.DONE else marks.following(at))
-                else (if (at <= 0) java.text.BreakIterator.DONE else marks.preceding(at))
-            if (next == java.text.BreakIterator.DONE) return@repeat
-            at = next
-        }
-        if (at == aiCursor.value) return false
-        aiCursor.value = at
-        return true
     }
 
     // ---- Typing helpers ----
@@ -2126,60 +1875,85 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                 is ClipEntry.Image -> it.mimeType
                 is ClipEntry.Screenshot -> it.mimeType
             }
-            // While composing, only text goes into the prompt: image chips show as unavailable.
-            ClipChip(it, mime == null || (aiPrompt.value == null && bridge.acceptsImage(mime)))
+            ClipChip(it, mime == null || bridge.acceptsImage(mime))
         }
     }
 
     // ---- AI actions (Settings › Experimental) ----
 
-    /** ✨ opens the composer; the ✕ that replaces it closes it, keeping the draft. */
+    /** ✨ opens the prompt window just above the keyboard. */
     override fun onAiButton() {
         if (!inputViewActive) return
-        if (aiPrompt.value != null) {
-            closeAiPrompt()
-            return
-        }
         openAiComposer()
     }
 
-    /** The composer above the strip, with what is running; the keys type into its prompt. */
+    /**
+     * The prompt window ([AiPromptActivity]) just above the keyboard: a real text box with the focus,
+     * so the keys (and other voice tools) type into it like into any app, and the app below stays where
+     * it is. Its image is for the field it was opened from.
+     */
     private fun openAiComposer() {
-        if (!settings.current.aiKeyboard || bridge.isSensitiveField || mode.value != InputMode.KEYS) return
+        if (!settings.current.aiKeyboard || bridge.isSensitiveField || inAiPrompt.value) return
         emojiOpen.value = false
         pickerOpen.value = false
-        closeAiOptions()
         clearPrompt()
         clearNote()
         lastCorrection = null
         clearAiCards()
         // A prompt that failed, was stopped or was closed unsent comes back, in its own field only.
-        // Text selected in the chat is not taken: the prompt is the user's own, typed here.
+        // Text selected in the chat is not taken: the prompt is the user's own, typed there.
         // Another field's words stay saved for that field.
-        val retry = retryPrompt?.takeIf { it.editor == bridge.editorKey() }?.text
+        val editor = bridge.editorKey()
+        val retry = retryPrompt?.takeIf { it.editor == editor }?.text
         if (retry != null) retryPrompt = null
-        val start = (retry ?: "").take(ImageApi.MAX_PROMPT_CHARS)
-        keyboard.showHome()
-        keyboard.setAutoShift(settings.current.autoCapitalize && start.isEmpty())
-        aiPromptAction = AiAction.CREATE_IMAGE
-        aiPrompt.value = start
-        aiCursor.value = start.length
-        refreshClipChips()
+        composerEditor = editor
+        pendingAiCard = null
+        try {
+            startActivity(AiPromptActivity.intent(this, retry.orEmpty().take(ImageApi.MAX_PROMPT_CHARS)))
+        } catch (_: RuntimeException) {
+            if (retry != null) retryPrompt = RetryPrompt(editor, retry)
+            showNote("Couldn't open the prompt", warn = true)
+        }
     }
 
-    /** A dictation into the prompt is listening or finishing. */
-    private fun dictatingIntoPrompt(): Boolean =
-        routedVoiceSink.intoPrompt && voice.currentSessionId != null
+    // ---- The prompt window (AiComposerHost) ----
 
-    /** Closes the defaults chip's choices, back to the keys. */
-    private fun closeAiOptions() {
-        aiOptionsOpen.value = false
+    override val runningImages: StateFlow<List<AiTask>> get() = aiTasks
+
+    /** Create in the prompt window: starts the image for the field the window was opened from. */
+    override fun submitImagePrompt(prompt: String): String? {
+        val text = prompt.trim()
+        if (text.isEmpty()) return "Describe the image first"
+        if (!settings.current.aiKeyboard) return "AI on the keyboard is off"
+        if (aiTasks.value.size >= MAX_AI_TASKS) return "Wait until one finishes"
+        val check = imageJob(settings.current, text, AppGraph.secrets::get, allowLocalHttp = BuildConfig.DEBUG)
+        val job = check.job ?: return check.problem ?: "AI isn't set up"
+        retryPrompt = null
+        val editor = composerEditor
+        startImageTask(text, job, editor)
+        // Back in the app's field, the strip says where the image is being made.
+        pendingAiCard = PendingAiCard(editor, note = "Creating your image · tap the ring for progress")
+        return null
     }
 
-    override fun onCloseAiOptions() = closeAiOptions()
+    override fun stopImage(id: Long) {
+        stopAiTask(id)
+    }
 
-    override fun onToggleAiOptions() {
-        if (aiPrompt.value != null && mode.value == InputMode.KEYS) aiOptionsOpen.value = !aiOptionsOpen.value
+    /** The window closed without Create: its words come back with the next prompt for the same field. */
+    override fun composerClosed(draft: String) {
+        if (draft.isNotBlank()) retryPrompt = RetryPrompt(composerEditor, draft.trim())
+    }
+
+    /** A card or note that waited for the prompt window to close, in the field it is about only. */
+    private fun showPendingAiCard() {
+        val pending = pendingAiCard ?: return
+        if (inAiPrompt.value) return
+        pendingAiCard = null
+        if (pending.editor == null || pending.editor != bridge.editorKey() || bridge.isSensitiveField) return
+        val ready = pending.ready?.let { it.copy(pasteable = bridge.acceptsImage(it.entry.mimeType)) }
+        if (ready != null || pending.failure != null) showAiCard(ready, pending.failure)
+        else if (pending.note != null && aiTasks.value.isNotEmpty()) showNote(pending.note)
     }
 
     override fun onInsertAiResult(key: String) {
@@ -2214,7 +1988,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         retryPrompt = RetryPrompt(bridge.editorKey(), failure.prompt)
         // A refused key: its editor, and the prompt comes back with the next ✨ here.
         if (failure.fixSetting != null) {
-            onOpenAiSettings(failure.fixSetting)
+            openAiSettings(failure.fixSetting)
             return
         }
         openAiComposer()
@@ -2271,61 +2045,22 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         aiReady.value = null
     }
 
-    override fun onSelectAiService(service: AiService) {
-        settings.update { it.copy(aiService = service) }
-    }
-
-    override fun onSelectImageModel(id: String) {
-        settings.update { it.copy(imageModel = id) }
-    }
-
-    override fun onSelectImageQuality(quality: ImageQuality) {
-        settings.update { it.copy(imageQuality = quality) }
-    }
-
-    /**
-     * Settings › Experimental, with [setting]'s editor open when given (the key that is missing); the
-     * composer's words come back when ✨ is next tapped in this field.
-     */
-    override fun onOpenAiSettings(setting: String?) {
-        closeAiPrompt()
-        closeAiOptions()
+    /** Settings › Experimental, with [setting]'s editor open when given (the key that was refused). */
+    private fun openAiSettings(setting: String?) {
         openCompanion(Destination.SETTINGS_EXPERIMENTAL, setting)
     }
 
-    /** What the chosen service still needs, for the chip, Create and the options, or null when it is set up. */
-    private fun aiSetup(s: Settings, saved: Map<Secret, String?>, refused: Set<Secret> = aiRefused.value): AiSetup? {
-        fun stillRefused(secret: Secret) = AppGraph.secrets.isRefused(secret, saved, refused)
-        return when (s.aiService) {
-            AiService.OPENAI -> when {
-                saved[Secret.OPENAI_API_KEY] == null -> AiSetup.NO_KEY
-                stillRefused(Secret.OPENAI_API_KEY) -> AiSetup.BAD_KEY
-                else -> null
-            }
-            AiService.OWN_SERVER -> when {
-                s.aiServerUrl.isBlank() -> AiSetup.NO_SERVER
-                AiConnection.apiBase(s.aiService, s.aiServerUrl, BuildConfig.DEBUG).url == null -> AiSetup.BAD_SERVER
-                stillRefused(Secret.SERVER_TOKEN) -> AiSetup.BAD_TOKEN
-                else -> null
-            }
-        }
-    }
+    private fun aiSetup(s: Settings, saved: Map<Secret, String?>, refused: Set<Secret> = aiRefused.value): AiSetup? =
+        aiSetupOf(s, saved) { AppGraph.secrets.isRefused(it, saved, refused) }
 
-    /** The own server's host (and port), as the options panel names it. */
-    private fun serverHost(s: Settings): String =
-        AiConnection.apiBase(AiService.OWN_SERVER, s.aiServerUrl, BuildConfig.DEBUG).url
-            ?.let { runCatching { java.net.URI(it) }.getOrNull() }
-            ?.let { uri -> uri.host.orEmpty() + if (uri.port >= 0) ":${uri.port}" else "" }
-            .orEmpty()
-
-    /** Enter while the prompt is open: what the composer's button says, dimmed while there is nothing to send. */
-    private fun promptEnterKind(setup: AiSetup?, prompt: String): EnterKind = when (setup) {
+    /** Enter in the prompt window: what its button says, dimmed while there is nothing to send. */
+    private fun promptEnterKind(setup: AiSetup?, empty: Boolean): EnterKind = when (setup) {
         AiSetup.NO_KEY -> EnterKind.ADD_KEY
         AiSetup.NO_SERVER -> EnterKind.ADD_SERVER
         AiSetup.BAD_SERVER -> EnterKind.FIX_SERVER
         AiSetup.BAD_KEY -> EnterKind.FIX_KEY
         AiSetup.BAD_TOKEN -> EnterKind.FIX_TOKEN
-        null -> if (prompt.isBlank()) EnterKind.CREATE_EMPTY else EnterKind.CREATE
+        null -> if (empty) EnterKind.CREATE_EMPTY else EnterKind.CREATE
     }
 
     override fun onAiOverlayHeight(px: Int) {
@@ -2333,113 +2068,6 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         aiOverlayPx = px
         // A new layout pass asks for the insets again (onComputeInsets).
         composeView?.requestLayout()
-    }
-
-    override fun onStopAiTask(id: Long) {
-        if (stopAiTask(id)) showNote("Stopped")
-    }
-
-    /** Closes the prompt; the keys type into the editor again. [retryEditor]: the field the words belong to. */
-    private fun closeAiPrompt(retryEditor: String? = bridge.editorKey()) {
-        val prompt = aiPrompt.value ?: return
-        // Words still being heard for the prompt would have nowhere to go.
-        if (dictatingIntoPrompt()) voice.cancel(CancelReason.SWITCHED_TO_KEYS)
-        // Closed unsent: the words come back with the next prompt in that field.
-        if (prompt.isNotBlank()) retryPrompt = RetryPrompt(retryEditor, prompt)
-        aiPrompt.value = null
-        refreshClipChips()
-        aiPromptProvisional.value = ""
-        aiOptionsOpen.value = false
-        promptDeadChar = 0
-        // Emoji opened for the prompt close with it, so a late tap on one can't reach the app.
-        emojiOpen.value = false
-        if (inputViewActive && mode.value == InputMode.KEYS) {
-            updateShift()
-            refreshStrip()
-        }
-    }
-
-    /** A key pressed while the prompt is open; false for keys that work as usual (Shift, layers). */
-    private fun typeIntoAiPrompt(key: Key): Boolean {
-        val prompt = aiPrompt.value ?: return false
-        when (key) {
-            is Key.Char -> {
-                insertIntoPrompt(keyboard.applyCase(key.output))
-                keyboard.onCharTyped()
-            }
-            is Key.Space -> {
-                val at = aiCursor.value.coerceIn(0, prompt.length)
-                // No double spaces, and none at the very start.
-                if (at > 0 && prompt[at - 1] != ' ' && prompt.getOrNull(at) != ' ') insertIntoPrompt(" ")
-            }
-            is Key.Enter -> onAiPromptSubmit()
-            is Key.Backspace -> deleteFromAiPrompt()
-            else -> return false
-        }
-        return true
-    }
-
-    private fun deleteFromAiPrompt() {
-        val prompt = aiPrompt.value ?: return
-        // Backspace first drops an accent waiting for its letter.
-        if (promptDeadChar != 0) {
-            promptDeadChar = 0
-            return
-        }
-        val at = aiCursor.value.coerceIn(0, prompt.length)
-        if (at == 0) return
-        // Whole characters, so an emoji goes in one press.
-        val chars = java.text.BreakIterator.getCharacterInstance().apply { setText(prompt) }
-        val cut = chars.preceding(at).coerceAtLeast(0)
-        aiPrompt.value = prompt.substring(0, cut) + prompt.substring(at)
-        aiCursor.value = cut
-        if (cut == 0) keyboard.setAutoShift(settings.current.autoCapitalize)
-    }
-
-    /** Sends the prompt; the action runs in the background while the keys type into the app again. */
-    override fun onAiPromptSubmit() {
-        val prompt = aiPrompt.value?.trim() ?: return
-        // Enter does what the composer's button says: with nothing set up, it opens the missing setting.
-        aiSetup(settings.current, AppGraph.secrets.saved.value)?.let { onOpenAiSettings(it.setting); return }
-        if (prompt.isEmpty()) return
-        // Words still being heard would be lost: finish the dictation first.
-        if (dictatingIntoPrompt()) {
-            showNote("Wait until the dictation is in", warn = true)
-            return
-        }
-        if (bridge.isSensitiveField || !settings.current.aiKeyboard) {
-            closeAiPrompt()
-            return
-        }
-        if (aiTasks.value.size >= MAX_AI_TASKS) {
-            showNote("Wait until one finishes", warn = true)
-            return
-        }
-        val action = aiPromptAction
-        val check = when (action) {
-            AiAction.CREATE_IMAGE -> imageJob(settings.current, prompt, AppGraph.secrets::get, allowLocalHttp = BuildConfig.DEBUG)
-        }
-        aiPrompt.value = null
-        refreshClipChips()
-        aiPromptProvisional.value = ""
-        aiOptionsOpen.value = false
-        promptDeadChar = 0
-        emojiOpen.value = false
-        retryPrompt = null
-        if (inputViewActive && mode.value == InputMode.KEYS) {
-            updateShift()
-            refreshStrip()
-        }
-        val job = check.job
-        if (job == null) {
-            retryPrompt = RetryPrompt(bridge.editorKey(), prompt)
-            showNote(check.problem ?: "AI isn't set up", warn = true)
-            return
-        }
-        startImageTask(prompt, job, bridge.editorKey())
-        // The composer is gone; say where the image is being made.
-        showNote("Creating your image · tap the ring for progress")
-        if (settings.current.vibrateOnKeyPress) composeView?.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
     }
 
     /** Creates an image in the background; other actions can start or be stopped meanwhile. */
@@ -2483,22 +2111,29 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             noToken -> "Your server asks for an access token"
             else -> "Your server refused the access token"
         }
-        // The card (with Try again) only in the field the prompt was written for; elsewhere a note says why.
-        if (inputViewActive && !bridge.isSensitiveField && aiPrompt.value == null && editor == bridge.editorKey()) {
-            // The fix is for the credential this request went with; if the service was switched since,
-            // that one isn't in use any more, so Try again (with the current one) is offered instead.
-            val sameService = (settings.current.aiService == AiService.OPENAI) == openAi
-            val fix = when {
-                !refused || !sameService -> null
-                openAi -> AiSetup.BAD_KEY.action
-                noToken -> "Add token"
-                else -> AiSetup.BAD_TOKEN.action
+        // The fix is for the credential this request went with; if the service was switched since,
+        // that one isn't in use any more, so Try again (with the current one) is offered instead.
+        val sameService = (settings.current.aiService == AiService.OPENAI) == openAi
+        val fix = when {
+            !refused || !sameService -> null
+            openAi -> AiSetup.BAD_KEY.action
+            noToken -> "Add token"
+            else -> AiSetup.BAD_TOKEN.action
+        }
+        val fixSetting = if (fix == null) null else if (openAi) AiSetup.BAD_KEY.setting else AiSetup.BAD_TOKEN.setting
+        val card = AiFailure(prompt, reason, fix, fixSetting)
+        when {
+            // The prompt window has the keys: the card waits for the field the prompt was written for.
+            inputViewActive && inAiPrompt.value && editor != null && editor == composerEditor -> {
+                pendingAiCard = PendingAiCard(editor, failure = card)
+                showNote(reason, warn = true)
             }
-            val fixSetting = if (fix == null) null else if (openAi) AiSetup.BAD_KEY.setting else AiSetup.BAD_TOKEN.setting
-            showAiCard(null, AiFailure(prompt, reason, fix, fixSetting))
-            if (settings.current.vibrateOnKeyPress) composeView?.performHapticFeedback(HapticFeedbackConstants.REJECT)
-        } else {
-            announce(reason, warn = true)
+            // The card (with Try again) only in the field the prompt was written for; elsewhere a note says why.
+            inputViewActive && !bridge.isSensitiveField && editor == bridge.editorKey() -> {
+                showAiCard(null, card)
+                if (settings.current.vibrateOnKeyPress) composeView?.performHapticFeedback(HapticFeedbackConstants.REJECT)
+            }
+            else -> announce(reason, warn = true)
         }
     }
 
@@ -2549,6 +2184,13 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                 onClipboard -> "Image ready · it's on the clipboard"
                 else -> "Image ready · it's in Lowkey's clipboard history"
             }, warn = gallery && !saved)
+            return true
+        }
+        if (inAiPrompt.value) {
+            // The prompt window has the keys: the card waits for the field the image was made for.
+            if (editor != null && editor == composerEditor) pendingAiCard = PendingAiCard(editor, ready = AiReady(entry, false, onClipboard))
+            showNote(if (gallery && !saved) "Image ready · couldn't save it to Gallery" else "Image ready", warn = gallery && !saved)
+            if (settings.current.vibrateOnKeyPress) composeView?.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
             return true
         }
         if (!bridge.isSensitiveField) {
@@ -2637,7 +2279,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
         updateShift()
         refreshStrip()
         showNote(when (outcome) {
-            is VoiceOutcome.Inserted -> if (routedVoiceSink.intoPrompt) "Added to the prompt" else "${outcome.words} words inserted"
+            is VoiceOutcome.Inserted -> "${outcome.words} words inserted"
             VoiceOutcome.NoSpeech -> "No speech detected"
             else -> "Ready to type"
         })
@@ -2756,42 +2398,6 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
             markOwnEdit()
             return true
         }
-    }
-
-    /** Dictation while the AI composer is open goes into its prompt, not the app. */
-    private val promptVoiceSink = object : VoiceTextSink {
-        override fun showProvisional(text: String) {
-            if (aiPrompt.value != null) aiPromptProvisional.value = text
-        }
-
-        override fun clearProvisional(): Boolean {
-            aiPromptProvisional.value = ""
-            return true
-        }
-
-        override fun commitFinal(text: String): Boolean {
-            if (aiPrompt.value == null) return false
-            aiPromptProvisional.value = ""
-            insertWordsIntoPrompt(text.trim())
-            return true
-        }
-
-        override fun capitalizeAtInsertion(): Boolean =
-            aiPrompt.value?.let { it.substring(0, aiCursor.value.coerceIn(0, it.length)).isBlank() } ?: true
-    }
-
-    /** Sends each dictation to the prompt if the composer was open when it started, else to the app. */
-    private val routedVoiceSink = object : VoiceTextSink {
-        private var target: VoiceTextSink = voiceSink
-        val intoPrompt get() = target === promptVoiceSink
-        override fun sessionStarted() {
-            target = if (aiPrompt.value != null) promptVoiceSink else voiceSink
-            target.sessionStarted()
-        }
-        override fun showProvisional(text: String) = target.showProvisional(text)
-        override fun clearProvisional(): Boolean = target.clearProvisional()
-        override fun commitFinal(text: String): Boolean = target.commitFinal(text)
-        override fun capitalizeAtInsertion(): Boolean = target.capitalizeAtInsertion()
     }
 
     private companion object {

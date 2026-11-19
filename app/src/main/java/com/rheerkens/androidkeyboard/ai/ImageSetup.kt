@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import com.rheerkens.androidkeyboard.BuildConfig
 import com.rheerkens.androidkeyboard.settings.Settings
 import java.io.IOException
 
@@ -76,3 +77,28 @@ fun saveToGallery(context: Context, bytes: ByteArray, mimeType: String, timeMs: 
         false
     }
 }
+
+/**
+ * What the chosen service still needs, for the chip, Create and the options, or null when it is set
+ * up. [saved]: the saved key and token hints; [stillRefused]: the service turned that one down.
+ */
+fun aiSetupOf(s: Settings, saved: Map<Secret, String?>, stillRefused: (Secret) -> Boolean): AiSetup? = when (s.aiService) {
+    AiService.OPENAI -> when {
+        saved[Secret.OPENAI_API_KEY] == null -> AiSetup.NO_KEY
+        stillRefused(Secret.OPENAI_API_KEY) -> AiSetup.BAD_KEY
+        else -> null
+    }
+    AiService.OWN_SERVER -> when {
+        s.aiServerUrl.isBlank() -> AiSetup.NO_SERVER
+        AiConnection.apiBase(s.aiService, s.aiServerUrl, BuildConfig.DEBUG).url == null -> AiSetup.BAD_SERVER
+        stillRefused(Secret.SERVER_TOKEN) -> AiSetup.BAD_TOKEN
+        else -> null
+    }
+}
+
+/** The own server's host (and port), as the options name it. */
+fun serverHostOf(s: Settings): String =
+    AiConnection.apiBase(AiService.OWN_SERVER, s.aiServerUrl, BuildConfig.DEBUG).url
+        ?.let { runCatching { java.net.URI(it) }.getOrNull() }
+        ?.let { uri -> uri.host.orEmpty() + if (uri.port >= 0) ":${uri.port}" else "" }
+        .orEmpty()
