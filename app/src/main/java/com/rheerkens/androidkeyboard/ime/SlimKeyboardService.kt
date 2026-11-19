@@ -397,6 +397,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                         colors = colors,
                         background = background,
                         numberRow = s.numberRow,
+                        pointingStick = s.pointingStick,
                         emojiOpen = emoji && m == InputMode.KEYS,
                         emojiCatalog = catalog,
                         recentEmoji = if (sensitive) emptyList() else s.recentEmoji,

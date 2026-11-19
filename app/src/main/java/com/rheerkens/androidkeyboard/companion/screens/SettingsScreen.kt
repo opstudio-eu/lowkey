@@ -252,6 +252,10 @@ private fun LazyListScope.keyboardPage(s: Settings, update: Update, navigate: (D
     item {
         SettingsGroup("Keys") {
             SwitchRow("Number row", s.numberRow, { value -> update { it.copy(numberRow = value) } }, "A 1–0 row above the letters")
+            SwitchRow(
+                "Pointing stick", s.pointingStick, { v -> update { it.copy(pointingStick = v) } },
+                subtitle = "A red dot on G's corner (on most layouts): slide from it to move the cursor",
+            )
             ChoiceDialogRow(
                 "Key beside Space", BottomKey.entries, s.bottomKey, { it.label },
                 { value -> update { it.copy(bottomKey = value) } },

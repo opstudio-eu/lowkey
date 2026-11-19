@@ -82,6 +82,8 @@ data class Settings(
     // Keyboard
     val keyboardHeight: KeyboardHeight = KeyboardHeight.NORMAL,
     val numberRow: Boolean = false,
+    /** The pointing stick, a red dot on G's bottom-right corner (on most layouts): slide from it to move the cursor. */
+    val pointingStick: Boolean = true,
     val bottomKey: BottomKey = BottomKey.EMOJI,
     val recentEmoji: List<String> = emptyList(),
     val vibrateOnKeyPress: Boolean = true,

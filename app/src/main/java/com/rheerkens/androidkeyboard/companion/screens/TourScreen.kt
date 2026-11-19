@@ -101,6 +101,9 @@ fun TourScreen(modifier: Modifier, ime: SystemImeStatus.Status, navigate: (Desti
         if (words > progress.dictatedWords) progress = progress.onDictated(words - progress.dictatedWords)
     }
 
+    val settings by AppGraph.settings.settings.collectAsStateWithLifecycle()
+    // The cursor steps need the pointing stick, which Settings can turn off.
+    val stickOff = !settings.pointingStick && (progress.step == TourStep.CURSOR || progress.step == TourStep.SELECT)
     val models by AppGraph.models.state.collectAsStateWithLifecycle()
     var hasMic by remember { mutableStateOf(AppGraph.hasMicPermission(context)) }
     LifecycleResumeEffect(Unit) { hasMic = AppGraph.hasMicPermission(context); onPauseOrDispose { } }
@@ -158,6 +161,10 @@ fun TourScreen(modifier: Modifier, ime: SystemImeStatus.Status, navigate: (Desti
         if (!ime.selected) {
             TourNotice("Lowkey isn't the keyboard in use right now, so it can't see what you do.", "Switch keyboard") {
                 SystemImeStatus.showPicker(context)
+            }
+        } else if (stickOff) {
+            TourNotice("The pointing stick is off in Settings, so the keyboard can't move the cursor.", "Turn it on") {
+                AppGraph.settings.update { it.copy(pointingStick = true) }
             }
         } else if (needsVoice) {
             TourNotice(

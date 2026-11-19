@@ -76,6 +76,8 @@ data class KeyboardUiState(
     val splitGapDp: Float = 0f,
     val contentWidthDp: Float = 360f,
     val numberRow: Boolean = false,
+    /** Whether the pointing stick, the red dot on G's corner, is on (Settings › Pointing stick). */
+    val pointingStick: Boolean = true,
     val emojiOpen: Boolean = false,
     /**
      * Keyboard below this panel, in dp: the drag handle of a floating keyboard. The emoji panel's
@@ -150,7 +152,7 @@ internal fun KeyboardContent(
                             (state.keyRows * state.rowHeightDp + 4).dp, state.belowPanelDp.dp, actions)
                     } else {
                         KeysPanel(state.layout, state.keyboard, state.rowHeightDp, state.enterKind, actions, state.splitGapDp, state.keyRows,
-                            state.keyboards, languageMenu)
+                            state.keyboards, languageMenu, state.pointingStick)
                     }
                 } else {
                     if (state.pickerOpen) {

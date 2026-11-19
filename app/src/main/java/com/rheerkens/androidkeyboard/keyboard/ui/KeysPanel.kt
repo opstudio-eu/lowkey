@@ -96,6 +96,7 @@ fun KeysPanel(
     keyRows: Int = layout.rows.size,
     keyboards: List<TypingKeyboard> = emptyList(),
     languageMenu: LanguageMenuState? = null,
+    pointingStick: Boolean = true,
 ) {
     val rollover = remember(state.keyboard, state.layer) { KeyRollover() }
     val rowHeight = (rowHeightDp * keyRows.toFloat() / layout.rows.size).dp
@@ -103,8 +104,10 @@ fun KeysPanel(
     var trackpad by remember { mutableStateOf(false) }
     val colors = LocalKeyboardColors.current
     val shown = remember(colors, trackpad) { if (trackpad) colors.fadedLabels() else colors }
-    // Only the letters have one: the symbols and number pads keep every key for typing.
-    val stick = remember(layout, state.layer) { if (state.layer == Layer.LETTERS) stickKey(layout) else null }
+    // Only the letters have one, when it is on: the symbols and number pads keep every key for typing.
+    val stick = remember(layout, state.layer, pointingStick) {
+        if (pointingStick && state.layer == Layer.LETTERS) stickKey(layout) else null
+    }
     // A slide and a screen reader's cursor step, or two fingers, can overlap: the keys stay a trackpad until the
     // last slide ends.
     val sliding = remember { intArrayOf(0) }
