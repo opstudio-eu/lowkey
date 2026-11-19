@@ -53,7 +53,7 @@ import kotlinx.coroutines.delay
 /** Native companion shell. Stored preference keys and IME destinations remain unchanged. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SlimApp(pendingDestination: Destination?, onDestinationConsumed: () -> Unit) {
+fun SlimApp(pendingDestination: Destination?, onDestinationConsumed: () -> String?) {
     var stackNames by rememberSaveable { mutableStateOf(listOf(Destination.HOME.name)) }
     // Names saved by an older version may be pages that are part of another page now.
     val stack = restoredRoute(stackNames)
@@ -149,7 +149,11 @@ fun SlimApp(pendingDestination: Destination?, onDestinationConsumed: () -> Unit)
     }
     LaunchedEffect(pendingDestination) {
         // Opened from the keyboard or a notification: the page with its usual parents under it.
-        pendingDestination?.let { requestRoute(destinationPath(it).map { page -> page.name }); onDestinationConsumed() }
+        pendingDestination?.let {
+            requestRoute(destinationPath(it).map { page -> page.name })
+            // A setting asked for with the page (the keyboard's "Add key"): its row opens its editor.
+            onDestinationConsumed()?.let { setting -> highlighter.show(setting, edit = true) }
+        }
     }
     BackHandler(enabled = stack.size > 1) { back() }
     LaunchedEffect(onboarding, setup, settings.tourSeen) {
@@ -239,6 +243,7 @@ fun SlimApp(pendingDestination: Destination?, onDestinationConsumed: () -> Unit)
                             Destination.SETTINGS_CLIPBOARD -> SettingsScreen(modifier, SettingsFocus.CLIPBOARD, ::navigate)
                             Destination.SETTINGS_APPEARANCE -> SettingsScreen(modifier, SettingsFocus.APPEARANCE, ::navigate)
                             Destination.TRY_IT -> TryItScreen(modifier)
+                            Destination.SETTINGS_EXPERIMENTAL -> ExperimentalScreen(modifier)
                             Destination.TOUR -> TourScreen(modifier, ime, ::navigate, onClose = ::back)
                             Destination.ABOUT -> AboutScreen(modifier)
                             Destination.LANGUAGES -> LanguagesScreen(modifier)

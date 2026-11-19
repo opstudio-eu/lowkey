@@ -13,6 +13,7 @@ enum class Destination(val title: String, val isTab: Boolean = false) {
     SETTINGS_KEYBOARD("Keyboard"),
     SETTINGS_CLIPBOARD("Clipboard & images"),
     SETTINGS_APPEARANCE("Appearance"),
+    SETTINGS_EXPERIMENTAL("Experimental"),
     TRY_IT("Try it"),
     TOUR("Learn the gestures"),
     ABOUT("About & updates"),
@@ -43,7 +44,8 @@ enum class Destination(val title: String, val isTab: Boolean = false) {
 fun destinationPath(destination: Destination): List<Destination> = when (destination) {
     Destination.SETTINGS_VOICE, Destination.SPEECH_MODELS -> listOf(Destination.MODELS, destination)
     Destination.SETTINGS_KEYBOARD, Destination.SETTINGS_CLIPBOARD, Destination.SETTINGS_APPEARANCE,
-    Destination.LANGUAGES, Destination.ABOUT, Destination.TRY_IT -> listOf(Destination.SETTINGS, destination)
+    Destination.LANGUAGES, Destination.ABOUT, Destination.TRY_IT, Destination.SETTINGS_EXPERIMENTAL ->
+        listOf(Destination.SETTINGS, destination)
     Destination.KEYBOARD_THEME -> listOf(Destination.SETTINGS, Destination.SETTINGS_APPEARANCE, destination)
     Destination.TOUR -> listOf(Destination.HOME, destination)
     else -> listOf(destination)
@@ -79,10 +81,16 @@ fun keyboardSetupState(enabled: Boolean, selected: Boolean): KeyboardSetupState 
 object CompanionLinks {
     const val EXTRA_DESTINATION = "com.rheerkens.androidkeyboard.DESTINATION"
 
-    fun intent(context: Context, destination: Destination): Intent =
+    /** A setting row's title on that page: its editor opens (the keyboard's "Add key"). */
+    const val EXTRA_SETTING = "com.rheerkens.androidkeyboard.SETTING"
+
+    fun intent(context: Context, destination: Destination, setting: String? = null): Intent =
         Intent(context, MainActivity::class.java)
             .putExtra(EXTRA_DESTINATION, destination.name)
+            .apply { if (setting != null) putExtra(EXTRA_SETTING, setting) }
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
 
     fun destinationOf(intent: Intent?): Destination? = intent?.getStringExtra(EXTRA_DESTINATION)?.let(Destination::named)
+
+    fun settingOf(intent: Intent?): String? = intent?.getStringExtra(EXTRA_SETTING)
 }

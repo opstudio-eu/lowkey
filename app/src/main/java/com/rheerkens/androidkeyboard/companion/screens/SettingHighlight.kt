@@ -36,8 +36,13 @@ class SettingHighlighter {
     var found by mutableStateOf(false)
         internal set
 
-    fun show(title: String?) {
+    /** The target row opens its editor too, not just flashes. */
+    var edit by mutableStateOf(false)
+        private set
+
+    fun show(title: String?, edit: Boolean = false) {
         found = false
+        this.edit = edit && title != null
         target = title
         request++
     }
@@ -55,7 +60,7 @@ val LocalSettingHighlighter = compositionLocalOf<SettingHighlighter?> { null }
 
 /** The modifier for a setting row titled [title]: scrolls it into view and flashes it when it's the target. */
 @Composable
-internal fun settingHighlight(title: String): Modifier {
+internal fun settingHighlight(title: String, onEdit: (() -> Unit)? = null): Modifier {
     val highlighter = LocalSettingHighlighter.current
     val active = highlighter != null && highlighter.target == title
     val request = highlighter?.request ?: 0
@@ -71,6 +76,7 @@ internal fun settingHighlight(title: String): Modifier {
         try {
             withFrameNanos {}
             requester.bringIntoView()
+            if (highlighter.edit) onEdit?.invoke()
             // Compose scales these with the system animator duration; with animations off, the row still shows a tint.
             flash.animateTo(1f, tween(200))
             delay(1400)

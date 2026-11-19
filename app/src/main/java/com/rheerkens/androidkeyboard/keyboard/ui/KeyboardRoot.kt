@@ -5,7 +5,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -15,6 +18,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -88,6 +92,8 @@ data class KeyboardUiState(
     val recentEmoji: List<String> = emptyList(),
     /** The enabled, installed keyboards in globe order, offered by holding the emoji key. */
     val keyboards: List<com.rheerkens.androidkeyboard.keyboard.TypingKeyboard> = emptyList(),
+    /** ✨, its AI menu and an action's prompt (Settings › Experimental). */
+    val ai: AiUi = AiUi(),
 ) {
     /** Keep panel height stable when switching to the existing four-row symbol layouts. */
     val keyRows: Int get() = if (numberRow) 5 else 4
@@ -119,6 +125,17 @@ internal fun KeyboardContent(
         actions.onDismissExpandHint()
         if (state.voice == VoiceState.NoPermission) actions.onOpenSetup() else actions.onToggleMode()
     }
+    // Keys and clips drawn for the AI prompt keep saying so until they are redrawn without it: a press
+    // released just after the prompt closed (another finger tapped ✕) is dropped, not sent to the app.
+    val promptActions = remember(actions) {
+        object : KeyboardActions by actions {
+            override fun onKey(key: com.rheerkens.androidkeyboard.keyboard.Key) = actions.onPromptKey(key)
+            override fun onPasteHistory(entry: com.rheerkens.androidkeyboard.clipboard.ClipEntry) = actions.onPromptPasteHistory(entry)
+            override fun onMoveCursor(chars: Int, lines: Int) = actions.onPromptMoveCursor(chars, lines)
+        }
+    }
+    // One per keyboard and layer, as the keys had it: the image prompt's Create and ✕ flush it.
+    val rollover = remember(state.keyboard.keyboard, state.keyboard.layer) { com.rheerkens.androidkeyboard.keyboard.KeyRollover() }
     CompositionLocalProvider(LocalKeyboardColors provides colors, LocalWordAim provides state.wordAim) {
         Box(Modifier.onGloballyPositioned { languageMenu.host = it }) {
             Column(
@@ -128,7 +145,12 @@ internal fun KeyboardContent(
                     // While the language menu waits for a tap, only the menu is reachable with TalkBack.
                     .then(if (languageMenu.open?.sticky == true) Modifier.clearAndSetSemantics {} else Modifier),
             ) {
-                Box(Modifier.fillMaxWidth().height(1.dp).background(colors.divider))
+                Box(Modifier.fillMaxWidth().height(1.dp).background(colors.divider)) {
+                    // The AI composer or status floats over the app just above the keyboard.
+                    if (!state.minimized && state.ai.available) {
+                        AiOverlay(state.ai, state.contentWidthDp, state.viewportHeightDp, clock, actions, rollover)
+                    }
+                }
                 if (state.minimized) {
                     MinimizedBar(state, actions, talk, more, moreLabel, showHint = state.showExpandHint)
                 } else if (state.mode == InputMode.KEYS) {
@@ -141,18 +163,36 @@ internal fun KeyboardContent(
                         }) {
                         Row(Modifier.fillMaxSize().padding(top = KEYBOARD_GRIP_SPACE_DP.dp), verticalAlignment = Alignment.CenterVertically) {
                             VoiceEntryButton(state.voice, actions, talk, more, moreLabel)
-                            SuggestionStrip(state.strip, state.clipHistory, state.inputSession, actions, undoClear = state.fan.undoClear)
+                            if (state.ai.promptOpen) {
+                                // While composing, the strip keeps its clips (a text clip goes into the prompt).
+                                ClipHistoryRow(state.clipHistory, state.inputSession, promptActions, Modifier.weight(1f).fillMaxHeight(),
+                                    chipHeight = 34.dp)
+                            } else {
+                                SuggestionStrip(state.strip, state.clipHistory, state.inputSession, actions, undoClear = state.fan.undoClear)
+                            }
+                            if (state.ai.available) {
+                                AiButton(state.ai.tasks.size, state.ai.promptOpen, actions)
+                                // In line with the composer's Create above it, not on the screen's edge.
+                                Spacer(Modifier.width(2.dp))
+                            }
                         }
                         KeyboardBarGrip()
                     }
-                    if (state.toolsOpen) {
-                        KeyboardTools(state, actions)
-                    } else if (state.emojiOpen) {
-                        EmojiPanel(state.emojiCatalog, state.recentEmoji,
-                            (state.keyRows * state.rowHeightDp + 4).dp, state.belowPanelDp.dp, actions)
-                    } else {
-                        KeysPanel(state.layout, state.keyboard, state.rowHeightDp, state.enterKind, actions, state.splitGapDp, state.keyRows,
-                            state.keyboards, languageMenu, state.pointingStick)
+                    // Opening or closing the image prompt starts the keys and panels afresh: a press or
+                    // long-press still held then is cancelled, so it types into neither the prompt nor the app.
+                    key(state.ai.promptOpen) {
+                        if (state.ai.optionsOpen) {
+                            AiOptionsPanel(state.ai, (state.keyRows * state.rowHeightDp + 4).dp, actions)
+                        } else if (state.toolsOpen) {
+                            KeyboardTools(state, actions)
+                        } else if (state.emojiOpen) {
+                            EmojiPanel(state.emojiCatalog, state.recentEmoji,
+                                (state.keyRows * state.rowHeightDp + 4).dp, state.belowPanelDp.dp, actions)
+                        } else {
+                            KeysPanel(state.layout, state.keyboard, state.rowHeightDp, state.enterKind,
+                                if (state.ai.promptOpen) promptActions else actions, state.splitGapDp,
+                                state.keyRows, state.keyboards, languageMenu, state.pointingStick, rollover)
+                        }
                     }
                 } else {
                     if (state.pickerOpen) {

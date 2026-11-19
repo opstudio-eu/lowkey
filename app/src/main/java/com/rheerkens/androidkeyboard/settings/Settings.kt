@@ -1,5 +1,8 @@
 package com.rheerkens.androidkeyboard.settings
 
+import com.rheerkens.androidkeyboard.ai.ImageModel
+import com.rheerkens.androidkeyboard.ai.ImageQuality
+import com.rheerkens.androidkeyboard.ai.AiService
 import com.rheerkens.androidkeyboard.keyboard.PlacementPreferences
 
 /** Keyboard key-row height preset. */
@@ -136,6 +139,19 @@ data class Settings(
     val checkForUpdates: Boolean = true,
     // Image editor
     val loupeCorners: LoupeCorners = LoupeCorners.TOP,
+    // Experimental: AI actions (the API key and token live in `SecretStore`, never here)
+    /** Show ✨ on the keyboard: a prompt box that creates images (Settings › Experimental). */
+    val aiKeyboard: Boolean = false,
+    val aiService: AiService = AiService.OPENAI,
+    /** Address of the user's own OpenAI-compatible server, used with [AiService.OWN_SERVER]. */
+    val aiServerUrl: String = "",
+    /** OpenAI image model id. */
+    val imageModel: String = ImageModel.FLARE.id,
+    /** Model sent to the user's own server; empty sends none. */
+    val imageServerModel: String = "",
+    val imageQuality: ImageQuality = ImageQuality.LOW,
+    /** Also save each created image to the photo gallery (Pictures/Lowkey), not only to the clipboard. */
+    val saveImagesToGallery: Boolean = false,
     // Diagnostics
     val audioInput: AudioInput = AudioInput.MICROPHONE,
     // Keyboard state that is remembered between sessions

@@ -90,6 +90,7 @@ private fun KeyboardFrame(state: KeyboardUiState, clock: () -> Long, actions: Ke
     fun save(value: KeyboardPlacement) { actions.onSavePlacement(state.profile, value); draft = null }
     val routed = object : KeyboardActions by actions {
         override fun onOpenTools() {
+            actions.onCloseAiOptions()
             if (state.mode == InputMode.VOICE) actions.onToggleMode()
             editing = false; menu = !menu
         }
@@ -100,6 +101,7 @@ private fun KeyboardFrame(state: KeyboardUiState, clock: () -> Long, actions: Ke
         override fun onOpenDictionary() { menu = false; actions.onOpenDictionary() }
         override fun onOpenKeyboardSettings() { menu = false; actions.onOpenKeyboardSettings() }
         override fun onOpenSettings() { menu = false; actions.onOpenSettings() }
+        override fun onAiButton() { menu = false; editing = false; actions.onAiButton() }
         override fun onToggleMode() { menu = false; editing = false; actions.onToggleMode() }
         override fun onOpenVoicePicker() { menu = false; editing = false; actions.onOpenVoicePicker() }
         override fun onOpenVoiceSettings() { menu = false; actions.onOpenVoiceSettings() }

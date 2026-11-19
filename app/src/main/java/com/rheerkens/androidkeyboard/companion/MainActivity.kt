@@ -18,19 +18,24 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     /** Destination requested by an intent (launch or onNewIntent), consumed by the UI. */
     private val pendingDestination = MutableStateFlow<Destination?>(null)
+    /** A setting on that page whose editor opens with it, such as the API key. */
+    private var pendingSetting: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         AppGraph.init(this)
-        if (savedInstanceState == null) pendingDestination.value = CompanionLinks.destinationOf(intent)
+        if (savedInstanceState == null) {
+            pendingSetting = CompanionLinks.settingOf(intent)
+            pendingDestination.value = CompanionLinks.destinationOf(intent)
+        }
         setContent {
             val settings by AppGraph.settings.settings.collectAsStateWithLifecycle()
             val pending by pendingDestination.collectAsStateWithLifecycle()
             SlimTheme(settings.theme) {
                 SlimApp(
                     pendingDestination = pending,
-                    onDestinationConsumed = { pendingDestination.value = null },
+                    onDestinationConsumed = { pendingDestination.value = null; pendingSetting.also { pendingSetting = null } },
                 )
             }
         }
@@ -48,6 +53,9 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        CompanionLinks.destinationOf(intent)?.let { pendingDestination.value = it }
+        CompanionLinks.destinationOf(intent)?.let {
+            pendingSetting = CompanionLinks.settingOf(intent)
+            pendingDestination.value = it
+        }
     }
 }

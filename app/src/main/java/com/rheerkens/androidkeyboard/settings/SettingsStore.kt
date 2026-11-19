@@ -98,6 +98,13 @@ class SettingsStore(context: Context) {
             theme = enumOr(prefs.getString(K_THEME, null), d.theme),
             shadeNumberRow = prefs.getBoolean(K_SHADE_NUMBER_ROW, d.shadeNumberRow),
             loupeCorners = enumOr(prefs.getString(K_LOUPE_CORNERS, null), d.loupeCorners),
+            aiKeyboard = prefs.getBoolean(K_AI_KEYBOARD, d.aiKeyboard),
+            aiService = enumOr(prefs.getString(K_AI_SERVICE, null), d.aiService),
+            aiServerUrl = prefs.getString(K_AI_SERVER, null) ?: d.aiServerUrl,
+            imageModel = prefs.getString(K_IMAGE_MODEL, null)?.takeIf { it.isNotBlank() } ?: d.imageModel,
+            imageServerModel = prefs.getString(K_IMAGE_SERVER_MODEL, null) ?: d.imageServerModel,
+            imageQuality = enumOr(prefs.getString(K_IMAGE_QUALITY, null), d.imageQuality),
+            saveImagesToGallery = prefs.getBoolean(K_IMAGE_GALLERY, d.saveImagesToGallery),
             checkForUpdates = prefs.getBoolean(K_CHECK_UPDATES, d.checkForUpdates),
             matchTermCase = prefs.getBoolean(K_TERM_CASE, d.matchTermCase),
             speechLanguage = prefs.getString(K_SPEECH_LANGUAGE, null) ?: d.speechLanguage,
@@ -141,6 +148,13 @@ class SettingsStore(context: Context) {
         putString(K_THEME, s.theme.name)
         putBoolean(K_SHADE_NUMBER_ROW, s.shadeNumberRow)
         putString(K_LOUPE_CORNERS, s.loupeCorners.name)
+        putBoolean(K_AI_KEYBOARD, s.aiKeyboard)
+        putString(K_AI_SERVICE, s.aiService.name)
+        putString(K_AI_SERVER, s.aiServerUrl)
+        putString(K_IMAGE_MODEL, s.imageModel)
+        putString(K_IMAGE_SERVER_MODEL, s.imageServerModel)
+        putString(K_IMAGE_QUALITY, s.imageQuality.name)
+        putBoolean(K_IMAGE_GALLERY, s.saveImagesToGallery)
         putBoolean(K_CHECK_UPDATES, s.checkForUpdates)
         putBoolean(K_TERM_CASE, s.matchTermCase)
         putString(K_SPEECH_LANGUAGE, s.speechLanguage)
@@ -190,6 +204,13 @@ class SettingsStore(context: Context) {
         const val K_POINTING_STICK = "pointing_stick"
         const val K_LOUPE_CORNERS = "loupe_corner_choice"
         const val K_CHECK_UPDATES = "check_for_updates"
+        const val K_AI_KEYBOARD = "ai_keyboard"
+        const val K_AI_SERVICE = "ai_service"
+        const val K_AI_SERVER = "ai_server_url"
+        const val K_IMAGE_MODEL = "image_model"
+        const val K_IMAGE_QUALITY = "image_quality"
+        const val K_IMAGE_SERVER_MODEL = "image_server_model"
+        const val K_IMAGE_GALLERY = "image_save_to_gallery"
         const val K_VIBRATE = "vibrate"
         const val K_AUTOCAP = "auto_capitalize"
         const val K_AUTOCORRECT = "autocorrect"

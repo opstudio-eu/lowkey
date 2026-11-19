@@ -214,6 +214,11 @@ private fun LazyListScope.topPage(
             LinkRow("Voice typing", models.activeModel?.name ?: "Not set up") { navigate(Destination.MODELS) }
         }
     }
+    item(key = "experimental") {
+        SettingsGroup("Experimental") {
+            LinkRow("Experimental", experimentalSummary(s)) { navigate(Destination.SETTINGS_EXPERIMENTAL) }
+        }
+    }
     item(key = "backup") { BackupSettings() }
     item(key = "app") {
         SettingsGroup("App") {

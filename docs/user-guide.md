@@ -141,6 +141,29 @@ The frosted color swatch makes tools blur. Blur does not guarantee that informat
 
 Add an optional caption and tap **Attach** to return the edited image to the original field. The image is also copied to the clipboard if the field cannot accept it. Android's Back closes the editor without attaching.
 
+## AI on the keyboard (experimental)
+
+Turn on **Settings → Experimental → AI on the keyboard** to get ✨ at the right of the keyboard's top strip. It opens a prompt box just above the strip. For now it creates images; more actions, such as cleaning up the text you wrote, will join it there as a choice in the same box.
+
+Choose the **AI service** once; every action uses it:
+
+- **OpenAI**: paste your API key from platform.openai.com. OpenAI charges that account for what you create.
+- **Your own server**: an HTTPS address (without a password or `?` options) of a server that speaks OpenAI's API, such as one on your private network published with `tailscale serve`, plus an optional bearer **Access token**. The address may be the server or its `/v1` API address.
+
+### Create an image
+
+Tap ✨. A box opens just above the strip, like a chat app's message box: type what you want to see (the keys type into the box, not into the app; a physical keyboard does too, and Ctrl+V pastes text into it), or tap the mic to say it. A text clip in the clipboard row goes into the box with a tap. Tap **Create** (or Enter). The app moves up above the box, so its own text box stays in view. ✨ turns into ✕ while the box is open: tap it, or press Back, to close it; the words come back the next time you open it in the same field.
+
+The chip in the box shows the defaults, such as **Flare · Fast · ≈$0.01**. Tap it to change them where the keys are: switch between **OpenAI** and **Your server**, then pick the model and quality. With OpenAI, **Flare** is fast and cheapest, **Sunburst** has finer detail and readable text but costs more; each quality shows a rough price for one square image (your OpenAI usage page has the real cost). Your choice stays as the new default; **Done** goes back to the keys and **AI settings** opens the settings page. With your own server, its address shows with **Edit**; set the **Server model** in Settings if it needs one. If the service isn't set up yet, the chip says so (**OpenAI · key needed**) and Create becomes **Add key** (or **Add server**), which opens that setting ready to paste; your words are kept.
+
+Create closes the box and the image is made in the background, so you keep typing. ✨ keeps a ring while images are being made (with their number when there are several). Tap ✨ to start another one; images being made are listed on top of the box, each with **Stop** (the service may still charge for an image it had started). Up to four run at once.
+
+When an image is ready, a card shows above the strip; tap its thumbnail for a larger preview. If a key or token was refused, the card offers **Edit key** (or **Edit token**) instead of **Try again**. Where the app takes images from keyboards, the card has **Insert**; nothing goes into the app until you tap it. It is also first in your clipboard row and on the system clipboard (unless you copied something else in the meantime), so where an app takes no images from keyboards, long-press its field and choose **Paste**. It expires from the clipboard row like a copied image; turn on **Save to Gallery** to also keep each image in Pictures/Lowkey.
+
+Your own server receives `POST <address>/v1/images/generations` with JSON `prompt`, `n`, `quality` and, if set, `model`, and its answer gives `data[0].b64_json` (or an HTTPS `data[0].url`).
+
+Only what is in the prompt box when you tap **Create** is sent; nothing else you type is. Unsent words come back with the next prompt in the same field, not in another one. The API key and token are encrypted on the phone and never part of a backup. ✨ is hidden in password, private and number fields.
+
 ## Choose light or dark
 
 **Settings → Appearance → Theme** sets the look of the app and the keyboard together. **System**, the default, follows Android's dark mode and switches as soon as Android does. **Light** and **Dark** keep one look regardless of Android. Both use OpStudio's colours.
