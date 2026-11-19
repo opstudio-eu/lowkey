@@ -52,6 +52,7 @@ val settingsIndex: List<SettingEntry> = listOfNotNull(
     row("Forget what Lowkey learned", Destination.SETTINGS_KEYBOARD, "clear learned words", "delete", "reset predictions", "privacy"),
     row("Number row", Destination.SETTINGS_KEYBOARD, "numbers", "digits", "1-0"),
     row("Pointing stick", Destination.SETTINGS_KEYBOARD, "trackpoint", "red dot", "cursor", "trackpad", "move the cursor", "slide", "g key"),
+    row("Pointing stick speed", Destination.SETTINGS_KEYBOARD, "trackpoint speed", "cursor speed", "sensitivity", "faster", "slower", "red dot"),
     row("Key beside Space", Destination.SETTINGS_KEYBOARD, "emoji key", "globe", "language switch key", "smiley", "spacebar"),
     row("Vibrate on key press", Destination.SETTINGS_KEYBOARD, "vibration", "haptic", "haptics", "feedback", "buzz", "key feedback"),
     row("Resize and move", Destination.SETTINGS_KEYBOARD, "size", "height", "width", "position", "bigger", "smaller", "one-handed", "floating"),

@@ -551,8 +551,8 @@ public final class KeyboardTouchProbe extends Instrumentation {
         }
     }
     /**
-     * Sliding a finger left from the pointing stick (the red nub on G's corner) moves the cursor.
-     * G itself only types: a slide from it doesn't move the cursor, and taps on it type g, also
+     * Sliding a finger left from the pointing stick (the red nub on G's corner) moves the cursor; a tap
+     * on it types the key under the finger. G itself only types: a slide from it doesn't move the cursor, and taps on it type g, also
      * when they drift a little, overlap the next key or are held still. Space doesn't slide.
      * Keyboard tools' editing row selects, copies, pastes and undoes in the field.
      */
@@ -567,9 +567,10 @@ public final class KeyboardTouchProbe extends Instrumentation {
         float x = nub.centerX(), y = nub.centerY();
         long down = SystemClock.uptimeMillis();
         touchAt(down, MotionEvent.ACTION_DOWN, x, y);
-        for (int i = 1; i <= 13; i++) { SystemClock.sleep(25); touchAt(down, MotionEvent.ACTION_MOVE, x - i * 5 * dp, y); }
+        // At the default speed: 25 dp start the slide (2 characters), the next 20 dp move 2 a step (4 more).
+        for (int i = 1; i <= 9; i++) { SystemClock.sleep(25); touchAt(down, MotionEvent.ACTION_MOVE, x - i * 5 * dp, y); }
         SystemClock.sleep(25);
-        touchAt(down, MotionEvent.ACTION_UP, x - 65 * dp, y);
+        touchAt(down, MotionEvent.ACTION_UP, x - 45 * dp, y);
         SystemClock.sleep(600);
         String text = editorText();
         // The field doesn't report its cursor to accessibility: a typed letter shows where it is.
@@ -578,7 +579,7 @@ public final class KeyboardTouchProbe extends Instrumentation {
         String marked = editorText();
         boolean slid = text.equals("hello world") && marked.length() == 12 && marked.indexOf('x') >= 3 && marked.indexOf('x') <= 7;
         ok &= slid;
-        report.append("slide 65 dp left from the nub, then x: '").append(text).append("' -> '").append(marked).append("'")
+        report.append("slide 45 dp left from the nub, then x: '").append(text).append("' -> '").append(marked).append("'")
             .append(slid ? "" : " FAIL").append('\n');
 
         // A slide from the middle of G is no slide: the cursor stays at the end (G may type its g).
@@ -598,7 +599,8 @@ public final class KeyboardTouchProbe extends Instrumentation {
         ok &= gStill;
         report.append("slide 65 dp left from G, then x: '").append(gSlid).append("'").append(gStill ? "" : " FAIL").append('\n');
 
-        // A tap on the dot types nothing; a tap beside it, in H's corner, types h.
+        // A tap on the dot types the key it lands on (one of the four around it); a tap beside it, in H's
+        // corner and still on the stick, types h.
         setEditorText("", 1200);
         tap(nub); SystemClock.sleep(400);
         float hx = nub.centerX() + 8 * dp, hy = nub.centerY() - 8 * dp;
@@ -608,7 +610,8 @@ public final class KeyboardTouchProbe extends Instrumentation {
         touchAt(beside, MotionEvent.ACTION_UP, hx, hy);
         SystemClock.sleep(600);
         String nubTaps = editorText();
-        boolean nubTap = nubTaps.equalsIgnoreCase("h");
+        boolean nubTap = nubTaps.length() == 2 && "ghvb".indexOf(Character.toLowerCase(nubTaps.charAt(0))) >= 0
+            && Character.toLowerCase(nubTaps.charAt(1)) == 'h';
         ok &= nubTap;
         report.append("tap on the dot, then 8 dp up-right of it: '").append(nubTaps).append("'").append(nubTap ? "" : " FAIL").append('\n');
 
@@ -667,7 +670,7 @@ public final class KeyboardTouchProbe extends Instrumentation {
         Rect symbols = bounds(waitLabel("Numbers and symbols"));
         long sel = SystemClock.uptimeMillis();
         touchAt(sel, MotionEvent.ACTION_DOWN, new int[]{0}, new float[][]{{x, y}});
-        // About seven characters selected, more than the plain slide below moves.
+        // About eleven characters selected at the default speed, more than the plain slide below moves.
         for (int i = 1; i <= 14; i++) { SystemClock.sleep(25); touchAt(sel, MotionEvent.ACTION_MOVE, new int[]{0}, new float[][]{{x - i * 5 * dp, y}}); }
         float fx = x - 70 * dp;
         touchAt(sel, MotionEvent.ACTION_POINTER_DOWN | (1 << MotionEvent.ACTION_POINTER_INDEX_SHIFT), new int[]{0, 1},

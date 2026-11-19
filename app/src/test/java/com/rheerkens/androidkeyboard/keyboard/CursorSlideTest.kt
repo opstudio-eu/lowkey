@@ -40,6 +40,29 @@ class CursorSlideTest {
         assertTrue(s.sliding)
     }
 
+    @Test fun aFasterSpeedMovesFurtherOnceSliding() {
+        // The 25 dp that start the slide count at the slowest speed (2.5 characters); the 35 dp after it at the speed.
+        assertEquals(-6 to 0, slide().glide(65f, 24f, 5f, 24f, 0L))
+        val fast = CursorSlide(zones, 65f, 24f, 0L, speed = 2f)
+        assertEquals(-9 to 0, fast.glide(65f, 24f, 5f, 24f, 0L))
+        val fastest = CursorSlide(zones, 65f, 24f, 0L, speed = 4f)
+        assertEquals(-16 to 0, fastest.glide(65f, 24f, 5f, 24f, 0L))
+    }
+
+    @Test fun aFasterSpeedMovesMoreLinesPerRow() {
+        val s = CursorSlide(zones, 65f, 24f, 0L, speed = 2f)
+        // The first row starts the slide and moves one line; the next row two.
+        assertEquals(0 to -1, s.glide(65f, 24f, 65f, -26f, 0L))
+        assertEquals(0 to -2, s.glide(65f, -26f, 65f, -74f, 10_000L))
+    }
+
+    @Test fun aFasterSpeedStillNeedsTheSameTravelToStart() {
+        val s = CursorSlide(zones, 65f, 24f, 0L, speed = 4f)
+        s.moveTo(65f + CursorSlide.START, 30f, 40L)
+        assertFalse(s.sliding)
+        assertEquals(0, s.chars)
+    }
+
     @Test fun comingBackTakesAFullStep() {
         val s = slide()
         s.glide(65f, 24f, 105f, 24f, 0L)

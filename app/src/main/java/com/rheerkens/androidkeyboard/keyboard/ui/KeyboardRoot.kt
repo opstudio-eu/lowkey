@@ -80,6 +80,8 @@ data class KeyboardUiState(
     val numberRow: Boolean = false,
     /** Whether the pointing stick, the red dot on G's corner, is on (Settings › Pointing stick). */
     val pointingStick: Boolean = true,
+    /** How far a slide from the pointing stick moves the cursor: a multiple of the slowest speed. */
+    val stickSpeed: Float = 2f,
     val emojiOpen: Boolean = false,
     /**
      * Keyboard below this panel, in dp: the drag handle of a floating keyboard. The emoji panel's
@@ -166,7 +168,7 @@ internal fun KeyboardContent(
                             (state.keyRows * state.rowHeightDp + 4).dp, state.belowPanelDp.dp, actions)
                     } else {
                         KeysPanel(state.layout, state.keyboard, state.rowHeightDp, state.enterKind, actions, state.splitGapDp, state.keyRows,
-                            state.keyboards, languageMenu, state.pointingStick)
+                            state.keyboards, languageMenu, state.pointingStick, state.stickSpeed)
                     }
                 } else {
                     if (state.pickerOpen) {

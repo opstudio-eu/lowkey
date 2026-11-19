@@ -7,18 +7,25 @@ import kotlin.math.abs
  * as a trackpad for the cursor. Positions are in dp from the touch target's top-left corner (x to the
  * right, y down).
  *
- * - A slide begins after [START] dp sideways or a whole key row up or down. Until then the touch
- *   only waits: a touch on the nub never types.
- * - Sideways, every [STEP] dp is one character. A fast slide counts up to [MAX_GAIN] times as
+ * - A slide begins after [START] dp sideways or a whole key row up or down, and that travel moves the
+ *   cursor a character per [STEP] or a line. Until then the touch may still be a tap.
+ * - Sideways, every [STEP] dp is [speed] characters. A fast slide counts up to [MAX_GAIN] times as
  *   many, so a quick flick crosses a line and a slow slide stays exact.
- * - Up or down, every key row is one line.
+ * - Up or down, every key row is [speed] lines.
  * - Each movement counts along one axis only: the one the finger mostly moves along. A slanted
  *   sideways slide therefore doesn't change line.
  * - Coming back takes a full step, so the cursor doesn't flicker on a boundary.
  * - Resting in an [Edge] zone keeps the cursor moving ([dwell][EDGE_DWELL_MS], then a step every
  *   [Edge.everyMs]): at the sides of the screen, above the keyboard, and on the bottom row, where there is no room to slide on.
  */
-class CursorSlide(private val zones: Zones, private val downX: Float, private val downY: Float, downAtMs: Long) {
+class CursorSlide(
+    private val zones: Zones,
+    private val downX: Float,
+    private val downY: Float,
+    downAtMs: Long,
+    /** How far the cursor moves per dp once the slide is under way, as a multiple of the slowest speed. */
+    private val speed: Float = 1f,
+) {
 
     /** Where the finger leaves the area it can slide in. */
     data class Zones(
@@ -59,7 +66,7 @@ class CursorSlide(private val zones: Zones, private val downX: Float, private va
     private var atMs = downAtMs
     private var pendingChars = 0f
     private var pendingLines = 0f
-    private var speed = 0f
+    private var fingerSpeed = 0f
 
     /** The finger moved; afterwards [chars] and [lines] hold what to move the cursor by. */
     fun moveTo(nextX: Float, nextY: Float, nowMs: Long) {
@@ -76,14 +83,15 @@ class CursorSlide(private val zones: Zones, private val downX: Float, private va
             val sideways = abs(nextX - downX) > START
             if (!sideways && abs(nextY - downY) <= zones.row) return
             sliding = true
-            // The travel so far counts, along the axis that began the slide.
+            // The travel so far counts, along the axis that began the slide, at the slowest speed: a slide
+            // starts with a small step whatever the speed.
             if (sideways) pendingChars = (nextX - downX) / STEP else pendingLines = (nextY - downY) / zones.row
         } else if (abs(dx) >= abs(dy)) {
-            speed = speed * (1 - SMOOTHING) + abs(dx) / elapsed * SMOOTHING
+            fingerSpeed = fingerSpeed * (1 - SMOOTHING) + abs(dx) / elapsed * SMOOTHING
             // At the side of the screen the zone moves the cursor; the finger has nowhere to go.
-            if (edge != Edge.LEFT && edge != Edge.RIGHT) pendingChars += dx * gain(speed) / STEP
+            if (edge != Edge.LEFT && edge != Edge.RIGHT) pendingChars += dx * gain(fingerSpeed) * speed / STEP
         } else if (edge != Edge.UP && edge != Edge.DOWN) {
-            pendingLines += dy / zones.row
+            pendingLines += dy * speed / zones.row
         }
         chars = pendingChars.toInt()
         lines = pendingLines.toInt()

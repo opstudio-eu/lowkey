@@ -49,15 +49,15 @@ private class KeyTouch(var active: Boolean = true, var long: Boolean = false, va
      */
     var slideEnd: ((Boolean) -> Unit)? = null,
     /**
-     * Went down on the nub ([KeySlide.startsAt]): it slides or does nothing, never types. Whom to
-     * tell when it lifts.
+     * Went down on the nub ([KeySlide.startsAt]): it slides the cursor or taps the key, never
+     * long-presses it. Whom to tell when it lifts.
      */
     var onNub: ((Boolean) -> Unit)? = null)
 
 /**
  * Makes a key a trackpad for the cursor once a finger that went down at [startsAt] slides away
  * ([CursorSlide]): the keys around the pointing stick's nub work this way, for touches on the nub.
- * Other touches on the key type it as usual.
+ * A touch on the nub that doesn't slide types the key; other touches on the key type it as usual.
  */
 data class KeySlide(
     /** Move the cursor this many characters right and lines down (negative: left, up). */
@@ -74,6 +74,8 @@ data class KeySlide(
     val startsAt: (Offset) -> Boolean = { true },
     /** A touch that can slide went down (true) or lifted. */
     val onTouch: (Boolean) -> Unit = {},
+    /** How far the cursor moves per dp of slide, as a multiple of the slowest speed ([CursorSlide]). */
+    val speed: Float = 1f,
 )
 
 /**
@@ -86,8 +88,8 @@ data class KeySlide(
  * hold until the popup opens first when combining an accent gesture with another finger. A
  * rollover key also keeps its tap when the finger slides off it before lifting; other keys
  * cancel then. With [slide], a touch that goes down where a slide can start ([KeySlide.startsAt],
- * on the nub) moves the cursor if it slides on and does nothing otherwise: no tap, no long-press.
- * Other touches on the key work as usual.
+ * on the nub) moves the cursor if it slides on and taps the key otherwise; it never long-presses,
+ * so a finger resting on the nub before it slides opens no popup. Other touches work as usual.
  */
 @Composable
 fun PressTarget(
@@ -140,8 +142,8 @@ fun PressTarget(
                     val gestureScope = this
                     val touches = mutableMapOf<PointerId, KeyTouch>()
                     fun feedback() {
-                        // A touch on the nub presses the nub, not the key under it.
-                        pressed = touches.values.any { it.active && it.onNub == null }
+                        // A touch on the nub presses the key under it too, until it slides.
+                        pressed = touches.values.any { it.active && it.slide?.sliding != true }
                         longState(touches.values.any { it.active && it.long })
                     }
                     /** Where a slide from this target runs out of room, in dp from its top-left corner. */
@@ -212,15 +214,11 @@ fun PressTarget(
                                         change.consume()
                                         down()
                                         if (armedBy != null) {
-                                            // On the nub: a slide or nothing. A letter still held is typed
-                                            // where the cursor is now, before the slide moves it.
+                                            // On the nub: a slide, or a tap if it lifts first (no long-press).
                                             touch.slide = CursorSlide(slideZones(), change.position.x.toDp().value,
-                                                change.position.y.toDp().value, change.uptimeMillis)
-                                            rollover?.flush()
+                                                change.position.y.toDp().value, change.uptimeMillis, armedBy.speed)
                                             touch.onNub = armedBy.onTouch
                                             armedBy.onTouch(true)
-                                            feedback()
-                                            continue
                                         }
                                         feedback()
                                         val owned = touch
@@ -230,7 +228,7 @@ fun PressTarget(
                                             tap?.invoke()
                                         }
                                         val r = repeat
-                                        if (r != null || hasLong) {
+                                        if (r != null || (hasLong && armedBy == null)) {
                                             touch.job = gestureScope.launch(start = CoroutineStart.UNDISPATCHED) {
                                                 if (r != null) {
                                                     r()
@@ -256,6 +254,8 @@ fun PressTarget(
                                         // touch ends here, and the key doesn't take it over.
                                         endSlide(touch)
                                         touch.active = false
+                                        rollover?.cancel(touch)
+                                        touch.job?.cancel()
                                     }
                                     touch.at = change.position
                                     val tracking = touch.long && touch.active && !change.isConsumed && longMove != null
@@ -304,9 +304,8 @@ fun PressTarget(
                                         touches.remove(change.id)
                                         touch.job?.cancel()
                                         val slid = touch.slide?.sliding == true
-                                        val onNub = touch.onNub != null
                                         endSlide(touch)
-                                        if (touch.active && !slid && !onNub) {
+                                        if (touch.active && !slid) {
                                             if (touch.long) longRelease?.invoke()
                                             else if (rollover != null) rollover.release(touch)
                                             else if (repeat == null) tap?.invoke()

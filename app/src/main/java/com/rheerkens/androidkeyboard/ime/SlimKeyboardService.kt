@@ -473,6 +473,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
                         background = background,
                         numberRow = s.numberRow,
                         pointingStick = s.pointingStick,
+                        stickSpeed = s.stickSpeed.scale,
                         emojiOpen = emoji && m == InputMode.KEYS,
                         emojiCatalog = catalog,
                         recentEmoji = if (sensitive) emptyList() else s.recentEmoji,

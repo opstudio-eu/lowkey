@@ -66,6 +66,17 @@ enum class AudioInput(val label: String) {
 
 enum class InputMode { KEYS, VOICE }
 
+/**
+ * How far the cursor moves for a slide from the pointing stick: [scale] times the characters (and lines) of
+ * [SLOW], which moves one character per quarter of a letter key.
+ */
+enum class StickSpeed(val label: String, val scale: Float) {
+    SLOW("Slow", 1f),
+    NORMAL("Normal", 2f),
+    FAST("Fast", 3f),
+    FASTEST("Very fast", 4f),
+}
+
 enum class BottomKey(val label: String) { EMOJI("Emoji"), LANGUAGE("Language switch") }
 
 /**
@@ -87,6 +98,7 @@ data class Settings(
     val numberRow: Boolean = false,
     /** The pointing stick, a red dot on G's bottom-right corner (on most layouts): slide from it to move the cursor. */
     val pointingStick: Boolean = true,
+    val stickSpeed: StickSpeed = StickSpeed.NORMAL,
     val bottomKey: BottomKey = BottomKey.EMOJI,
     val recentEmoji: List<String> = emptyList(),
     val vibrateOnKeyPress: Boolean = true,
