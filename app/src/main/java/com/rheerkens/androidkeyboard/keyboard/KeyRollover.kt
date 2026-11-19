@@ -23,7 +23,4 @@ class KeyRollover {
 
     fun release(owner: Any) { pending.remove(owner)?.invoke() }
     fun cancel(owner: Any) { pending.remove(owner) }
-
-    /** Drops every pending tap: what they were typed into is gone (the image prompt closed). */
-    fun cancelAll() { pending.clear() }
 }

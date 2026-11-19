@@ -68,6 +68,19 @@
             android:taskAffinity="${applicationId}.editor"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- The image prompt opened by the keyboard's ✨: a card just above the keyboard, over the app, with a
+             real text box, so the keyboard and other voice tools type into it and the app below stays
+             put. Its own task, so closing it returns to the app the user was typing in. -->
+        <activity
+            android:name=".ai.AiPromptActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|uiMode"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:taskAffinity="${applicationId}.aiprompt"
+            android:theme="@style/AiPromptTheme"
+            android:windowSoftInputMode="stateAlwaysVisible|adjustNothing" />
+
         <!-- Daily check for a newer release (Settings → About & updates). -->
         <service
             android:name=".updates.UpdateCheckJob"

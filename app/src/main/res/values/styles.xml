@@ -5,4 +5,16 @@
         <item name="android:windowBackground">#F4F8FB</item>
         <item name="android:colorBackground">#F4F8FB</item>
     </style>
+
+    <!-- The keyboard's image prompt window: a transparent layer over the app, undimmed, with its card
+         just above the keyboard. -->
+    <style name="AiPromptTheme" parent="android:style/Theme.Material.Light.Dialog.NoActionBar">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsFloating">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <!-- The card draws its own shadow; the window itself stays invisible. -->
+        <item name="android:windowElevation">0dp</item>
+        <item name="android:windowAnimationStyle">@null</item>
+    </style>
 </resources>

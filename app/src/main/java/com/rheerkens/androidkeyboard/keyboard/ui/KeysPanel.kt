@@ -98,9 +98,8 @@ fun KeysPanel(
     keyboards: List<TypingKeyboard> = emptyList(),
     languageMenu: LanguageMenuState? = null,
     pointingStick: Boolean = true,
-    /** Shared with the image prompt bar, whose Create and ✕ first type the keys still held down. */
-    rollover: KeyRollover = remember(state.keyboard, state.layer) { KeyRollover() },
 ) {
+    val rollover = remember(state.keyboard, state.layer) { KeyRollover() }
     val rowHeight = (rowHeightDp * keyRows.toFloat() / layout.rows.size).dp
     // While a slide from the pointing stick moves the cursor, the key labels fade: the keys are a trackpad then.
     var trackpad by remember { mutableStateOf(false) }
@@ -391,7 +390,7 @@ private fun KeyView(
                 Modifier.alpha(if (enterKind.dimmed) DIMMED_ALPHA else 1f)) {
                 val label = enterKind.label
                 if (enterKind.opensSetup) {
-                    // "Add key" and the like are spelled out on the composer's button; a glyph fits any key width.
+                    // "Add key" and the like are spelled out on the prompt window's button; a glyph fits any key width.
                     KeyIcon(if (enterKind.setupIsServer) SlimIcons.Server else SlimIcons.Key, tint = c.enterInk)
                 } else if (label == null) {
                     KeyIcon(SlimIcons.Enter, tint = c.enterInk)
