@@ -42,19 +42,38 @@ private class KeyTouch(var active: Boolean = true, var long: Boolean = false, va
     /** The finger has left the spot it went down on, so holding it no longer long-presses. */
     var moved: Boolean = false, val down: Offset = at,
     /** On a key that slides ([KeySlide]): the finger's travel as cursor steps. */
-    var slide: CursorSlide? = null, var edge: CursorSlide.Edge? = null, var edgeJob: Job? = null)
+    var slide: CursorSlide? = null, var edge: CursorSlide.Edge? = null, var edgeJob: Job? = null,
+    /**
+     * Who was told this touch's slide began, to tell the same one that it ended: the target can
+     * go away mid-slide (another finger switched the layer), and the end must still arrive.
+     */
+    var slideEnd: ((Boolean) -> Unit)? = null,
+    /**
+     * Went down on the nub ([KeySlide.startsAt]): it slides or does nothing, never types. Whom to
+     * tell when it lifts.
+     */
+    var onNub: ((Boolean) -> Unit)? = null)
 
 /**
- * Makes a key a trackpad for the cursor once the finger slides away from where it went down
- * ([CursorSlide]). Space works this way.
+ * Makes a key a trackpad for the cursor once a finger that went down at [startsAt] slides away
+ * ([CursorSlide]): the keys around the pointing stick's nub work this way, for touches on the nub.
+ * Other touches on the key type it as usual.
  */
-class KeySlide(
+data class KeySlide(
     /** Move the cursor this many characters right and lines down (negative: left, up). */
     val onMove: (chars: Int, lines: Int) -> Unit,
     /** A slide began (true) or ended. */
     val onActive: (Boolean) -> Unit = {},
-    /** How much keyboard lies above the key's top edge, in dp: higher up, the finger is over the app. */
-    val aboveDp: Float = 0f,
+    /** How much keyboard lies above the target's centre, in dp: higher up, the finger is over the app. */
+    val aboveDp: Float,
+    /** The height of a key row, in dp: the travel for one line. */
+    val rowDp: Float,
+    /** How far below the target's centre, in dp, the finger is out of room downward. */
+    val belowDp: Float,
+    /** Whether a touch going down here (target coordinates) can slide; one that can't is a key press. */
+    val startsAt: (Offset) -> Boolean = { true },
+    /** A touch that can slide went down (true) or lifted. */
+    val onTouch: (Boolean) -> Unit = {},
 )
 
 /**
@@ -66,8 +85,9 @@ class KeySlide(
  * With [rollover], touching the next typing key accepts a pending tap before its hold timer;
  * hold until the popup opens first when combining an accent gesture with another finger. A
  * rollover key also keeps its tap when the finger slides off it before lifting; other keys
- * cancel then. With [slide], a finger that moves no longer long-presses, and one that slides on
- * moves the cursor instead of tapping.
+ * cancel then. With [slide], a touch that goes down where a slide can start ([KeySlide.startsAt],
+ * on the nub) moves the cursor if it slides on and does nothing otherwise: no tap, no long-press.
+ * Other touches on the key work as usual.
  */
 @Composable
 fun PressTarget(
@@ -99,14 +119,13 @@ fun PressTarget(
     val longMove by rememberUpdatedState(onLongPressMove)
     val longAt by rememberUpdatedState(onLongPressAt)
     val keySlide by rememberUpdatedState(slide)
-    val slides = slide != null
     val screenWidth = LocalView.current.resources.displayMetrics.widthPixels
     val placed = remember { arrayOfNulls<LayoutCoordinates>(1) }
     val hasTap = onTap != null
     val hasLong = onLongPress != null
     Box(
         modifier
-            .then(if (slides) Modifier.onGloballyPositioned { placed[0] = it } else Modifier)
+            .onGloballyPositioned { placed[0] = it }
             .semantics(mergeDescendants = true) {
                 contentDescription = description
                 role = Role.Button
@@ -114,35 +133,48 @@ fun PressTarget(
                 // A semantic long-click is a whole hold: start it, then release with its default choice.
                 if (hasLong) onLongClick(longPressLabel) { longPress?.invoke(); longRelease?.invoke(); true }
             }
-            .pointerInput(gestureKey, hasTap, hasLong, rollover, slides, screenWidth) {
+            // Not keyed on the slide: a key learns it lies under the nub only once laid out, and a
+            // restart then would cancel a finger already on it.
+            .pointerInput(gestureKey, hasTap, hasLong, rollover, screenWidth) {
                 coroutineScope {
                     val gestureScope = this
                     val touches = mutableMapOf<PointerId, KeyTouch>()
                     fun feedback() {
-                        pressed = touches.values.any { it.active }
+                        // A touch on the nub presses the nub, not the key under it.
+                        pressed = touches.values.any { it.active && it.onNub == null }
                         longState(touches.values.any { it.active && it.long })
                     }
-                    /** Where a slide from this key runs out of room, in dp from the key's corner. */
+                    /** Where a slide from this target runs out of room, in dp from its top-left corner. */
                     fun slideZones(): CursorSlide.Zones {
                         val left = placed[0]?.takeIf { it.isAttached }?.localToScreen(Offset.Zero)?.x ?: 0f
+                        val middle = size.height.toDp().value / 2
+                        // Null only for the moment the slide goes away (the layer switched).
+                        val slide = keySlide
                         return CursorSlide.Zones(
-                            row = size.height.toDp().value,
+                            row = slide?.rowDp ?: (middle * 2),
                             left = -left.toDp().value + CursorSlide.SIDE_EDGE,
                             right = (screenWidth - left).toDp().value - CursorSlide.SIDE_EDGE,
-                            top = -(keySlide?.aboveDp ?: 0f),
-                            bottom = size.height.toDp().value + CursorSlide.BELOW_KEY,
+                            top = middle - (slide?.aboveDp ?: middle),
+                            bottom = middle + (slide?.belowDp ?: middle),
                         )
                     }
                     /** The touch is a slide from here on: no tap, no long-press. */
                     fun beginSlide(touch: KeyTouch) {
                         rollover?.cancel(touch)
                         touch.job?.cancel()
-                        keySlide?.onActive(true)
+                        // A letter pressed since the finger went down is typed before the cursor moves.
+                        rollover?.flush()
+                        val active = keySlide?.onActive ?: return
+                        touch.slideEnd = active
+                        active(true)
                     }
                     fun endSlide(touch: KeyTouch) {
                         touch.edgeJob?.cancel()
-                        if (touch.slide?.sliding == true) keySlide?.onActive(false)
+                        touch.slideEnd?.invoke(false)
+                        touch.slideEnd = null
                         touch.slide = null
+                        touch.onNub?.invoke(false)
+                        touch.onNub = null
                     }
                     /** Resting in a zone at the edge keeps the cursor moving until the finger leaves it. */
                     fun watchEdge(touch: KeyTouch, sliding: CursorSlide) {
@@ -157,6 +189,8 @@ fun PressTarget(
                                     sliding.begin()
                                     beginSlide(touch)
                                 }
+                                // A letter pressed meanwhile is typed before the cursor moves on.
+                                rollover?.flush()
                                 keySlide?.onMove(edge.chars, edge.lines)
                                 delay(edge.everyMs)
                             }
@@ -173,13 +207,21 @@ fun PressTarget(
                                     if (touch == null && change.pressed && !change.previousPressed && !change.isConsumed &&
                                         inside(change.position.x, change.position.y)) {
                                         touch = KeyTouch(at = change.position)
-                                        if (slides) {
-                                            touch.slide = CursorSlide(slideZones(), change.position.x.toDp().value,
-                                                change.position.y.toDp().value, change.uptimeMillis)
-                                        }
+                                        val armedBy = keySlide?.takeIf { it.startsAt(change.position) }
                                         touches[change.id] = touch
                                         change.consume()
                                         down()
+                                        if (armedBy != null) {
+                                            // On the nub: a slide or nothing. A letter still held is typed
+                                            // where the cursor is now, before the slide moves it.
+                                            touch.slide = CursorSlide(slideZones(), change.position.x.toDp().value,
+                                                change.position.y.toDp().value, change.uptimeMillis)
+                                            rollover?.flush()
+                                            touch.onNub = armedBy.onTouch
+                                            armedBy.onTouch(true)
+                                            feedback()
+                                            continue
+                                        }
                                         feedback()
                                         val owned = touch
                                         rollover?.press(owned) {
@@ -209,6 +251,12 @@ fun PressTarget(
                                         continue
                                     }
                                     if (touch == null) continue
+                                    if (touch.onNub != null && keySlide == null) {
+                                        // The nub went away under the finger (Settings turned it off): its
+                                        // touch ends here, and the key doesn't take it over.
+                                        endSlide(touch)
+                                        touch.active = false
+                                    }
                                     touch.at = change.position
                                     val tracking = touch.long && touch.active && !change.isConsumed && longMove != null
                                     val sliding = touch.slide?.takeIf { touch.active && !touch.long && !change.isConsumed }
@@ -223,7 +271,11 @@ fun PressTarget(
                                         if (sliding.sliding) {
                                             // A slide, not a tap: no character, no long-press.
                                             if (began) beginSlide(touch)
-                                            if (sliding.chars != 0 || sliding.lines != 0) keySlide?.onMove(sliding.chars, sliding.lines)
+                                            if (sliding.chars != 0 || sliding.lines != 0) {
+                                                // A letter pressed meanwhile is typed before the cursor moves on.
+                                                rollover?.flush()
+                                                keySlide?.onMove(sliding.chars, sliding.lines)
+                                            }
                                         }
                                         watchEdge(touch, sliding)
                                     }
@@ -235,7 +287,9 @@ fun PressTarget(
                                         touch.active = false
                                         rollover?.cancel(touch)
                                         touch.job?.cancel()
-                                    } else if (touch.active && !inside(change.position.x, change.position.y, viewConfiguration.touchSlop)) {
+                                    } else if (touch.active && touch.onNub == null && !inside(change.position.x, change.position.y, viewConfiguration.touchSlop)) {
+                                        // (A touch on the nub keeps its finger when it leaves the key before its
+                                        // slide starts: that finger is on its way to sliding.)
                                         if (rollover != null && !touch.long) {
                                             // A typing key keeps its tap when a fast thumb slides off it. Its
                                             // hold popup needs the finger on the key, so that no longer opens.
@@ -250,8 +304,9 @@ fun PressTarget(
                                         touches.remove(change.id)
                                         touch.job?.cancel()
                                         val slid = touch.slide?.sliding == true
+                                        val onNub = touch.onNub != null
                                         endSlide(touch)
-                                        if (touch.active && !slid) {
+                                        if (touch.active && !slid && !onNub) {
                                             if (touch.long) longRelease?.invoke()
                                             else if (rollover != null) rollover.release(touch)
                                             else if (repeat == null) tap?.invoke()

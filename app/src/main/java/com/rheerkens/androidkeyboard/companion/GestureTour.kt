@@ -16,12 +16,12 @@ enum class TourStep(
 ) {
     CURSOR(
         "Move the cursor",
-        "Put a finger on the space bar and slide. The letters fade: the keyboard is now a trackpad for the cursor.",
-        "Slide from the space bar\nto move through these lines\nwithout lifting your finger.",
+        "Put a finger on the red dot at G's bottom-right corner (on most layouts) and slide, up, down or sideways. The letters fade: the keyboard is now a trackpad for the cursor.",
+        "Slide from the red dot\nto move through these lines\nwithout lifting your finger.",
     ),
     SELECT(
         "Select text",
-        "Tap Shift once, then slide from the space bar. What the cursor passes is selected. " +
+        "Tap Shift once, then slide from the red dot. What the cursor passes is selected. " +
             "Cut and Copy are behind the three dots beside the microphone.",
         "Select a part of this sentence.",
     ),

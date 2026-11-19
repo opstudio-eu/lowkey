@@ -31,7 +31,7 @@ class KeyboardController(
 
     /**
      * Shift is on for one capital because the user tapped it, not through auto-capitalization or
-     * caps lock. A slide from Space then selects text, as arrow keys do with Shift held.
+     * caps lock. A slide from the pointing stick (the red dot by G) then selects text, as arrow keys do with Shift held.
      */
     var shiftTapped = false
         private set

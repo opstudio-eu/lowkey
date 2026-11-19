@@ -61,10 +61,10 @@ enum class EditAction(val label: String) {
 interface KeyboardActions {
     /**
      * Moves the cursor [chars] characters right and [lines] lines down (negative: left, up), from
-     * a slide that began on Space.
+     * a slide that began on the pointing stick (the red dot by G).
      */
     fun onMoveCursor(chars: Int, lines: Int) {}
-    /** A slide from Space began to move the cursor ([active]) or ended. */
+    /** A slide from the pointing stick (the red dot by G) began to move the cursor ([active]) or ended. */
     fun onCursorSlide(active: Boolean) {}
     fun onEditAction(action: EditAction) {}
     fun onCloseEmoji() {}
