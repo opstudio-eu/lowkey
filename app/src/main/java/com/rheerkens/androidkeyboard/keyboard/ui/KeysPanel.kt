@@ -98,6 +98,8 @@ fun KeysPanel(
     keyboards: List<TypingKeyboard> = emptyList(),
     languageMenu: LanguageMenuState? = null,
     pointingStick: Boolean = true,
+    /** How far a slide from the pointing stick moves the cursor: a multiple of the slowest speed. */
+    stickSpeed: Float = 1f,
 ) {
     val rollover = remember(state.keyboard, state.layer) { KeyRollover() }
     val rowHeight = (rowHeightDp * keyRows.toFloat() / layout.rows.size).dp
@@ -119,7 +121,7 @@ fun KeysPanel(
     val corners = remember { mutableStateMapOf<Any, NubSpot>() }
     // How the nubs look: pressed while a finger is on one, leaning the way the slide moves the cursor.
     val look = remember { NubLook() }
-    val menu = remember(keyboards, languageMenu, stick, rowHeight, layout.rows.size) {
+    val menu = remember(keyboards, languageMenu, stick, rowHeight, layout.rows.size, stickSpeed) {
         val slide = stick?.let {
             val (above, below) = CursorSlide.nubBounds(rowHeight.value, layout.rows.size, it.row, STRIP_DP.toFloat())
             KeySlide(
@@ -138,6 +140,7 @@ fun KeysPanel(
                 rowDp = rowHeight.value,
                 belowDp = below,
                 onTouch = { down -> look.touches += if (down) 1 else -1 },
+                speed = stickSpeed,
             )
         }
         KeyMenus(keyboards, languageMenu, popups, stick?.key, slide, corners)
@@ -231,11 +234,14 @@ private fun nubSlideFor(slide: KeySlide, bounds: Rect, nubs: Collection<NubSpot>
     )
 }
 
-/** How far a touch on the nub reaches from its middle, in dp: about a fingertip. */
-private const val NUB_REACH_DP = 10f
+/**
+ * How far a touch on the nub reaches from its middle, in dp: a fingertip and then some, easy to hit. A tap
+ * there still types the key under it; only a slide moves the cursor.
+ */
+private const val NUB_REACH_DP = 18f
 
 /** How far the nub reaches into the keys around it, at most: a share of their size, short of their middle. */
-private const val NUB_SHARE = 0.4f
+private const val NUB_SHARE = 0.45f
 
 /** The suggestion strip above the keys, with its grip (`KeyboardContent`). */
 private const val STRIP_DP = 44 + KEYBOARD_GRIP_SPACE_DP

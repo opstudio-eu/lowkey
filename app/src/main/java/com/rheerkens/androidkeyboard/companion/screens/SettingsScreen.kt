@@ -52,6 +52,7 @@ import com.rheerkens.androidkeyboard.settings.BottomKey
 import com.rheerkens.androidkeyboard.settings.LoupeCorners
 import com.rheerkens.androidkeyboard.settings.ModelRetention
 import com.rheerkens.androidkeyboard.settings.Settings
+import com.rheerkens.androidkeyboard.settings.StickSpeed
 import com.rheerkens.androidkeyboard.settings.ThemeMode
 import com.rheerkens.androidkeyboard.ui.SlimIcons
 import com.rheerkens.androidkeyboard.updates.acceptsReleaseUpdates
@@ -260,6 +261,13 @@ private fun LazyListScope.keyboardPage(s: Settings, update: Update, navigate: (D
             SwitchRow(
                 "Pointing stick", s.pointingStick, { v -> update { it.copy(pointingStick = v) } },
                 subtitle = "A red dot on G's corner (on most layouts): slide from it to move the cursor",
+            )
+            ChoiceDialogRow(
+                "Pointing stick speed", StickSpeed.entries, s.stickSpeed, { it.label },
+                { v -> update { it.copy(stickSpeed = v) } },
+                subtitle = "How far the cursor moves as you slide",
+                detail = { if (it == StickSpeed.SLOW) "One character per quarter key, for exact placing" else null },
+                enabled = s.pointingStick,
             )
             ChoiceDialogRow(
                 "Key beside Space", BottomKey.entries, s.bottomKey, { it.label },
