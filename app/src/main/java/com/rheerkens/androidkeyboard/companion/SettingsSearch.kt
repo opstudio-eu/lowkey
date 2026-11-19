@@ -81,6 +81,18 @@ val settingsIndex: List<SettingEntry> = listOfNotNull(
     row("Keep copied clips", Destination.SETTINGS_CLIPBOARD, "clipboard history", "expire", "forget", "clips", "privacy"),
     row("Recent screenshots", Destination.SETTINGS_CLIPBOARD, "screenshot", "photos", "images", "clipboard", "photo access"),
     row("Magnifier position", Destination.SETTINGS_CLIPBOARD, "loupe", "zoom", "image editor", "draw", "markup"),
+    // Experimental
+    page("Experimental", Destination.SETTINGS_EXPERIMENTAL, "labs", "beta", "preview", "ai"),
+    row("AI on the keyboard", Destination.SETTINGS_EXPERIMENTAL, "ai", "image generation", "generate image", "ai image",
+        "openai", "picture", "meme", "sticker", "sparkle", "create image", "assistant"),
+    row("AI service", Destination.SETTINGS_EXPERIMENTAL, "openai", "own server", "provider", "image generation"),
+    row("OpenAI API key", Destination.SETTINGS_EXPERIMENTAL, "api key", "openai", "key", "image generation"),
+    row("Image model", Destination.SETTINGS_EXPERIMENTAL, "gpt image", "flare", "sunburst", "image generation"),
+    row("Server model", Destination.SETTINGS_EXPERIMENTAL, "model", "own server", "image generation"),
+    row("Image quality", Destination.SETTINGS_EXPERIMENTAL, "fast", "best", "cost", "image generation"),
+    row("Access token", Destination.SETTINGS_EXPERIMENTAL, "bearer", "token", "password", "own server", "image generation"),
+    row("Server address", Destination.SETTINGS_EXPERIMENTAL, "own server", "url", "endpoint", "tailscale", "image generation"),
+    row("Save to Gallery", Destination.SETTINGS_EXPERIMENTAL, "gallery", "photos", "save image", "created images"),
     // Voice
     page("Voice typing", Destination.MODELS, "speech recognition", "voice", "microphone", "mic"),
     page("Speech models", Destination.SPEECH_MODELS, "speech model", "whisper", "download model", "delete model", "change model", "offline",

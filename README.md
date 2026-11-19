@@ -1,6 +1,6 @@
 # Lowkey
 
-Lowkey is a slim Android keyboard with on-device voice typing. Speech recognition, suggestions, and autocorrect run on your phone. Lowkey uses the internet to download speech models and keyboard languages, and to check for and download app updates.
+Lowkey is a slim Android keyboard with on-device voice typing. Speech recognition, suggestions, and autocorrect run on your phone. Lowkey uses the internet to download speech models and keyboard languages, and to check for and download app updates. If you turn on the experimental AI on the keyboard, it also sends the prompts you type for it to the AI service you choose.
 
 **[Download Lowkey for Android](https://github.com/opstudio-eu/lowkey/releases/latest/download/lowkey.apk)** · Android 9 or later, 64-bit ARM
 
@@ -23,6 +23,7 @@ The app checks for updates automatically. Use **Settings → About & updates →
 - Direct resizing and positioning, one-handed and floating modes, a split keyboard for wider screens, and an optional number row.
 - An offline emoji panel with categories, skin-tone variants, and recent choices, plus tap-to-insert emoji suggestions for English and Dutch words (in English also from emoji names, such as thumb for 👍). Hold the emoji key to switch between your keyboard languages.
 - Clipboard history for text and images, with previews and an image editor for cropping, annotation, and blur.
+- Experimental: AI on the keyboard (✨), through OpenAI with your own API key or your own OpenAI-compatible server. Describe an image in a box above the keys; it is made in the background and lands in your clipboard, ready to insert.
 - A short tour that teaches the gestures by having you do them, and a built-in test field to try the keyboard without leaving settings.
 - Export and import of your saved words, speech rules and settings in one file, for a new phone or a reinstall.
 - Light and dark themes in OpStudio's colours, following the system by default, plus an optional custom keyboard theme: your own colours for every part of the keyboard and an optional background photo, with a live preview and contrast checks.

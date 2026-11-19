@@ -130,6 +130,33 @@ class ClipboardHistory(
     }
 
     /**
+     * Adds an image the keyboard made itself (✨ AI on the keyboard, Settings › Experimental) as the
+     * newest clip. Its own copy is its source, so putting it on the system clipboard afterwards
+     * finds this entry instead of copying the image again. Call on an IO dispatcher.
+     */
+    @Synchronized
+    fun recordCreated(bytes: ByteArray, mimeType: String, thumbnail: (Uri) -> Bitmap?): ClipEntry.Image? {
+        if (bytes.size > MAX_IMAGE_BYTES) return null
+        val ext = MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType) ?: "img"
+        val id = nextId++
+        val file = File(dir, "$id.$ext")
+        return try {
+            file.writeBytes(bytes)
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}$AUTHORITY_SUFFIX", file)
+            ClipEntry.Image(id, uri, mimeType, thumbnail(uri), uri, file, clock()).also {
+                push(it)
+                prune()
+            }
+        } catch (_: IOException) {
+            file.delete()
+            null
+        } catch (_: IllegalArgumentException) {
+            file.delete()
+            null
+        }
+    }
+
+    /**
      * [entry] was pasted: it is kept as long as a clip copied now, so the editor can still read it.
      * Doesn't wait for a copy in progress, so it is safe on the main thread.
      */
@@ -222,7 +249,7 @@ class ClipboardHistory(
         const val MAX_TEXT_CHARS = 20_000
         const val AUTHORITY_SUFFIX = ".clipboard"
         private const val DIR = "clipboard"
-        private const val MAX_IMAGE_BYTES = 20L * 1024 * 1024
+        private const val MAX_IMAGE_BYTES = com.rheerkens.androidkeyboard.ai.ImageApi.MAX_IMAGE_BYTES.toLong()
 
         /**
          * Moves [entry] to the front, replacing any entry with the same key (re-copying an older

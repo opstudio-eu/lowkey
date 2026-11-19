@@ -80,10 +80,11 @@ class SettingsSearchTest {
         Destination.DICTIONARY -> listOf("DictionaryScreen.kt")
         Destination.KEYBOARD_THEME -> listOf("KeyboardThemeScreen.kt")
         Destination.LANGUAGES -> listOf("LanguagesScreen.kt")
+        Destination.SETTINGS_EXPERIMENTAL -> listOf("ExperimentalScreen.kt")
         else -> listOf("SettingsScreen.kt")
     }.joinToString("\n") { File(screens, it).readText() }
 
-    private val rowCall = Regex("""(SwitchRow|ChoiceDialogRow|ActionRow|LinkRow)\(\s*(?:title\s*=\s*)?"([^"]+)"""")
+    private val rowCall = Regex("""(SwitchRow|ChoiceDialogRow|ActionRow|LinkRow|SecretRow|ValueRow|TextSettingRow)\(\s*(?:title\s*=\s*)?"([^"]+)"""")
 
     @Test fun everyHighlightedTitleIsARowOnItsOwnScreen() {
         // A renamed or moved row would otherwise stay findable under its old name and never highlight.

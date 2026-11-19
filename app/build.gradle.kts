@@ -106,8 +106,8 @@ android {
         minSdk = 28
         targetSdk = 37
         testInstrumentationRunner = "com.rheerkens.androidkeyboard.test.KeyboardTouchProbe"
-        versionCode = 73
-        versionName = "0.14.1"
+        versionCode = 74
+        versionName = "0.14.2"
 
         // The release feed the in-app updater reads. -PupdateFeedUrl=https://… points a test build elsewhere.
         val updateFeedUrl = providers.gradleProperty("updateFeedUrl")
@@ -174,6 +174,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 
     testImplementation("junit:junit:4.13.2")
+    // The real org.json for JVM tests of the Image API parsing (Android ships it; the unit-test jar stubs it).
+    testImplementation("org.json:json:20250517")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
 }
 

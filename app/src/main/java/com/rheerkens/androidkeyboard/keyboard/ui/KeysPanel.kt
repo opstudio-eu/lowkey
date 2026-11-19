@@ -28,6 +28,7 @@ import com.rheerkens.androidkeyboard.keyboard.AlternatesPopup
 import com.rheerkens.androidkeyboard.keyboard.CursorSlide
 import com.rheerkens.androidkeyboard.keyboard.LanguageMenu
 import com.rheerkens.androidkeyboard.keyboard.TypingKeyboard
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -97,8 +98,9 @@ fun KeysPanel(
     keyboards: List<TypingKeyboard> = emptyList(),
     languageMenu: LanguageMenuState? = null,
     pointingStick: Boolean = true,
+    /** Shared with the image prompt bar, whose Create and ✕ first type the keys still held down. */
+    rollover: KeyRollover = remember(state.keyboard, state.layer) { KeyRollover() },
 ) {
-    val rollover = remember(state.keyboard, state.layer) { KeyRollover() }
     val rowHeight = (rowHeightDp * keyRows.toFloat() / layout.rows.size).dp
     // While a slide from the pointing stick moves the cursor, the key labels fade: the keys are a trackpad then.
     var trackpad by remember { mutableStateOf(false) }
@@ -385,9 +387,13 @@ private fun KeyView(
             enterKind.label ?: "Enter, new line", modifier, gestureKey = key, onDown = actions::onKeyDown, onTap = { actions.onKey(key) },
             rollover = rollover,
         ) { pressed ->
-            KeyCap(if (pressed) c.enterPressed else c.enter) {
+            KeyCap(if (pressed && !enterKind.dimmed) c.enterPressed else c.enter,
+                Modifier.alpha(if (enterKind.dimmed) DIMMED_ALPHA else 1f)) {
                 val label = enterKind.label
-                if (label == null) {
+                if (enterKind.opensSetup) {
+                    // "Add key" and the like are spelled out on the composer's button; a glyph fits any key width.
+                    KeyIcon(if (enterKind.setupIsServer) SlimIcons.Server else SlimIcons.Key, tint = c.enterInk)
+                } else if (label == null) {
                     KeyIcon(SlimIcons.Enter, tint = c.enterInk)
                 } else {
                     Text(label, color = c.enterInk, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)

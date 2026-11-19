@@ -19,6 +19,17 @@ object SlimIcons {
     val Move by lazy { stroke("move", "M12 3v18M3 12h18M9 6l3 -3 3 3M9 18l3 3 3 -3M6 9l-3 3 3 3M18 9l3 3 -3 3") }
     val Split by lazy { stroke("split", "M3 6h7v12H3zM14 6h7v12h-7z") }
     val OneHand by lazy { stroke("oneHand", "M4 6h11v12H4zM19 8l3 4 -3 4") }
+    /** A four-pointed star with a small one beside it: create an image. */
+    val Sparkle by lazy {
+        stroke("sparkle", "M11 3l1.9 5.1L18 10l-5.1 1.9L11 17l-1.9-5.1L4 10l5.1-1.9z",
+            filled = "M19 14l.8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8z")
+    }
+    /** A key: the AI's API key or access token. */
+    val Key by lazy { stroke("key", circle(8f, 15f, 4f), "M11 12l9 -9M16.5 6.5l2.5 2.5M14 9l2 2") }
+    /** Two stacked boxes: the user's own server. */
+    val Server by lazy {
+        stroke("server", "M4 4h16v6H4zM4 14h16v6H4z", filled = "M7 6.3h1.4v1.4H7zM7 16.3h1.4v1.4H7z")
+    }
     val Floating by lazy { stroke("floating", "M3 4h18v16H3zM8 10h10v7H8z") }
     private fun stroke(name: String, vararg paths: String, width: Float = 1.8f, filled: String? = null) =
         ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f).apply {

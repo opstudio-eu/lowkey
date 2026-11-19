@@ -11,8 +11,73 @@ import com.rheerkens.androidkeyboard.keyboard.TypingKeyboard
 
 /** What the Enter key does in the current editor. */
 enum class EnterKind(val label: String?) {
-    NEWLINE(null), GO("Go"), SEND("Send"), SEARCH("Search"), NEXT("Next"), DONE("Done"), PREVIOUS("Prev")
+    NEWLINE(null), GO("Go"), SEND("Send"), SEARCH("Search"), NEXT("Next"), DONE("Done"), PREVIOUS("Prev"),
+    /** While the keys type an image prompt: Enter creates the image. */
+    CREATE("Create"),
+    /** The prompt is empty: Create shows, dimmed, and does nothing yet. */
+    CREATE_EMPTY("Create"),
+    // The service isn't set up: Enter opens the setting that is missing, like the composer's button.
+    ADD_KEY("Add key"), ADD_SERVER("Add server"), FIX_SERVER("Fix server"), FIX_KEY("Fix key"), FIX_TOKEN("Fix token");
+
+    val dimmed: Boolean get() = this == CREATE_EMPTY
+    /** Opens a setting the AI needs: the key shows a glyph, its label is what TalkBack says. */
+    val opensSetup: Boolean get() = setupIsServer || this == ADD_KEY || this == FIX_KEY || this == FIX_TOKEN
+    /** A setup key about the server's address (a server glyph); the others are about a key (a key glyph). */
+    val setupIsServer: Boolean get() = this == ADD_SERVER || this == FIX_SERVER
 }
+
+/** The keyboard's AI (Settings › Experimental): ✨, the composer above the strip, and its status. */
+data class AiUi(
+    /** ✨ shows at the strip's right end: turned on, and not in a password, private or number field. */
+    val available: Boolean = false,
+    /** The action whose prompt the keys type into, instead of the editor; null when the composer is closed. */
+    val promptAction: com.rheerkens.androidkeyboard.ai.AiAction? = null,
+    val prompt: String = "",
+    /** Where typing goes in [prompt]. */
+    val cursor: Int = 0,
+    /** Dictated words still being heard, shown after [prompt] until they are final. */
+    val provisional: String = "",
+    /** The defaults chip's choices are open where the keys were. */
+    val optionsOpen: Boolean = false,
+    /** Actions running in the background; ✨ shows how many, and the composer can stop each. */
+    val tasks: List<com.rheerkens.androidkeyboard.ai.AiTask> = emptyList(),
+    /** The image that just finished, offered with Insert and Preview until used or dismissed. */
+    val ready: AiReady? = null,
+    /** An action that failed, offered with Try again in the ready card's place. */
+    val failure: AiFailure? = null,
+    /** A note for the composer (a failure, the limit), which covers the strip where notes show. */
+    val note: StripNote? = null,
+    /** A dictation into the prompt is under way: Create waits for it. */
+    val dictating: Boolean = false,
+    // The defaults the chip shows.
+    val service: com.rheerkens.androidkeyboard.ai.AiService = com.rheerkens.androidkeyboard.ai.AiService.OPENAI,
+    val imageModel: String = com.rheerkens.androidkeyboard.ai.ImageModel.FLARE.id,
+    val imageQuality: com.rheerkens.androidkeyboard.ai.ImageQuality = com.rheerkens.androidkeyboard.ai.ImageQuality.LOW,
+    /** The model sent to an own server, empty for the server's default. */
+    val serverModel: String = "",
+    /** What the chosen service still needs (an API key, a server address), or null when it is set up. */
+    val setup: com.rheerkens.androidkeyboard.ai.AiSetup? = null,
+    /** The own server's host, for the options panel. */
+    val serverHost: String = "",
+) {
+    val promptOpen: Boolean get() = promptAction != null
+}
+
+/** A failed action: what was asked, and why it failed, in a few words. */
+data class AiFailure(
+    val prompt: String,
+    val message: String,
+    /** The key or token was refused: the card offers this (such as "Edit key") instead of Try again. */
+    val fixLabel: String? = null,
+    /** The settings row [fixLabel] opens: the credential this request was sent with. */
+    val fixSetting: String? = null,
+    val id: Long = System.nanoTime(),
+) {
+    val cardId: String get() = "failure-$id"
+}
+
+/** A finished image: [pasteable] in this field; [onClipboard] when it is also the system clip. */
+data class AiReady(val entry: ClipEntry.Image, val pasteable: Boolean, val onClipboard: Boolean)
 
 /** Transient message shown in the top strip, e.g. a cancelled-dictation note. */
 data class StripNote(val text: String, val warn: Boolean = false, val id: Long = System.nanoTime())
@@ -67,6 +132,36 @@ interface KeyboardActions {
     /** A slide from the pointing stick (the red dot by G) began to move the cursor ([active]) or ended. */
     fun onCursorSlide(active: Boolean) {}
     fun onEditAction(action: EditAction) {}
+    /** ✨ on the strip opens the composer; the ✕ in its place closes it (the draft stays). */
+    fun onAiButton() {}
+    /** The defaults chip: shows (or hides) the model and quality choices where the keys are. */
+    fun onToggleAiOptions() {}
+    /** Closes those choices (keyboard tools open in their place). */
+    fun onCloseAiOptions() {}
+    /** Stops an action running in the background. */
+    fun onStopAiTask(id: Long) {}
+    /** The service, model or quality picked under the chip, remembered for the next images. */
+    fun onSelectAiService(service: com.rheerkens.androidkeyboard.ai.AiService) {}
+    fun onSelectImageModel(id: String) {}
+    /** The AI settings page (key, server address, token); with [setting], that row's editor opens. */
+    fun onOpenAiSettings(setting: String? = null) {}
+    /** How far the AI card above the keyboard reaches over the app, in pixels, so the app can move up. */
+    fun onAiOverlayHeight(px: Int) {}
+    fun onSelectImageQuality(quality: com.rheerkens.androidkeyboard.ai.ImageQuality) {}
+    /** Sends the prompt (Create, or Enter); it runs in the background and the composer closes. */
+    fun onAiPromptSubmit() {}
+    /** Insert on the ready status. */
+    /** [key]: the image the card showed, so a press held while a newer one replaced it does nothing. */
+    fun onInsertAiResult(key: String) {}
+    /** Dismisses the ready (or failed) card; an image stays in the clipboard row. */
+    /** [card]: the ready image's key, or the failure's [AiFailure.cardId]; a stale card's ✕ does nothing. */
+    fun onDismissAiResult(card: String) {}
+    /** The ready card is being looked at ([holding], a preview is open): it doesn't time out meanwhile. */
+    fun onAiCardHold(holding: Boolean) {}
+    /** A tap on the prompt: its cursor goes to this character index. */
+    fun onAiPromptCursor(index: Int) {}
+    /** Try again on a failed action: the composer with its prompt; or, for a refused key, its editor in Settings. */
+    fun onRetryAiFailure(id: Long) {}
     fun onCloseEmoji() {}
     fun onChooseEmoji(value: String) {}
     fun onOpenTools() {}
@@ -81,6 +176,15 @@ interface KeyboardActions {
     fun onPrepareResize() {}
     fun onKeyDown()
     fun onKey(key: Key)
+    /**
+     * A key released on the keys while the prompt was open (as this panel was drawn). If the prompt has
+     * closed since (another finger tapped ✕), it was meant for the prompt and must not reach the app.
+     */
+    fun onPromptKey(key: Key) = onKey(key)
+    /** A clip tapped in the prompt's strip; like [onPromptKey], dropped once the prompt has closed. */
+    fun onPromptPasteHistory(entry: ClipEntry) = onPasteHistory(entry)
+    /** The pointing stick over the prompt's keys; dropped once the prompt has closed. */
+    fun onPromptMoveCursor(chars: Int, lines: Int) = onMoveCursor(chars, lines)
     fun onBackspace()
     fun onBackspaceHoldStarted()
     fun onBackspaceHoldEnded()
