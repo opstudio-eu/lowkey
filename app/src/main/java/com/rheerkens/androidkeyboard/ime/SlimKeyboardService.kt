@@ -246,7 +246,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
     /** True right after a suggestion pick added a trailing space (for punctuation swap). */
     private var autoSpaced = false
 
-    /** The slide from Space that is under way selects text (Shift was tapped just before it). */
+    /** The slide from the pointing stick (the red dot by G) that is under way selects text (Shift was tapped just before it). */
     private var slideSelects = false
     private val doubleSpacePeriod = DoubleSpacePeriod()
 
@@ -397,6 +397,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions {
                         colors = colors,
                         background = background,
                         numberRow = s.numberRow,
+                        pointingStick = s.pointingStick,
                         emojiOpen = emoji && m == InputMode.KEYS,
                         emojiCatalog = catalog,
                         recentEmoji = if (sensitive) emptyList() else s.recentEmoji,

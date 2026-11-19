@@ -551,8 +551,10 @@ public final class KeyboardTouchProbe extends Instrumentation {
         }
     }
     /**
-     * Sliding a finger left along Space moves the cursor without typing a space; Keyboard tools'
-     * editing row selects, copies, pastes and undoes in the field.
+     * Sliding a finger left from the pointing stick (the red nub on G's corner) moves the cursor.
+     * G itself only types: a slide from it doesn't move the cursor, and taps on it type g, also
+     * when they drift a little, overlap the next key or are held still. Space doesn't slide.
+     * Keyboard tools' editing row selects, copies, pastes and undoes in the field.
      */
     private void trackpadEdit(Bundle result) throws Exception {
         float dp = getTargetContext().getResources().getDisplayMetrics().density;
@@ -561,8 +563,8 @@ public final class KeyboardTouchProbe extends Instrumentation {
         setEditorText("hello world", 1500);
         AccessibilityNodeInfo field = waitEditable(); field.refresh();
 
-        Rect space = bounds(waitLabel("Space"));
-        float x = space.left + space.width() * 0.75f, y = space.centerY();
+        Rect nub = bounds(waitLabel("Pointing stick"));
+        float x = nub.centerX(), y = nub.centerY();
         long down = SystemClock.uptimeMillis();
         touchAt(down, MotionEvent.ACTION_DOWN, x, y);
         for (int i = 1; i <= 13; i++) { SystemClock.sleep(25); touchAt(down, MotionEvent.ACTION_MOVE, x - i * 5 * dp, y); }
@@ -576,8 +578,124 @@ public final class KeyboardTouchProbe extends Instrumentation {
         String marked = editorText();
         boolean slid = text.equals("hello world") && marked.length() == 12 && marked.indexOf('x') >= 3 && marked.indexOf('x') <= 7;
         ok &= slid;
-        report.append("slide 65 dp left on Space, then x: '").append(text).append("' -> '").append(marked).append("'")
+        report.append("slide 65 dp left from the nub, then x: '").append(text).append("' -> '").append(marked).append("'")
             .append(slid ? "" : " FAIL").append('\n');
+
+        // A slide from the middle of G is no slide: the cursor stays at the end (G may type its g).
+        setEditorText("hello world", 1200);
+        Rect g = bounds(waitLabel("g"));
+        x = g.centerX(); y = g.centerY();
+        long fromG = SystemClock.uptimeMillis();
+        touchAt(fromG, MotionEvent.ACTION_DOWN, x, y);
+        for (int i = 1; i <= 13; i++) { SystemClock.sleep(25); touchAt(fromG, MotionEvent.ACTION_MOVE, x - i * 5 * dp, y); }
+        SystemClock.sleep(25);
+        touchAt(fromG, MotionEvent.ACTION_UP, x - 65 * dp, y);
+        SystemClock.sleep(600);
+        tap(bounds(waitLabel("x")));
+        SystemClock.sleep(600);
+        String gSlid = editorText();
+        boolean gStill = gSlid.startsWith("hello world") && gSlid.endsWith("x");
+        ok &= gStill;
+        report.append("slide 65 dp left from G, then x: '").append(gSlid).append("'").append(gStill ? "" : " FAIL").append('\n');
+
+        // A tap on the dot types nothing; a tap beside it, in H's corner, types h.
+        setEditorText("", 1200);
+        tap(nub); SystemClock.sleep(400);
+        float hx = nub.centerX() + 8 * dp, hy = nub.centerY() - 8 * dp;
+        long beside = SystemClock.uptimeMillis();
+        touchAt(beside, MotionEvent.ACTION_DOWN, hx, hy);
+        SystemClock.sleep(40);
+        touchAt(beside, MotionEvent.ACTION_UP, hx, hy);
+        SystemClock.sleep(600);
+        String nubTaps = editorText();
+        boolean nubTap = nubTaps.equalsIgnoreCase("h");
+        ok &= nubTap;
+        report.append("tap on the dot, then 8 dp up-right of it: '").append(nubTaps).append("'").append(nubTap ? "" : " FAIL").append('\n');
+
+        // Taps on G type g: a still tap, one that drifts 8 dp, one held still past
+        // the long-press time (G has no accents in English), and one overlapped by the next key.
+        setEditorText("", 1200);
+        tap(g); SystemClock.sleep(300);
+        long drift = SystemClock.uptimeMillis();
+        touchAt(drift, MotionEvent.ACTION_DOWN, x, y);
+        SystemClock.sleep(30); touchAt(drift, MotionEvent.ACTION_MOVE, x + 4 * dp, y + 3 * dp);
+        SystemClock.sleep(30); touchAt(drift, MotionEvent.ACTION_MOVE, x + 8 * dp, y + 4 * dp);
+        SystemClock.sleep(30); touchAt(drift, MotionEvent.ACTION_UP, x + 8 * dp, y + 4 * dp);
+        SystemClock.sleep(300);
+        long held = SystemClock.uptimeMillis();
+        touchAt(held, MotionEvent.ACTION_DOWN, x, y);
+        SystemClock.sleep(800);
+        touchAt(held, MotionEvent.ACTION_UP, x, y);
+        SystemClock.sleep(300);
+        Rect h = bounds(waitLabel("h"));
+        long both = SystemClock.uptimeMillis();
+        touchAt(both, MotionEvent.ACTION_DOWN, new int[]{0}, new float[][]{{x, y}});
+        SystemClock.sleep(40);
+        touchAt(both, MotionEvent.ACTION_POINTER_DOWN | (1 << MotionEvent.ACTION_POINTER_INDEX_SHIFT), new int[]{0, 1},
+            new float[][]{{x, y}, {h.centerX(), h.centerY()}});
+        SystemClock.sleep(40);
+        touchAt(both, MotionEvent.ACTION_POINTER_UP, new int[]{0, 1}, new float[][]{{x, y}, {h.centerX(), h.centerY()}});
+        SystemClock.sleep(40);
+        touchAt(both, MotionEvent.ACTION_UP, new int[]{1}, new float[][]{{h.centerX(), h.centerY()}});
+        SystemClock.sleep(600);
+        String taps = editorText();
+        // The empty field capitalizes the first letter.
+        boolean gTyped = taps.equalsIgnoreCase("ggggh");
+        ok &= gTyped;
+        report.append("G taps (still, drifting, held, overlapped by h): '").append(taps).append("'").append(gTyped ? "" : " FAIL").append('\n');
+
+        // Space only types: a slide along it moves nothing and types one space.
+        // An empty field, so autocorrect has no word to change on Space.
+        setEditorText("", 1200);
+        Rect space = bounds(waitLabel("Space"));
+        float sx = space.left + space.width() * 0.75f, sy = space.centerY();
+        long spaceDown = SystemClock.uptimeMillis();
+        touchAt(spaceDown, MotionEvent.ACTION_DOWN, sx, sy);
+        for (int i = 1; i <= 6; i++) { SystemClock.sleep(25); touchAt(spaceDown, MotionEvent.ACTION_MOVE, sx - i * 5 * dp, sy); }
+        touchAt(spaceDown, MotionEvent.ACTION_UP, sx - 30 * dp, sy);
+        SystemClock.sleep(600);
+        String spaced = editorText();
+        boolean spaceTypes = spaced.equals(" ");
+        ok &= spaceTypes;
+        report.append("slide 30 dp on Space: '' -> '").append(spaced).append("'").append(spaceTypes ? "" : " FAIL").append('\n');
+
+        // A selecting slide whose nub goes away (another finger opens the symbols) still ends:
+        // back on the letters, the next slide without Shift moves without selecting.
+        setEditorText("hello world", 1200);
+        tap(bounds(waitLabel("Shift"))); SystemClock.sleep(300);
+        nub = bounds(waitLabel("Pointing stick")); x = nub.centerX(); y = nub.centerY();
+        Rect symbols = bounds(waitLabel("Numbers and symbols"));
+        long sel = SystemClock.uptimeMillis();
+        touchAt(sel, MotionEvent.ACTION_DOWN, new int[]{0}, new float[][]{{x, y}});
+        // About seven characters selected, more than the plain slide below moves.
+        for (int i = 1; i <= 14; i++) { SystemClock.sleep(25); touchAt(sel, MotionEvent.ACTION_MOVE, new int[]{0}, new float[][]{{x - i * 5 * dp, y}}); }
+        float fx = x - 70 * dp;
+        touchAt(sel, MotionEvent.ACTION_POINTER_DOWN | (1 << MotionEvent.ACTION_POINTER_INDEX_SHIFT), new int[]{0, 1},
+            new float[][]{{fx, y}, {symbols.centerX(), symbols.centerY()}});
+        SystemClock.sleep(60);
+        touchAt(sel, MotionEvent.ACTION_POINTER_UP | (1 << MotionEvent.ACTION_POINTER_INDEX_SHIFT), new int[]{0, 1},
+            new float[][]{{fx, y}, {symbols.centerX(), symbols.centerY()}});
+        SystemClock.sleep(400);
+        touchAt(sel, MotionEvent.ACTION_UP, new int[]{0}, new float[][]{{fx, y}});
+        SystemClock.sleep(500);
+        boolean switched = keyFor("Letters") != null;
+        if (switched) tapKey("Letters");
+        SystemClock.sleep(500);
+        // An ordinary slide (no Shift) must only move: a slide left unfinished would keep selecting.
+        nub = bounds(waitLabel("Pointing stick")); x = nub.centerX(); y = nub.centerY();
+        long plain = SystemClock.uptimeMillis();
+        touchAt(plain, MotionEvent.ACTION_DOWN, x, y);
+        for (int i = 1; i <= 6; i++) { SystemClock.sleep(25); touchAt(plain, MotionEvent.ACTION_MOVE, x + i * 5 * dp, y); }
+        touchAt(plain, MotionEvent.ACTION_UP, x + 30 * dp, y);
+        SystemClock.sleep(600);
+        // Selected text would be replaced by x.
+        tap(bounds(waitLabel("x")));
+        SystemClock.sleep(600);
+        String afterSlide = editorText();
+        boolean ended = switched && afterSlide.length() == 12;
+        ok &= ended;
+        report.append("selecting slide, symbols opened mid-slide, back to letters, plain slide right and x: switched=").append(switched)
+            .append(" -> '").append(afterSlide).append("'").append(ended ? "" : " FAIL").append('\n');
         setEditorText("hello world", 1200);
         // Editing row under Keyboard tools (hold the microphone).
         Rect mic = bounds(waitLabel("Switch to voice typing"));
@@ -1265,6 +1383,8 @@ public final class KeyboardTouchProbe extends Instrumentation {
                 String description = String.valueOf(n.getContentDescription()), text = String.valueOf(n.getText());
                 if(label.equals(description) || label.equals(text) ||
                     (label.equals("Backspace") && description.startsWith("Backspace.")) ||
+                    // The pointing stick adds how to slide it.
+                    (label.equals("Pointing stick") && description.startsWith("Pointing stick.")) ||
                     java.util.Arrays.asList(description.split(", ")).contains(label) ||
                     (label.length()==1 && (label.equalsIgnoreCase(description) ||
                         description.toLowerCase(java.util.Locale.ROOT).startsWith(label+". long-press") || label.equalsIgnoreCase(text)))) return n;

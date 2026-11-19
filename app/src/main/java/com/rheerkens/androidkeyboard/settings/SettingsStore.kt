@@ -74,6 +74,7 @@ class SettingsStore(context: Context) {
             ),
             keyboardHeight = enumOr(prefs.getString(K_HEIGHT, null), d.keyboardHeight),
             numberRow = prefs.getBoolean(K_NUMBER_ROW, d.numberRow),
+            pointingStick = prefs.getBoolean(K_POINTING_STICK, d.pointingStick),
             bottomKey = enumOr(prefs.getString("bottom_key", null), d.bottomKey),
             recentEmoji = EmojiHistory.decode(prefs.getString("recent_emoji", null)),
             vibrateOnKeyPress = prefs.getBoolean(K_VIBRATE, d.vibrateOnKeyPress),
@@ -114,6 +115,7 @@ class SettingsStore(context: Context) {
         putString("keyboard_placement", s.placement.encode())
         putString(K_HEIGHT, s.keyboardHeight.name)
         putBoolean(K_NUMBER_ROW, s.numberRow)
+        putBoolean(K_POINTING_STICK, s.pointingStick)
         putString("bottom_key", s.bottomKey.name)
         putString("recent_emoji", EmojiHistory.encode(s.recentEmoji))
         putBoolean(K_VIBRATE, s.vibrateOnKeyPress)
@@ -185,6 +187,7 @@ class SettingsStore(context: Context) {
 
         const val K_HEIGHT = "keyboard_height"
         const val K_NUMBER_ROW = "number_row"
+        const val K_POINTING_STICK = "pointing_stick"
         const val K_LOUPE_CORNERS = "loupe_corner_choice"
         const val K_CHECK_UPDATES = "check_for_updates"
         const val K_VIBRATE = "vibrate"

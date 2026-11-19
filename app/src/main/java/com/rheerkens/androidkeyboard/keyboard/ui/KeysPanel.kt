@@ -14,10 +14,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.unit.Density
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.unit.toSize
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.foundation.layout.absoluteOffset
+import androidx.compose.ui.unit.round
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.unit.Constraints
 import com.rheerkens.androidkeyboard.keyboard.AlternatesPopup
+import com.rheerkens.androidkeyboard.keyboard.CursorSlide
 import com.rheerkens.androidkeyboard.keyboard.LanguageMenu
 import com.rheerkens.androidkeyboard.keyboard.TypingKeyboard
 import androidx.compose.ui.draw.drawBehind
@@ -33,11 +41,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -68,6 +81,7 @@ import com.rheerkens.androidkeyboard.keyboard.Layer
 import com.rheerkens.androidkeyboard.keyboard.ShiftState
 import com.rheerkens.androidkeyboard.keyboard.TouchKey
 import com.rheerkens.androidkeyboard.keyboard.touchRow
+import com.rheerkens.androidkeyboard.keyboard.stickKey
 import com.rheerkens.androidkeyboard.ui.SlimIcons
 
 /** Four key rows (concept 4 geometry: 48 dp rows by default, 3 dp side and 4 dp bottom padding). */
@@ -82,20 +96,145 @@ fun KeysPanel(
     keyRows: Int = layout.rows.size,
     keyboards: List<TypingKeyboard> = emptyList(),
     languageMenu: LanguageMenuState? = null,
+    pointingStick: Boolean = true,
 ) {
     val rollover = remember(state.keyboard, state.layer) { KeyRollover() }
     val rowHeight = (rowHeightDp * keyRows.toFloat() / layout.rows.size).dp
-    // While a slide from Space moves the cursor, the key labels fade: the keys are a trackpad then.
+    // While a slide from the pointing stick moves the cursor, the key labels fade: the keys are a trackpad then.
     var trackpad by remember { mutableStateOf(false) }
     val colors = LocalKeyboardColors.current
     val shown = remember(colors, trackpad) { if (trackpad) colors.fadedLabels() else colors }
-    // Space is in the bottom row: the rows above it and the strip are the keyboard a slide can cross.
-    val aboveSpace = rowHeight.value * (layout.rows.size - 1) + STRIP_DP
-    val menu = remember(keyboards, languageMenu, aboveSpace) { KeyMenus(keyboards, languageMenu, aboveSpace) { trackpad = it } }
+    // Only the letters have one, when it is on: the symbols and number pads keep every key for typing.
+    val stick = remember(layout, state.layer, pointingStick) {
+        if (pointingStick && state.layer == Layer.LETTERS) stickKey(layout) else null
+    }
+    // A slide and a screen reader's cursor step, or two fingers, can overlap: the keys stay a trackpad until the
+    // last slide ends.
+    val sliding = remember { intArrayOf(0) }
+    val latestActions by rememberUpdatedState(actions)
+    // Outside the menu, so a popup held open while the menu is rebuilt keeps its place on top.
+    val popups = remember { mutableStateListOf<Key.Char>() }
+    // Where each copy of the stick key has its bottom-right corner, in root coordinates: its nub sits there.
+    val corners = remember { mutableStateMapOf<Any, NubSpot>() }
+    // How the nubs look: pressed while a finger is on one, leaning the way the slide moves the cursor.
+    val look = remember { NubLook() }
+    val menu = remember(keyboards, languageMenu, stick, rowHeight, layout.rows.size) {
+        val slide = stick?.let {
+            val (above, below) = CursorSlide.nubBounds(rowHeight.value, layout.rows.size, it.row, STRIP_DP.toFloat())
+            KeySlide(
+                onMove = { chars, lines -> look.lean = Lean.of(chars, lines); latestActions.onMoveCursor(chars, lines) },
+                onActive = { active ->
+                    if (!active) look.lean = null
+                    val was = sliding[0] > 0
+                    sliding[0] += if (active) 1 else -1
+                    val now = sliding[0] > 0
+                    if (now != was) {
+                        trackpad = now
+                        latestActions.onCursorSlide(now)
+                    }
+                },
+                aboveDp = above,
+                rowDp = rowHeight.value,
+                belowDp = below,
+                onTouch = { down -> look.touches += if (down) 1 else -1 },
+            )
+        }
+        KeyMenus(keyboards, languageMenu, popups, stick?.key, slide, corners)
+    }
     CompositionLocalProvider(LocalKeyboardColors provides shown) {
-        KeyRows(layout, state, rowHeight, enterKind, actions, splitGapDp, menu, rollover)
+        Box {
+            // The nub draws over the keys around it; an open accent popup over the nub.
+            Box(Modifier.zIndex(if (popups.isEmpty()) 0f else 2f)) {
+                KeyRows(layout, state, rowHeight, enterKind, actions, splitGapDp, menu, rollover)
+            }
+            menu.stickSlide?.let { slide ->
+                StickNubs(corners, look, slide, rollover, Modifier.matchParentSize().zIndex(1f))
+            }
+        }
     }
 }
+
+/** Where a copy of the stick key ends, in root coordinates, and how big it is, in pixels: its nub sits on the corner. */
+private data class NubSpot(val corner: Offset, val keyWidth: Float, val keyHeight: Float) {
+    /** How far from the corner a touch is on the nub, in pixels: a fingertip, but never as far as a key's middle. */
+    fun reach(density: Density): Float = minOf(with(density) { NUB_REACH_DP.dp.toPx() }, minOf(keyWidth, keyHeight) * NUB_SHARE)
+}
+
+/** How the nubs look: pressed while a finger is on one, leaning the way a slide last moved the cursor. */
+private class NubLook {
+    var touches by mutableIntStateOf(0)
+    var lean by mutableStateOf<Lean?>(null)
+}
+
+/**
+ * The pointing stick: a red nub drawn on each of [corners], the stick key's bottom-right corner (G's, where G,
+ * H, V and B meet, on QWERTY). It takes no touches: the keys under it do, and a touch on one of them that
+ * starts on the nub slides the cursor ([nubSlideFor]). For screen readers it is a node with the slide as actions.
+ */
+@Composable
+private fun StickNubs(corners: Map<Any, NubSpot>, look: NubLook, slide: KeySlide, rollover: KeyRollover, modifier: Modifier) {
+    var origin by remember { mutableStateOf<Offset?>(null) }
+    val density = LocalDensity.current
+    Box(modifier.onGloballyPositioned { origin = it.positionInRoot() }) {
+        // Corners are known before this box is placed: draw nothing until it is, rather than in the wrong place.
+        val at = origin ?: return@Box
+        corners.forEach { (id, spot) ->
+            val reach = spot.reach(density)
+            key(id) {
+                Box(
+                    Modifier
+                        .absoluteOffset { (spot.corner - at - Offset(reach, reach)).round() }
+                        .size(with(density) { (reach * 2).toDp() })
+                        .stickNub(look.touches > 0, look.lean)
+                        .semantics {
+                            contentDescription = "Pointing stick. Slide to move the cursor"
+                            // The slide as actions, for screen readers, which can't slide. Each is a one-step
+                            // slide, so Shift tapped before it selects, as with a finger.
+                            customActions = Lean.entries.map { step ->
+                                CustomAccessibilityAction("Move cursor ${step.name.lowercase()}") {
+                                    // A letter still held is typed where the cursor is now, before it moves.
+                                    rollover.flush()
+                                    // An editor can throw: the slide still ends, or the keys would stay a trackpad.
+                                    try {
+                                        slide.onActive(true)
+                                        slide.onMove(step.x, step.y)
+                                    } finally {
+                                        slide.onActive(false)
+                                    }
+                                    true
+                                }
+                            }
+                        },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * [slide] for a key whose touch area is [bounds] (root coordinates) when one of [nubs] reaches into it: only a
+ * touch that starts on the nub slides, and the slide's room is measured from the key's middle. Null when no nub
+ * reaches the key.
+ */
+private fun nubSlideFor(slide: KeySlide, bounds: Rect, nubs: Collection<NubSpot>, density: Density): KeySlide? {
+    val nub = nubs.firstOrNull { spot ->
+        val nearest = Offset(spot.corner.x.coerceIn(bounds.left, bounds.right), spot.corner.y.coerceIn(bounds.top, bounds.bottom))
+        (spot.corner - nearest).getDistance() < spot.reach(density)
+    } ?: return null
+    val reach = nub.reach(density)
+    val lower = (bounds.center.y - nub.corner.y) / density.density
+    return slide.copy(
+        aboveDp = slide.aboveDp + lower,
+        belowDp = slide.belowDp - lower,
+        startsAt = { at -> (bounds.topLeft + at - nub.corner).getDistance() <= reach },
+    )
+}
+
+/** How far a touch on the nub reaches from its middle, in dp: about a fingertip. */
+private const val NUB_REACH_DP = 10f
+
+/** How far the nub reaches into the keys around it, at most: a share of their size, short of their middle. */
+private const val NUB_SHARE = 0.4f
 
 /** The suggestion strip above the keys, with its grip (`KeyboardContent`). */
 private const val STRIP_DP = 44 + KEYBOARD_GRIP_SPACE_DP
@@ -129,14 +268,19 @@ private fun KeyRows(
             val unit = ((maxWidth - splitGapDp.dp) / (2 * units)).coerceAtLeast(1.dp)
             Column {
                 rows.forEach { row ->
-                    Row(Modifier.fillMaxWidth().height(rowHeight)) {
+                    Row(Modifier.fillMaxWidth().height(rowHeight).zIndex(menu.layerOf(row.left + row.right))) {
                         if (row.fullWidth) {
                             row.left.forEach { key ->
                                 val width = if (key is Key.Space) Modifier.weight(1f) else Modifier.width(unit * key.weight)
                                 KeyView(key, state, enterKind, actions, menu, width.fillMaxHeight(), rollover)
                             }
                         } else {
-                            row.left.forEach { key -> KeyView(key, state, enterKind, actions, menu, Modifier.width(unit * key.weight).fillMaxHeight(), rollover) }
+                            // The shared middle key's left copy ends at the gap, where no keys meet its corner: the
+                            // right copy carries the nub. A key at the end of the left half that isn't shared keeps it.
+                            row.left.forEachIndexed { i, key ->
+                                KeyView(key, state, enterKind, actions, menu, Modifier.width(unit * key.weight).fillMaxHeight(), rollover,
+                                    nubHere = i < row.left.lastIndex || key !in row.right)
+                            }
                             Spacer(Modifier.weight(1f))
                             row.right.forEach { key -> KeyView(key, state, enterKind, actions, menu, Modifier.width(unit * key.weight).fillMaxHeight(), rollover) }
                         }
@@ -148,7 +292,7 @@ private fun KeyRows(
     }
     Column(Modifier.fillMaxWidth().padding(start = 3.dp, end = 3.dp, bottom = 4.dp)) {
         layout.rows.forEach { row ->
-            Row(Modifier.fillMaxWidth().height(rowHeight)) {
+            Row(Modifier.fillMaxWidth().height(rowHeight).zIndex(menu.layerOf(row))) {
                 // Gaps that centre a row widen the touch area of the letter beside them (A and L on QWERTY).
                 touchRow(row).forEach { touch ->
                     KeyView(touch.key, state, enterKind, actions, menu, Modifier.weight(touch.weight).fillMaxHeight(), rollover, touch)
@@ -168,11 +312,14 @@ private fun KeyView(
     modifier: Modifier,
     rollover: KeyRollover,
     touch: TouchKey? = null,
+    /** Whether the nub may sit on this key's corner when it is the stick key. */
+    nubHere: Boolean = true,
 ) {
     val c = LocalKeyboardColors.current
     when (key) {
         is Key.Gap -> Spacer(modifier)
-        is Key.Char -> CharKey(key, state, actions, modifier, rollover, touch?.before ?: 0f, touch?.after ?: 0f)
+        is Key.Char -> CharKey(key, state, actions, modifier, rollover, touch?.before ?: 0f, touch?.after ?: 0f,
+            popups = menu.popups, nubSlide = menu.stickSlide, corners = menu.corners, isStick = nubHere && key == menu.stick)
         is Key.Shift -> {
             val on = state.shift != ShiftState.OFF
             val desc = when (state.shift) {
@@ -222,14 +369,9 @@ private fun KeyView(
             KeyCap(if (pressed) c.keyPressed else c.keyMod) { KeyIcon(SlimIcons.Globe) }
         }
         is Key.Space -> PressTarget(
-            "Space, ${state.keyboard.fullLabel}. Slide to move the cursor. Long-press to switch keyboard app", modifier, gestureKey = key,
+            "Space, ${state.keyboard.fullLabel}. Long-press to switch keyboard app", modifier, gestureKey = key,
             rollover = rollover,
             onDown = actions::onKeyDown, onTap = { actions.onKey(key) }, onLongPress = actions::onSpaceLongPress,
-            slide = KeySlide(
-                onMove = actions::onMoveCursor,
-                onActive = { active -> menu.onTrackpad(active); actions.onCursorSlide(active) },
-                aboveDp = menu.aboveSpaceDp,
-            ),
         ) { pressed ->
             KeyCap(if (pressed) c.keyPressed else c.key) {
                 if (key.showsLanguage) {
@@ -257,14 +399,22 @@ private fun KeyView(
 
 /**
  * What the keys need from the panel: what the emoji key's hold menu offers and where it draws, and
- * for Space how much keyboard lies above it and whom to tell that a slide makes the keys a trackpad.
+ * which key is the pointing [stick] ([stickKey]; on a split keyboard that repeats it, its nub shows once) and what
+ * a slide from its nub does ([stickSlide]).
  */
 private class KeyMenus(
     val keyboards: List<TypingKeyboard>,
     val languages: LanguageMenuState?,
-    val aboveSpaceDp: Float = 0f,
-    val onTrackpad: (Boolean) -> Unit = {},
-)
+    /** The keys showing an accent popup now. */
+    val popups: MutableList<Key.Char>,
+    val stick: Key.Char? = null,
+    val stickSlide: KeySlide? = null,
+    /** Where each copy of the [stick] key has its bottom-right corner, in root coordinates. */
+    val corners: MutableMap<Any, NubSpot> = mutableMapOf(),
+) {
+    /** A row with an open accent popup draws over the rows after it: a tall popup reaches into the next row. */
+    fun layerOf(keys: List<Key>): Float = if (popups.any { it in keys }) 1f else 0f
+}
 
 /**
  * The emoji key: tap for emoji. With two or more keyboards, hold for a popup of keyboard languages
@@ -387,11 +537,14 @@ private fun Modifier.drawnKey(before: Float, after: Float, weight: Float): Modif
 /**
  * A letter or symbol key. Long-press opens a popup with its number and accents; slide to choose,
  * release to type. Sliding away from the popup and key cancels. Its touch area also covers the
- * empty space [before] and [after] it, in key widths.
+ * empty space [before] and [after] it, in key widths. While its popup is open, the key is in [popups].
+ * The pointing-stick key ([isStick]) puts its bottom-right corner in [corners], for its nub ([StickNubs]);
+ * a key the nub reaches into slides the cursor ([nubSlide]) for a touch that starts on the nub.
  */
 @Composable
 private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardActions, modifier: Modifier, rollover: KeyRollover,
-    before: Float = 0f, after: Float = 0f) {
+    before: Float = 0f, after: Float = 0f, popups: MutableList<Key.Char>? = null, nubSlide: KeySlide? = null,
+    corners: MutableMap<Any, NubSpot>? = null, isStick: Boolean = false) {
     val c = LocalKeyboardColors.current
     val density = LocalDensity.current
     val shifted = state.layer == Layer.LETTERS && state.shift != ShiftState.OFF
@@ -401,6 +554,13 @@ private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardAction
     var open by remember(key) { mutableStateOf(false) }
     var selected by remember(key) { mutableStateOf<Int?>(null) }
     var placement by remember(key) { mutableStateOf<KeyPlacement?>(null) }
+    // Removes exactly what it added, also when the popup's key or row goes away while it is open.
+    if (open && popups != null) DisposableEffect(popups, key) { popups += key; onDispose { popups -= key } }
+    val slot = remember { Any() }
+    if (isStick && corners != null) DisposableEffect(corners) { onDispose { corners.remove(slot) } }
+    // Where the key's touch area is, in root coordinates: whether a nub reaches into it.
+    var bounds by remember(key) { mutableStateOf<Rect?>(null) }
+    val slide = if (nubSlide == null || corners == null) null else bounds?.let { nubSlideFor(nubSlide, it, corners.values, density) }
     val popup = remember(placement, choices.size, density) {
         val p = placement
         if (p == null || choices.isEmpty()) null else with(density) {
@@ -434,6 +594,15 @@ private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardAction
                 val capLeft = coords.size.width * before / total
                 placement = KeyPlacement(left + capLeft, coords.size.width * key.weight / total,
                     coords.size.height.toFloat(), root.size.width.toFloat(), capLeft)
+                val inRoot = coords.positionInRoot()
+                val area = Rect(inRoot, coords.size.toSize())
+                if (bounds != area) bounds = area
+                if (isStick && corners != null) {
+                    val width = coords.size.width * key.weight / total
+                    val height = coords.size.height.toFloat()
+                    val spot = NubSpot(inRoot + Offset(capLeft + width, height), width, height)
+                    if (corners[slot] != spot) corners[slot] = spot
+                }
             }
             .semantics {
                 if (key.accents.isNotEmpty()) {
@@ -452,6 +621,7 @@ private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardAction
         onLongPressRelease = if (choices.isEmpty()) null else { { selected?.let { actions.onKey(Key.Char(choices[it])) } } },
         onLongPressState = { open = it },
         onLongPressMove = popup?.let { p -> { at: Offset -> selected = p.select(at.x - (placement?.capLeft ?: 0f), at.y) } },
+        slide = slide,
     ) { pressed ->
         KeyCap(if (pressed) c.keyPressed else if (key.numberRow) c.numberKey else c.key, Modifier.drawnKey(before, after, key.weight)) {
             val hint = key.hint

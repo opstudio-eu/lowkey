@@ -3,11 +3,12 @@ package com.rheerkens.androidkeyboard.keyboard
 import kotlin.math.abs
 
 /**
- * A finger that slides off Space uses the keyboard as a trackpad for the cursor. Positions are in
- * dp from the key's top-left corner (x to the right, y down).
+ * A finger that slides from the pointing stick's nub (on the corner of [stickKey], G) uses the keyboard
+ * as a trackpad for the cursor. Positions are in dp from the touch target's top-left corner (x to the
+ * right, y down).
  *
  * - A slide begins after [START] dp sideways or a whole key row up or down. Until then the touch
- *   is still a tap.
+ *   only waits: a touch on the nub never types.
  * - Sideways, every [STEP] dp is one character. A fast slide counts up to [MAX_GAIN] times as
  *   many, so a quick flick crosses a line and a slow slide stays exact.
  * - Up or down, every key row is one line.
@@ -15,7 +16,7 @@ import kotlin.math.abs
  *   sideways slide therefore doesn't change line.
  * - Coming back takes a full step, so the cursor doesn't flicker on a boundary.
  * - Resting in an [Edge] zone keeps the cursor moving ([dwell][EDGE_DWELL_MS], then a step every
- *   [Edge.everyMs]): at the sides of the screen, above the keyboard, and below the key, where there is no room to slide on.
+ *   [Edge.everyMs]): at the sides of the screen, above the keyboard, and on the bottom row, where there is no room to slide on.
  */
 class CursorSlide(private val zones: Zones, private val downX: Float, private val downY: Float, downAtMs: Long) {
 
@@ -28,7 +29,7 @@ class CursorSlide(private val zones: Zones, private val downX: Float, private va
         val right: Float,
         /** Above this y the finger is over the app, above the keyboard. */
         val top: Float,
-        /** Below this y the finger is under the key. */
+        /** Below this y the finger is low on the keyboard's bottom row, or under it. */
         val bottom: Float,
     )
 
@@ -107,14 +108,11 @@ class CursorSlide(private val zones: Zones, private val downX: Float, private va
         /** Finger travel per character: about a quarter of a letter key. */
         const val STEP = 10f
 
-        /** Sideways travel that starts a slide: far more than a quick tap drifts, so Space taps aren't lost. */
+        /** Sideways travel that starts a slide: far more than a quick tap drifts, so taps aren't lost. */
         const val START = 24f
 
         /** How close to the side of the screen the finger counts as at the edge. */
         const val SIDE_EDGE = 20f
-
-        /** How far below the key the finger counts as under it. */
-        const val BELOW_KEY = 12f
 
         /** How long the finger rests in a zone before the cursor starts moving by itself. */
         const val EDGE_DWELL_MS = 300L
@@ -129,7 +127,41 @@ class CursorSlide(private val zones: Zones, private val downX: Float, private va
         /** The share of the newest movement in the measured speed. */
         private const val SMOOTHING = 0.4f
 
+        /**
+         * Where a slide from the stick's nub runs out of room, in dp from the nub: it sits on the
+         * bottom edge of row [stickRow], on [rows] key rows [row] dp high under [strip] dp of
+         * suggestion strip. Returns how much keyboard lies above the nub (higher up is the app) and
+         * how far below it the bottom row's middle is (lower is the screen's edge).
+         */
+        fun nubBounds(row: Float, rows: Int, stickRow: Int, strip: Float): Pair<Float, Float> {
+            val nub = row * (stickRow + 1)
+            return (nub + strip) to (row * (rows - 0.5f) - nub)
+        }
+
         /** How many characters a [STEP] counts for at [speed] (dp per millisecond). */
         fun gain(speed: Float): Float = 1f + (MAX_GAIN - 1f) * ((speed - SLOW) / (FAST - SLOW)).coerceIn(0f, 1f)
     }
 }
+
+/** Where [stickKey] is: its row in the layout and the key. */
+data class Stick(val row: Int, val key: Key.Char)
+
+/**
+ * The key whose bottom-right corner carries the keyboard's pointing stick, like the red nub between
+ * G, H and B on some laptop keyboards: G, near the middle of the letters, so a slide has room up,
+ * down and to both sides. The key itself types as usual. A layout without G (ЙЦУКЕН, Greek) uses the key in G's place on QWERTY: the fifth letter
+ * of the middle letter row. Null when [layout] has neither (number pads, symbols).
+ */
+fun stickKey(layout: KeyboardLayout): Stick? {
+    val letterRows = layout.rows.withIndex()
+        .map { (index, row) -> index to row.filterIsInstance<Key.Char>().filter { !it.numberRow && it.label.singleOrNull()?.isLetter() == true } }
+        .filter { (_, letters) -> letters.isNotEmpty() }
+    for ((index, letters) in letterRows) {
+        letters.firstOrNull { it.label == "g" }?.let { return Stick(index, it) }
+    }
+    val (index, middle) = letterRows.getOrNull(1) ?: return null
+    return middle.getOrNull(G_INDEX)?.let { Stick(index, it) }
+}
+
+/** G is the fifth key of QWERTY's middle row. */
+private const val G_INDEX = 4

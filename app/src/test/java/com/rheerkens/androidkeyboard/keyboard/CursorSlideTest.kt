@@ -106,6 +106,27 @@ class CursorSlideTest {
         s.moveTo(65f, 120f, 200L)
         assertEquals(0, s.lines)
     }
+
+    @Test fun theNubsRoomReachesTheAppAboveAndTheBottomRowsMiddleBelow() {
+        // QWERTY's G corner: the bottom of row 1 of 4, 48 dp rows, a 50 dp strip. The nub is 96 dp
+        // down the keys; the bottom row's middle is 168 dp down.
+        assertEquals(146f to 72f, CursorSlide.nubBounds(48f, 4, 1, 50f))
+        // With a number row the stick is a row lower, and so is everything else.
+        assertEquals(194f to 72f, CursorSlide.nubBounds(48f, 5, 2, 50f))
+    }
+
+    @Test fun fromTheNubASlideGoesDownAsWellAsUp() {
+        // A nub target 32 dp across: its centre is 16 dp from its corner.
+        val (above, below) = CursorSlide.nubBounds(48f, 4, 1, 50f)
+        val nub = CursorSlide(zones.copy(top = 16f - above, bottom = 16f + below), 16f, 16f, 0L)
+        assertEquals(0 to 1, nub.glide(16f, 16f, 16f, 66f, 0L))
+        assertNull(nub.edge)
+        assertEquals(0 to -2, nub.glide(16f, 66f, 16f, -34f, 10_000L))
+        nub.moveTo(16f, 95f, 20_000L)
+        assertEquals(Edge.DOWN, nub.edge)
+        nub.moveTo(16f, -140f, 30_000L)
+        assertEquals(Edge.UP, nub.edge)
+    }
 }
 
 class ShiftForSelectingTest {

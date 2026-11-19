@@ -5,7 +5,7 @@ package com.rheerkens.androidkeyboard.keyboard
  * happened, never what was typed.
  */
 sealed interface KeyboardGesture {
-    /** A slide from Space moved the cursor, or changed the selection when [selecting]. */
+    /** A slide from the pointing stick (the red dot by G) moved the cursor, or changed the selection when [selecting]. */
     data class CursorMoved(val chars: Int, val lines: Int, val selecting: Boolean) : KeyboardGesture
 
     /** A hold-and-slide on Backspace ended with [words] words deleted. */
