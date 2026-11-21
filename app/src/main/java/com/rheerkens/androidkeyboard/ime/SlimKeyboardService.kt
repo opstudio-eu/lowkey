@@ -286,8 +286,9 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
      * picker, or closing late) can't save its words over, or clear the pictures of, the window now open.
      */
     private var composerSession = 0
-    /** The window the wand opened with a ready image: closed with no words, it leaves the saved draft alone. */
+    /** The window the wand opened with a ready image ([wandImage]): it leaves the field's saved draft alone. */
     private var wandSession = -1
+    private var wandImage = -1L
 
     private val clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
         refreshClipboard()
@@ -1963,7 +1964,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
     private fun takesImage(mimeType: String): Boolean = inAiPrompt.value || bridge.acceptsImage(mimeType)
 
     /** Room left for pictures in the prompt, counting those still being read. */
-    private fun promptImageRoom(): Int = ImageApi.MAX_INPUT_IMAGES - promptImagesFlow.value.size - promptImagesLoading
+    override fun promptImageRoom(): Int = ImageApi.MAX_INPUT_IMAGES - promptImagesFlow.value.size - promptImagesLoading
 
     /**
      * Reads [uri] into a picture for the prompt, shrunk for upload; a note says why when it can't.
@@ -2029,7 +2030,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         val images = promptImagesFlow.value
         val check = imageJob(settings.current, text, AppGraph.secrets::get, allowLocalHttp = BuildConfig.DEBUG, images.map { it.image })
         val job = check.job ?: return check.problem ?: "AI isn't set up"
-        retryPrompt = null
+        // The wand's window didn't take the field's saved draft, so that stays.
+        if (session != wandSession) retryPrompt = null
         val editor = composerEditor
         promptImagesEpoch++
         promptImagesFlow.value = emptyList()
@@ -2051,7 +2053,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         promptImagesLoading = 0
         promptImagesFlow.value = emptyList()
         // The wand's image alone isn't a draft: it is still in the clipboard row, and the saved one stays.
-        if (session == wandSession && draft.isBlank()) return
+        if (session == wandSession && draft.isBlank() && images.all { it.id == wandImage }) return
         if (draft.isNotBlank() || images.isNotEmpty()) retryPrompt = RetryPrompt(composerEditor, draft.trim(), images)
     }
 
@@ -2101,7 +2103,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         // Just this image: a saved draft for this field (words, other pictures) stays for the next ✨.
         if (openAiComposer(fresh = true)) {
             wandSession = composerSession
-            attachPromptImage(entry.uri)
+            if (attachPromptImage(entry.uri)) wandImage = nextPromptImage
         }
     }
 

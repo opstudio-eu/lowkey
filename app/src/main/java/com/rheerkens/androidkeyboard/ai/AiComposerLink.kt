@@ -35,6 +35,9 @@ interface AiComposerHost {
     /** Adds [entry] (an image or a screenshot) to the prompt; a note on the keyboard says when it can't. */
     fun addPromptImage(entry: ClipEntry)
 
+    /** How many more pictures fit, counting those still being read. */
+    fun promptImageRoom(): Int
+
     /** Adds photos picked in the system's photo picker, as many as there is room for. */
     fun addPromptPhotos(uris: List<Uri>, session: Int)
 

@@ -221,7 +221,7 @@ class AiPromptActivity : ComponentActivity() {
 
     /** Photos in the tray: the system's photo picker, for as many pictures as there is room for. */
     private fun pickPhotos(host: AiComposerHost) {
-        val room = ImageApi.MAX_INPUT_IMAGES - host.promptImages.value.size
+        val room = host.promptImageRoom()
         if (room <= 0 || picking) return
         picking = true
         try {
