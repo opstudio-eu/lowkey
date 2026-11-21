@@ -53,6 +53,16 @@ data class AiUi(
     val setup: com.rheerkens.androidkeyboard.ai.AiSetup? = null,
     /** The own server's host, for the options panel. */
     val serverHost: String = "",
+    /** Pictures added to the prompt, shown above the box with ✕ to take each one out. */
+    val images: List<com.rheerkens.androidkeyboard.ai.PromptImage> = emptyList(),
+    /** The + tray is open: recent images to add, and the photo picker. */
+    val trayOpen: Boolean = false,
+    /** Images in the clipboard history and recent screenshots, newest first, for the tray. */
+    val recentImages: List<ClipEntry> = emptyList(),
+    /** Improve is rewriting the prompt; its button turns into a spinner that stops it. */
+    val improving: Boolean = false,
+    /** The words before Improve, while the improved prompt is still unchanged: Undo brings them back. */
+    val beforeImprove: String? = null,
 )
 
 /** A failed action: what was asked, and why it failed, in a few words. */
@@ -63,6 +73,8 @@ data class AiFailure(
     val fixLabel: String? = null,
     /** The settings row [fixLabel] opens: the credential this request was sent with. */
     val fixSetting: String? = null,
+    /** The pictures sent with the prompt; Try again adds them back. */
+    val images: List<com.rheerkens.androidkeyboard.ai.PromptImage> = emptyList(),
     val id: Long = System.nanoTime(),
 ) {
     val cardId: String get() = "failure-$id"
@@ -134,6 +146,8 @@ interface KeyboardActions {
     /** Dismisses the ready (or failed) card; an image stays in the clipboard row. */
     /** [card]: the ready image's key, or the failure's [AiFailure.cardId]; a stale card's ✕ does nothing. */
     fun onDismissAiResult(card: String) {}
+    /** ✎ on the ready card: the prompt window opens with that image added, to change it. */
+    fun onEditAiResult(key: String) {}
     /** The ready card is being looked at ([holding], a preview is open): it doesn't time out meanwhile. */
     fun onAiCardHold(holding: Boolean) {}
     /** Try again on a failed action: the prompt window with its prompt; or, for a refused key, its editor in Settings. */

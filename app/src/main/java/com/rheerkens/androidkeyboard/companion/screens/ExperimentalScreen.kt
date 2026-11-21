@@ -106,11 +106,18 @@ fun ExperimentalScreen(modifier: Modifier) {
                             detail = { id -> ImageModel.entries.firstOrNull { it.id == id }?.let { "${it.speed}. ${it.detail}" } },
                         )
                     }
-                    AiService.OWN_SERVER -> TextSettingRow(
-                        "Server model", s.imageServerModel.ifBlank { "Server default" }, initial = s.imageServerModel,
-                        placeholder = "Leave empty for the server's default",
-                        help = "Sent as model, if your server needs one.",
-                    ) { v -> update { it.copy(imageServerModel = v) } }
+                    AiService.OWN_SERVER -> {
+                        TextSettingRow(
+                            "Server model", s.imageServerModel.ifBlank { "Server default" }, initial = s.imageServerModel,
+                            placeholder = "Leave empty for the server's default",
+                            help = "Sent as model, if your server needs one.",
+                        ) { v -> update { it.copy(imageServerModel = v) } }
+                        TextSettingRow(
+                            "Text model", s.promptServerModel.ifBlank { "Server default" }, initial = s.promptServerModel,
+                            placeholder = "Leave empty for the server's default",
+                            help = "Rewrites your prompt when you tap Improve in the prompt box. Sent as model, if your server needs one.",
+                        ) { v -> update { it.copy(promptServerModel = v) } }
+                    }
                 }
                 ChoiceDialogRow(
                     "Image quality", ImageQuality.entries, s.imageQuality, { it.label },
@@ -130,12 +137,15 @@ fun ExperimentalScreen(modifier: Modifier) {
         if (s.aiKeyboard) item {
             SettingsGroup("What is sent") {
                 GroupText(
-                    "Only what is in the ✨ prompt bar when you tap Create goes to the service above, nothing else you type. " +
+                    "Only what is in the ✨ prompt box when you tap Create goes to the service above: the words and the " +
+                        "pictures you added to it, nothing else you type. Improve sends just the words. " +
                         "The key and token are encrypted on this phone and never included in a backup.",
                 )
                 if (s.aiService == AiService.OWN_SERVER) GroupText(
                     "Your server speaks OpenAI's API: Create image sends POST <address>/v1/images/generations with the " +
-                        "prompt, n, quality and (if set) model as JSON, and reads data[0].b64_json (or an HTTPS data[0].url).",
+                        "prompt, n, quality and (if set) model as JSON, and reads data[0].b64_json (or an HTTPS data[0].url). " +
+                        "With pictures added, it sends them with the same fields as a multipart upload to " +
+                        "/v1/images/edits. Improve sends POST /v1/chat/completions and reads choices[0].message.content.",
                 )
             }
         }

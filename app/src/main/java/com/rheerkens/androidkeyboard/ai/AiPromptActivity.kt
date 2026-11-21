@@ -2,12 +2,21 @@ package com.rheerkens.androidkeyboard.ai
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.HapticFeedbackConstants
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.lifecycleScope
+import com.rheerkens.androidkeyboard.BuildConfig
+import com.rheerkens.androidkeyboard.clipboard.ClipEntry
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -63,6 +72,29 @@ class AiPromptActivity : ComponentActivity() {
     private var note by mutableStateOf<StripNote?>(null)
     /** Create started an image: the words don't come back as a draft. */
     private var submitted = false
+    /** Which prompt the keyboard opened this window for ([AiComposerHost.submitImagePrompt]). */
+    private var session = -1
+    private var trayOpen by mutableStateOf(false)
+
+    /** The system's photo picker is open over the window, which stays (and keeps its words) meanwhile. */
+    private var picking = false
+    /** Counts returns from the photo picker: each one gives the box the focus and the keyboard back. */
+    private var refocus by mutableStateOf(0)
+
+    /** Improve's request while it runs. */
+    private var improver: AiClient? = null
+    private var improving by mutableStateOf(false)
+    /** The words before Improve, offered by Undo until the improved prompt ([improved]) is changed. */
+    private var beforeImprove by mutableStateOf<String?>(null)
+    private var improved: String? = null
+
+    // Registered up front, as activity results must be; the photo picker needs no permission.
+    private val pickOne = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        picked(listOfNotNull(uri))
+    }
+    private val pickSome = registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(ImageApi.MAX_INPUT_IMAGES)) {
+        picked(it)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -78,6 +110,7 @@ class AiPromptActivity : ComponentActivity() {
             overrideActivityTransition(OVERRIDE_TRANSITION_OPEN, 0, 0)
             overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE, 0, 0)
         }
+        session = intent.getIntExtra(EXTRA_SESSION, -1)
         val start = intent.getStringExtra(EXTRA_PROMPT).orEmpty().take(ImageApi.MAX_PROMPT_CHARS)
         prompt = TextFieldValue(start, TextRange(start.length))
         setContent {
@@ -86,12 +119,14 @@ class AiPromptActivity : ComponentActivity() {
             val saved by AppGraph.secrets.saved.collectAsState()
             val refused by AppGraph.secrets.refused.collectAsState()
             val tasks by host.runningImages.collectAsState()
+            val images by host.promptImages.collectAsState()
+            val recent by host.recentImages.collectAsState()
             val dark = resolveDark(settings.theme, isSystemInDarkTheme())
             val colors = remember(keyboardTheme, dark) { resolveKeyboardColors(keyboardTheme, dark) }
             val focus = remember { FocusRequester() }
             val keyboard = LocalSoftwareKeyboardController.current
             val view = LocalView.current
-            LaunchedEffect(Unit) {
+            LaunchedEffect(refocus) {
                 focus.requestFocus()
                 keyboard?.show()
             }
@@ -106,6 +141,11 @@ class AiPromptActivity : ComponentActivity() {
                 serverModel = settings.imageServerModel,
                 setup = aiSetupOf(settings, saved) { AppGraph.secrets.isRefused(it, saved, refused) },
                 serverHost = serverHostOf(settings),
+                images = images,
+                trayOpen = trayOpen,
+                recentImages = recent,
+                improving = improving,
+                beforeImprove = beforeImprove,
             )
             val actions = remember(host) {
                 object : AiComposerActions {
@@ -119,6 +159,17 @@ class AiPromptActivity : ComponentActivity() {
                     override fun onSelectService(service: AiService) = AppGraph.settings.update { it.copy(aiService = service) }
                     override fun onSelectModel(id: String) = AppGraph.settings.update { it.copy(imageModel = id) }
                     override fun onSelectQuality(quality: ImageQuality) = AppGraph.settings.update { it.copy(imageQuality = quality) }
+                    override fun onToggleTray() { trayOpen = !trayOpen }
+                    override fun onPickPhotos() = pickPhotos(host)
+                    override fun onAddRecent(entry: ClipEntry) = host.addPromptImage(entry)
+                    override fun onRemoveImage(id: Long) = host.removePromptImage(id)
+                    override fun onImprove() = improve(host)
+                    override fun onUndoImprove() {
+                        val words = beforeImprove ?: return
+                        stopImproving()
+                        beforeImprove = null
+                        prompt = TextFieldValue(words, TextRange(words.length))
+                    }
                 }
             }
             CompositionLocalProvider(LocalKeyboardColors provides colors) {
@@ -132,7 +183,13 @@ class AiPromptActivity : ComponentActivity() {
                         .padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 4.dp),
                     contentAlignment = Alignment.BottomCenter,
                 ) {
-                    AiPromptCard(ai, prompt, { prompt = it; note = null }, focus, System::currentTimeMillis, actions,
+                    AiPromptCard(ai, prompt, { next ->
+                        // Typed into: Improve stops (the words typed win), and its Undo goes once the improved words change.
+                        if (next.text != prompt.text && improving) stopImproving()
+                        if (next.text != prompt.text && next.text != improved) beforeImprove = null
+                        prompt = next
+                        note = null
+                    }, focus, System::currentTimeMillis, actions,
                         Modifier.widthIn(max = 720.dp).fillMaxWidth()
                             // Taps on the card's own empty space stay on the card.
                             .pointerInput(Unit) { detectTapGestures { } })
@@ -154,7 +211,7 @@ class AiPromptActivity : ComponentActivity() {
         ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { view, insets ->
             val shown = insets.isVisible(WindowInsetsCompat.Type.ime())
             if (shown) imeSeen = true
-            else if (imeSeen && hasWindowFocus() && !isFinishing) finish()
+            else if (imeSeen && hasWindowFocus() && !isFinishing && !picking) finish()
             ViewCompat.onApplyWindowInsets(view, insets)
         }
     }
@@ -162,16 +219,95 @@ class AiPromptActivity : ComponentActivity() {
     /** The keyboard has shown for the prompt; once it hides again, the window closes. */
     private var imeSeen = false
 
+    /** Photos in the tray: the system's photo picker, for as many pictures as there is room for. */
+    private fun pickPhotos(host: AiComposerHost) {
+        val room = host.promptImageRoom()
+        if (room <= 0 || picking) return
+        picking = true
+        try {
+            if (room == 1) {
+                pickOne.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            } else {
+                pickSome.launch(PickVisualMediaRequest.Builder()
+                    .setMediaType(ActivityResultContracts.PickVisualMedia.ImageOnly).setMaxItems(room).build())
+            }
+        } catch (_: RuntimeException) {
+            // No photo picker on this phone (ActivityNotFoundException).
+            picking = false
+            note = StripNote("This phone has no photo picker", warn = true)
+        }
+    }
+
+    private fun picked(uris: List<Uri>) {
+        picking = false
+        // The window closes when the keyboard hides only once it has shown again.
+        imeSeen = false
+        refocus++
+        if (uris.isEmpty()) return
+        AiComposerLink.host?.addPromptPhotos(uris, session)
+        trayOpen = false
+    }
+
+    /**
+     * Improve: the service's text model rewrites the prompt into a clearer, more vivid one, which
+     * replaces the words (Undo brings them back). Again while it works stops it.
+     */
+    private fun improve(host: AiComposerHost) {
+        if (improving) {
+            stopImproving()
+            return
+        }
+        val settings = AppGraph.settings.current
+        aiSetupOf(settings, AppGraph.secrets.saved.value) { AppGraph.secrets.isRefused(it) }?.let {
+            openSettings(it.setting)
+            return
+        }
+        val words = prompt.text
+        val check = promptJob(settings, words, AppGraph.secrets::get, BuildConfig.DEBUG, host.promptImages.value.size)
+        val job = check.job ?: run {
+            note = StripNote(check.problem ?: "AI isn't set up", warn = true)
+            return
+        }
+        val client = AiClient()
+        improver = client
+        improving = true
+        note = null
+        lifecycleScope.launch {
+            val reply = withContext(Dispatchers.IO) { client.improve(job) }
+            // Stopped, undone or closed meanwhile.
+            if (improver !== client) return@launch
+            improver = null
+            improving = false
+            when (reply) {
+                is PromptReply.Text -> {
+                    improved = reply.prompt
+                    beforeImprove = words
+                    prompt = TextFieldValue(reply.prompt, TextRange(reply.prompt.length))
+                }
+                // Only said here: a refusal at this endpoint doesn't mark the key refused for Create too.
+                is PromptReply.Failed ->
+                    note = StripNote("Not improved: " + reply.message.replaceFirstChar { it.lowercase() }, warn = true)
+            }
+        }
+    }
+
+    private fun stopImproving() {
+        improver?.cancel()
+        improver = null
+        improving = false
+    }
+
     /** Create: with nothing set up, the setting that is missing; otherwise the image starts and the window closes. */
     private fun submit(host: AiComposerHost, confirm: () -> Unit) {
         if (submitted) return
+        stopImproving()
         val settings = AppGraph.settings.current
         aiSetupOf(settings, AppGraph.secrets.saved.value) { AppGraph.secrets.isRefused(it) }?.let {
             openSettings(it.setting)
             return
         }
         if (prompt.text.isBlank()) return
-        val problem = host.submitImagePrompt(prompt.text)
+        val problem = host.submitImagePrompt(prompt.text, session)
         if (problem != null) {
             note = StripNote(problem, warn = true)
             return
@@ -210,19 +346,28 @@ class AiPromptActivity : ComponentActivity() {
         }
     }
 
+    /** Away from the window (Home, another app): it closes, as the prompt is for the app below. The photo picker keeps it. */
+    override fun onStop() {
+        super.onStop()
+        if (!picking && !isChangingConfigurations && !isFinishing) finishNow()
+    }
+
     override fun onDestroy() {
+        stopImproving()
         // Closed without Create (✕, Back, a tap outside, Home): the words come back next time.
-        if (isFinishing && !submitted) AiComposerLink.host?.composerClosed(prompt.text)
+        if (isFinishing && !submitted) AiComposerLink.host?.composerClosed(prompt.text, session)
         super.onDestroy()
     }
 
     companion object {
         private const val EXTRA_PROMPT = "prompt"
+        private const val EXTRA_SESSION = "session"
 
-        /** Opens the window from the keyboard (its own task), with [prompt] already typed. */
-        fun intent(context: Context, prompt: String): Intent =
+        /** Opens the window from the keyboard (its own task), with [prompt] already typed, for prompt [session]. */
+        fun intent(context: Context, prompt: String, session: Int): Intent =
             Intent(context, AiPromptActivity::class.java)
                 .putExtra(EXTRA_PROMPT, prompt)
+                .putExtra(EXTRA_SESSION, session)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
     }
 }

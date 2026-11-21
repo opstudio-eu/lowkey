@@ -156,13 +156,21 @@ Tap ✨. A box opens just above the keyboard, over the app, which stays where it
 
 The chip in the box shows the defaults, such as **Flare · Fast · ≈$0.01**. Tap it to change them under the box: switch between **OpenAI** and **Your server**, then pick the model and quality. With OpenAI, **Flare** is fast and cheapest, **Sunburst** has finer detail and readable text but costs more; each quality shows a rough price for one square image (your OpenAI usage page has the real cost). Your choice stays as the new default; **Done** folds the choices away and **AI settings** opens the settings page. With your own server, its address shows with **Edit**; set the **Server model** in Settings if it needs one. If the service isn't set up yet, the chip says so (**OpenAI · key needed**) and Create becomes **Add key** (or **Add server**), which opens that setting ready to paste; your words are kept.
 
+Tap **Improve** at the end of the box to have the AI rewrite your words into a clearer, more vivid prompt: it fills in the subject, setting, style and light where you left them open, and keeps words meant to appear in the image. The new prompt replaces yours; **Undo** under the box brings your own words back until you change the new ones. Tap Improve again while it works to stop it. With OpenAI it uses a small, fast text model; with your own server, set its **Text model** in Settings if it needs one.
+
+### Change or combine pictures
+
+Tap the picture button left of the box to add up to four pictures to the prompt. Its tray offers **Photos** (Android's photo picker, which shares only the photos you pick) and the images in your clipboard row and recent screenshots; tapping an image in the keyboard's clipboard row while the box is open adds it too. The pictures show above the box, each with ✕ to take it out. Then say what to change, such as "make it night time" or "put the cat on the beach": Create sends the pictures with your words, and the service changes or combines them. To change an image you just made, tap the wand on its card: the box opens with that image already added.
+
+Lowkey shrinks each picture to at most 1536 pixels on its long side before sending it.
+
 Create closes the box, the app's field gets the keyboard back, and the image is made in the background, so you keep typing. ✨ keeps a ring while images are being made (with their number when there are several). Tap ✨ to start another one; images being made are listed on top of the box, each with **Stop** (the service may still charge for an image it had started). Up to four run at once.
 
 When an image is ready, a card shows above the strip (if the box is open then, once you close it); tap its thumbnail for a larger preview. If a key or token was refused, the card offers **Edit key** (or **Edit token**) instead of **Try again**. Where the app takes images from keyboards, the card has **Insert**; nothing goes into the app until you tap it. It is also first in your clipboard row and on the system clipboard (unless you copied something else in the meantime), so where an app takes no images from keyboards, long-press its field and choose **Paste**. It expires from the clipboard row like a copied image; turn on **Save to Gallery** to also keep each image in Pictures/Lowkey.
 
-Your own server receives `POST <address>/v1/images/generations` with JSON `prompt`, `n`, `quality` and, if set, `model`, and its answer gives `data[0].b64_json` (or an HTTPS `data[0].url`).
+Your own server receives `POST <address>/v1/images/generations` with JSON `prompt`, `n`, `quality` and, if set, `model`, and its answer gives `data[0].b64_json` (or an HTTPS `data[0].url`). With pictures added, the same fields go as `multipart/form-data` to `POST <address>/v1/images/edits`, with the pictures as `image` (one) or `image[]` (several). Improve sends `POST <address>/v1/chat/completions` with a system and a user message and, if set, the text `model`, and reads `choices[0].message.content`.
 
-Only what is in the prompt box when you tap **Create** is sent; nothing else you type is. Unsent words come back with the next prompt in the same field, not in another one. The API key and token are encrypted on the phone and never part of a backup. ✨ is hidden in password, private and number fields.
+Only what is in the prompt box when you tap **Create** is sent: your words and the pictures you added, nothing else you type. **Improve** sends only the words (and how many pictures there are), not the pictures. Unsent words come back with the next prompt in the same field, not in another one. The API key and token are encrypted on the phone and never part of a backup. ✨ is hidden in password, private and number fields.
 
 ## Choose light or dark
 

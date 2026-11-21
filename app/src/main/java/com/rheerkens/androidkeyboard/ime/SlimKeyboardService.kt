@@ -113,7 +113,9 @@ import com.rheerkens.androidkeyboard.keyboard.PlacementProfile
 import com.rheerkens.androidkeyboard.keyboard.PlacementMode
 import com.rheerkens.androidkeyboard.BuildConfig
 import com.rheerkens.androidkeyboard.ai.ImageApi
-import com.rheerkens.androidkeyboard.ai.ImageGenerator
+import com.rheerkens.androidkeyboard.ai.AiClient
+import com.rheerkens.androidkeyboard.ai.InputImages
+import com.rheerkens.androidkeyboard.ai.PromptImage
 import com.rheerkens.androidkeyboard.ai.ImageJob
 import com.rheerkens.androidkeyboard.ai.ImageReply
 import com.rheerkens.androidkeyboard.ai.imageJob
@@ -245,8 +247,9 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
 
     /** [editor]: the field the prompt was typed in, where its words come back if it fails or is stopped. */
     /** [secret] and [secretVersion]: the credential the request went with, so a late 401 marks only that one. */
-    private class AiRun(val generator: ImageGenerator, val editor: String?, val secret: Secret?, val secretVersion: Int,
-        var job: Job? = null)
+    /** [images]: the pictures sent with the prompt, which come back with it after a failure or Stop. */
+    private class AiRun(val client: AiClient, val editor: String?, val secret: Secret?, val secretVersion: Int,
+        val images: List<PromptImage>, var job: Job? = null)
     /** When Lowkey last put a created image on the system clipboard ([ClipDescription] time), or 0. */
     private var lastOwnClipAt = 0L
     /** A prompt that failed, was stopped or was closed unsent, offered again by the next prompt. */
@@ -266,8 +269,26 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
     private class PendingAiCard(val editor: String?, val ready: AiReady? = null, val failure: AiFailure? = null,
         val note: String? = null)
 
-    /** Words to offer again, only in the field ([editor], `EditorBridge.editorKey`) they were typed for. */
-    private data class RetryPrompt(val editor: String?, val text: String)
+    /** Words (and pictures) to offer again, only in the field ([editor], `EditorBridge.editorKey`) they were typed for. */
+    private data class RetryPrompt(val editor: String?, val text: String, val images: List<PromptImage> = emptyList())
+
+    /** Pictures added to the prompt in the window ([AiComposerHost.promptImages]). */
+    private val promptImagesFlow = MutableStateFlow<List<PromptImage>>(emptyList())
+    /** Images in the clipboard history and recent screenshots, for the window's + tray. */
+    private val recentImagesFlow = MutableStateFlow<List<ClipEntry>>(emptyList())
+    private var nextPromptImage = 0L
+    /** Pictures still being read; they count toward the limit already. */
+    private var promptImagesLoading = 0
+    /** Counts each new prompt: a picture still being read for an older one is dropped. */
+    private var promptImagesEpoch = 0
+    /**
+     * Counts prompt windows: each gets its own in its intent, so a replaced one (left behind the photo
+     * picker, or closing late) can't save its words over, or clear the pictures of, the window now open.
+     */
+    private var composerSession = 0
+    /** The window the wand opened with a ready image ([wandImage]): it leaves the field's saved draft alone. */
+    private var wandSession = -1
+    private var wandImage = -1L
 
     private val clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
         refreshClipboard()
@@ -741,6 +762,9 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         inputViewActive = true
         emojiOpen.value = false
         sensitiveField.value = bridge.isSensitiveField
+        // Before the clip chips: in the prompt window, image chips add the image to the prompt.
+        inAiPrompt.value = AiComposerLink.isPromptField(info, packageName)
+        if (inAiPrompt.value) aiPromptEmpty.value = editorEmpty()
         // Also applies a changed Keep copied clips setting.
         scheduleClipPrune()
         refreshClipChips()
@@ -748,8 +772,6 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         placementBounds = null
         expectedEchoes.clear()
         inputSession.value++
-        inAiPrompt.value = AiComposerLink.isPromptField(info, packageName)
-        if (inAiPrompt.value) aiPromptEmpty.value = editorEmpty()
         bridge.editorKey().let { editor ->
             if (editor == null || editor != shownEditor) {
                 shownSession.value++
@@ -856,7 +878,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
 
     override fun onDestroy() {
         if (AiComposerLink.host === this) AiComposerLink.host = null
-        aiRuns.values.forEach { it.generator.cancel() }
+        aiRuns.values.forEach { it.client.cancel() }
         clipboardManager.removePrimaryClipChangedListener(clipboardListener)
         contentResolver.unregisterContentObserver(mediaObserver)
         voice.cancel(CancelReason.KEYBOARD_CLOSED)
@@ -1293,6 +1315,12 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
             when (content) {
                 is ClipboardContent.Text -> bridge.pasteText(target, content.text)
                 is ClipboardContent.Image -> {
+                    if (inAiPrompt.value) {
+                        // Kept out of the history, so not sent to the AI either.
+                        if (content.sensitive) showNote("Sensitive images aren't added to the prompt", warn = true)
+                        else attachPromptImage(content.uri)
+                        return
+                    }
                     if (!bridge.acceptsImage(content.mimeType)) {
                         showNote("This field doesn't accept images", warn = true)
                         return
@@ -1312,6 +1340,11 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
 
     override fun onPasteHistory(entry: ClipEntry) {
         if (!inputViewActive || bridge.isSensitiveField || clipChips.value.none { it.entry == entry }) return
+        // In the prompt window an image goes with the prompt, like a picture added to a chat message.
+        if (inAiPrompt.value && entry !is ClipEntry.Text) {
+            addPromptImage(entry)
+            return
+        }
         val target = bridge.captureTarget() ?: return
         if (entry is ClipEntry.Screenshot) {
             // Paste a copy kept in the history: the editor gets a read grant on this app's file,
@@ -1744,7 +1777,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
             strip.value = strip.value.copy(
                 slots = Suggester.arrangeForStrip("", predictions),
                 typingWord = predictions.isNotEmpty(),
-                imagePasteSupported = image != null && bridge.acceptsImage(image.mimeType),
+                imagePasteSupported = image != null && takesImage(image.mimeType),
             )
             return
         }
@@ -1799,7 +1832,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
             if (!inputViewActive || !bridge.isCurrent(target) || bridge.isSensitiveField) return@launch
             strip.value = strip.value.copy(
                 clipboard = content,
-                imagePasteSupported = content is ClipboardContent.Image && bridge.acceptsImage(content.mimeType),
+                imagePasteSupported = content is ClipboardContent.Image && takesImage(content.mimeType),
             )
         }
     }
@@ -1870,13 +1903,15 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
             return
         }
         val shots = recentShots.value.filter { it.timeMs > clipsClearedAt }
-        clipChips.value = ClipboardHistory.merge(clipHistory.current(), shots, MAX_CLIP_CHIPS).map {
+        val merged = ClipboardHistory.merge(clipHistory.current(), shots, MAX_CLIP_CHIPS)
+        recentImagesFlow.value = merged.filterNot { it is ClipEntry.Text }
+        clipChips.value = merged.map {
             val mime = when (it) {
                 is ClipEntry.Text -> null
                 is ClipEntry.Image -> it.mimeType
                 is ClipEntry.Screenshot -> it.mimeType
             }
-            ClipChip(it, mime == null || bridge.acceptsImage(mime))
+            ClipChip(it, mime == null || takesImage(mime))
         }
     }
 
@@ -1893,8 +1928,9 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
      * so the keys (and other voice tools) type into it like into any app, and the app below stays where
      * it is. Its image is for the field it was opened from.
      */
-    private fun openAiComposer() {
-        if (!settings.current.aiKeyboard || bridge.isSensitiveField || inAiPrompt.value) return
+    /** [fresh]: an empty prompt, leaving this field's saved draft for the next ✨. */
+    private fun openAiComposer(fresh: Boolean = false): Boolean {
+        if (!settings.current.aiKeyboard || bridge.isSensitiveField || inAiPrompt.value) return false
         emojiOpen.value = false
         pickerOpen.value = false
         clearPrompt()
@@ -1905,33 +1941,101 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         // Text selected in the chat is not taken: the prompt is the user's own, typed there.
         // Another field's words stay saved for that field.
         val editor = bridge.editorKey()
-        val retry = retryPrompt?.takeIf { it.editor == editor }?.text
+        val retry = if (fresh) null else retryPrompt?.takeIf { it.editor == editor }
         if (retry != null) retryPrompt = null
         composerEditor = editor
         pendingAiCard = null
-        try {
-            startActivity(AiPromptActivity.intent(this, retry.orEmpty().take(ImageApi.MAX_PROMPT_CHARS)))
+        promptImagesEpoch++
+        promptImagesLoading = 0
+        promptImagesFlow.value = retry?.images.orEmpty()
+        val session = ++composerSession
+        return try {
+            startActivity(AiPromptActivity.intent(this, retry?.text.orEmpty().take(ImageApi.MAX_PROMPT_CHARS), session))
+            true
         } catch (_: RuntimeException) {
-            if (retry != null) retryPrompt = RetryPrompt(editor, retry)
+            if (retry != null) retryPrompt = retry
+            promptImagesFlow.value = emptyList()
             showNote("Couldn't open the prompt", warn = true)
+            false
         }
+    }
+
+    /** In the prompt window every image chip can be added to the prompt; elsewhere the app must take images. */
+    private fun takesImage(mimeType: String): Boolean = inAiPrompt.value || bridge.acceptsImage(mimeType)
+
+    /** Room left for pictures in the prompt, counting those still being read. */
+    override fun promptImageRoom(): Int = ImageApi.MAX_INPUT_IMAGES - promptImagesFlow.value.size - promptImagesLoading
+
+    /**
+     * Reads [uri] into a picture for the prompt, shrunk for upload; a note says why when it can't.
+     * False when there was no room for it.
+     */
+    private fun attachPromptImage(uri: Uri): Boolean {
+        if (promptImageRoom() <= 0) {
+            showNote("Up to ${ImageApi.MAX_INPUT_IMAGES} pictures per prompt", warn = true)
+            return false
+        }
+        val epoch = promptImagesEpoch
+        val id = ++nextPromptImage
+        promptImagesLoading++
+        scope.launch {
+            val image = try {
+                withContext(Dispatchers.IO) { InputImages.prepare(contentResolver, uri, id) }
+            } finally {
+                if (epoch == promptImagesEpoch) promptImagesLoading--
+            }
+            // Sent or closed meanwhile: it was for an older prompt.
+            if (epoch != promptImagesEpoch) return@launch
+            // In the order they were added (ids count up), however long each took to read.
+            if (image == null) showNote("This picture couldn't be added", warn = true)
+            else promptImagesFlow.value = (promptImagesFlow.value + image).sortedBy { it.id }
+        }
+        return true
     }
 
     // ---- The prompt window (AiComposerHost) ----
 
     override val runningImages: StateFlow<List<AiTask>> get() = aiTasks
+    override val promptImages: StateFlow<List<PromptImage>> get() = promptImagesFlow
+    override val recentImages: StateFlow<List<ClipEntry>> get() = recentImagesFlow
+
+    override fun addPromptImage(entry: ClipEntry) {
+        val added = when (entry) {
+            is ClipEntry.Text -> false
+            is ClipEntry.Image -> attachPromptImage(entry.uri)
+            is ClipEntry.Screenshot -> attachPromptImage(entry.mediaUri)
+        }
+        if (added) clipHistory.markUsed(entry)
+    }
+
+    override fun addPromptPhotos(uris: List<Uri>, session: Int) {
+        if (session != composerSession) return
+        val room = promptImageRoom()
+        uris.take(room).forEach(::attachPromptImage)
+        if (uris.size > room) showNote("Up to ${ImageApi.MAX_INPUT_IMAGES} pictures per prompt", warn = true)
+    }
+
+    override fun removePromptImage(id: Long) {
+        promptImagesFlow.value = promptImagesFlow.value.filterNot { it.id == id }
+    }
 
     /** Create in the prompt window: starts the image for the field the window was opened from. */
-    override fun submitImagePrompt(prompt: String): String? {
+    override fun submitImagePrompt(prompt: String, session: Int): String? {
+        if (session != composerSession) return "Open the prompt again with ✨"
         val text = prompt.trim()
         if (text.isEmpty()) return "Describe the image first"
         if (!settings.current.aiKeyboard) return "AI on the keyboard is off"
         if (aiTasks.value.size >= MAX_AI_TASKS) return "Wait until one finishes"
-        val check = imageJob(settings.current, text, AppGraph.secrets::get, allowLocalHttp = BuildConfig.DEBUG)
+        if (promptImagesLoading > 0) return "Wait a moment, a picture is still being added"
+        val images = promptImagesFlow.value
+        val check = imageJob(settings.current, text, AppGraph.secrets::get, allowLocalHttp = BuildConfig.DEBUG, images.map { it.image })
         val job = check.job ?: return check.problem ?: "AI isn't set up"
-        retryPrompt = null
+        // The wand's window didn't take the field's saved draft, so that stays.
+        if (session != wandSession) retryPrompt = null
         val editor = composerEditor
-        startImageTask(text, job, editor)
+        promptImagesEpoch++
+        promptImagesFlow.value = emptyList()
+        startImageTask(text, job, editor, images)
         // Back in the app's field, the strip says where the image is being made.
         pendingAiCard = PendingAiCard(editor, note = "Creating your image · tap the ring for progress")
         return null
@@ -1942,8 +2046,15 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
     }
 
     /** The window closed without Create: its words come back with the next prompt for the same field. */
-    override fun composerClosed(draft: String) {
-        if (draft.isNotBlank()) retryPrompt = RetryPrompt(composerEditor, draft.trim())
+    override fun composerClosed(draft: String, session: Int) {
+        if (session != composerSession) return
+        val images = promptImagesFlow.value
+        promptImagesEpoch++
+        promptImagesLoading = 0
+        promptImagesFlow.value = emptyList()
+        // The wand's image alone isn't a draft: it is still in the clipboard row, and the saved one stays.
+        if (session == wandSession && draft.isBlank() && images.all { it.id == wandImage }) return
+        if (draft.isNotBlank() || images.isNotEmpty()) retryPrompt = RetryPrompt(composerEditor, draft.trim(), images)
     }
 
     /** A card or note that waited for the prompt window to close, in the field it is about only. */
@@ -1978,6 +2089,24 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         refreshStrip()
     }
 
+    /** ✎ on a ready image: the prompt window opens with that image added, to say what to change. */
+    override fun onEditAiResult(key: String) {
+        val ready = aiReady.value?.takeIf { it.entry.key == key } ?: return
+        if (!inputViewActive || bridge.isSensitiveField) return
+        val entry = clipHistory.current().firstOrNull { it.key == ready.entry.key } as? ClipEntry.Image
+        if (entry == null) {
+            clearAiCards()
+            showNote("This image is no longer kept", warn = true)
+            return
+        }
+        clearAiCards()
+        // Just this image: a saved draft for this field (words, other pictures) stays for the next ✨.
+        if (openAiComposer(fresh = true)) {
+            wandSession = composerSession
+            if (attachPromptImage(entry.uri)) wandImage = nextPromptImage
+        }
+    }
+
     override fun onDismissAiResult(card: String) {
         if (aiReady.value?.entry?.key == card || aiFailure.value?.cardId == card) clearAiCards()
     }
@@ -1986,7 +2115,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
     override fun onRetryAiFailure(id: Long) {
         val failure = aiFailure.value?.takeIf { it.id == id } ?: return
         clearAiCards()
-        retryPrompt = RetryPrompt(bridge.editorKey(), failure.prompt)
+        retryPrompt = RetryPrompt(bridge.editorKey(), failure.prompt, failure.images)
         // A refused key: its editor, and the prompt comes back with the next ✨ here.
         if (failure.fixSetting != null) {
             openAiSettings(failure.fixSetting)
@@ -2072,22 +2201,23 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
     }
 
     /** Creates an image in the background; other actions can start or be stopped meanwhile. */
-    private fun startImageTask(prompt: String, job: ImageJob, editor: String?) {
+    private fun startImageTask(prompt: String, job: ImageJob, editor: String?, images: List<PromptImage>) {
         val id = ++nextAiTask
         val secret = if (settings.current.aiService == AiService.OPENAI) Secret.OPENAI_API_KEY else Secret.SERVER_TOKEN
-        val run = AiRun(ImageGenerator(), editor, secret, AppGraph.secrets.version(secret))
+        val run = AiRun(AiClient(), editor, secret, AppGraph.secrets.version(secret), images)
         aiRuns[id] = run
-        aiTasks.value = aiTasks.value + AiTask(id, AiAction.CREATE_IMAGE, prompt, System.currentTimeMillis())
+        val action = if (images.isEmpty()) AiAction.CREATE_IMAGE else AiAction.EDIT_IMAGE
+        aiTasks.value = aiTasks.value + AiTask(id, action, prompt, System.currentTimeMillis())
         val clipAtSubmit = clipTime()
         run.job = scope.launch {
             try {
-                val reply = withContext(Dispatchers.IO) { run.generator.generate(job) }
+                val reply = withContext(Dispatchers.IO) { run.client.generate(job) }
                 // Stopped meanwhile: drop whatever came back.
                 if (aiRuns[id] !== run) return@launch
                 // The result is here: from now on it is kept, so it leaves the list (and can't be stopped).
                 finishAiTask(id)
                 when (reply) {
-                    is ImageReply.Image -> if (!deliverImage(reply, clipAtSubmit, editor)) retryPrompt = RetryPrompt(editor, prompt)
+                    is ImageReply.Image -> if (!deliverImage(reply, clipAtSubmit, editor)) retryPrompt = RetryPrompt(editor, prompt, images)
                     is ImageReply.Failed -> failed(prompt, run, reply.message, refused = reply.refused)
                     is ImageReply.Link -> failed(prompt, run, "The AI service sent no image")
                 }
@@ -2100,7 +2230,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
     /** A failed action: a card with the reason and Try again, or a toast while the keyboard is hidden. */
     private fun failed(prompt: String, run: AiRun, message: String, refused: Boolean = false) {
         val editor = run.editor
-        retryPrompt = RetryPrompt(editor, prompt)
+        retryPrompt = RetryPrompt(editor, prompt, run.images)
         val openAi = run.secret == Secret.OPENAI_API_KEY
         // A refused key keeps the composer saying so ("Fix key") until it is changed; only the key this
         // request went with, if it is still the saved one (not one replaced or switched away from meanwhile).
@@ -2122,7 +2252,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
             else -> AiSetup.BAD_TOKEN.action
         }
         val fixSetting = if (fix == null) null else if (openAi) AiSetup.BAD_KEY.setting else AiSetup.BAD_TOKEN.setting
-        val card = AiFailure(prompt, reason, fix, fixSetting)
+        val card = AiFailure(prompt, reason, fix, fixSetting, images = run.images)
         when {
             // The prompt window has the keys: the card waits for the field the prompt was written for.
             inputViewActive && inAiPrompt.value && editor != null && editor == composerEditor -> {
@@ -2146,9 +2276,9 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
     /** Stops a running action; its prompt comes back with the next prompt. False if it had finished. */
     private fun stopAiTask(id: Long): Boolean {
         val run = aiRuns[id] ?: return false
-        aiTasks.value.firstOrNull { it.id == id }?.let { retryPrompt = RetryPrompt(run.editor, it.prompt) }
+        aiTasks.value.firstOrNull { it.id == id }?.let { retryPrompt = RetryPrompt(run.editor, it.prompt, run.images) }
         finishAiTask(id)
-        run.generator.cancel()
+        run.client.cancel()
         run.job?.cancel()
         return true
     }

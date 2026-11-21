@@ -162,6 +162,8 @@ data class Settings(
     /** Model sent to the user's own server; empty sends none. */
     val imageServerModel: String = "",
     val imageQuality: ImageQuality = ImageQuality.LOW,
+    /** Text model on the user's own server, for Improve in the prompt box; empty sends none. */
+    val promptServerModel: String = "",
     /** Also save each created image to the photo gallery (Pictures/Lowkey), not only to the clipboard. */
     val saveImagesToGallery: Boolean = false,
     // Diagnostics
