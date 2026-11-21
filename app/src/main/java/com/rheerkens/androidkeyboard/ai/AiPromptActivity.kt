@@ -126,6 +126,9 @@ class AiPromptActivity : ComponentActivity() {
             val focus = remember { FocusRequester() }
             val keyboard = LocalSoftwareKeyboardController.current
             val view = LocalView.current
+            // The keyboard's Enter (Create) dims as the card's Create does: no words yet, or Improve rewriting them.
+            val blank = prompt.text.isBlank()
+            LaunchedEffect(blank, improving) { host.promptState(blank, improving, session) }
             LaunchedEffect(refocus) {
                 focus.requestFocus()
                 keyboard?.show()
@@ -149,17 +152,25 @@ class AiPromptActivity : ComponentActivity() {
             )
             val actions = remember(host) {
                 object : AiComposerActions {
-                    override fun onSubmit() = submit(host) {
+                    // Not while Improve rewrites the words (Create shows dimmed): the old words would go.
+                    override fun onSubmit() = if (improving) Unit else submit(host) {
                         if (AppGraph.settings.current.vibrateOnKeyPress) view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
                     }
                     override fun onClose() = finish()
                     override fun onStop(id: Long) = host.stopImage(id)
-                    override fun onToggleOptions() { optionsOpen = !optionsOpen }
+                    // One panel at a time: the choices or the pictures tray, so the card stays short.
+                    override fun onToggleOptions() {
+                        optionsOpen = !optionsOpen
+                        if (optionsOpen) trayOpen = false
+                    }
                     override fun onOpenSettings(setting: String?) = openSettings(setting)
                     override fun onSelectService(service: AiService) = AppGraph.settings.update { it.copy(aiService = service) }
                     override fun onSelectModel(id: String) = AppGraph.settings.update { it.copy(imageModel = id) }
                     override fun onSelectQuality(quality: ImageQuality) = AppGraph.settings.update { it.copy(imageQuality = quality) }
-                    override fun onToggleTray() { trayOpen = !trayOpen }
+                    override fun onToggleTray() {
+                        trayOpen = !trayOpen
+                        if (trayOpen) optionsOpen = false
+                    }
                     override fun onPickPhotos() = pickPhotos(host)
                     override fun onAddRecent(entry: ClipEntry) = host.addPromptImage(entry)
                     override fun onRemoveImage(id: Long) = host.removePromptImage(id)
@@ -187,8 +198,9 @@ class AiPromptActivity : ComponentActivity() {
                         // Typed into: Improve stops (the words typed win), and its Undo goes once the improved words change.
                         if (next.text != prompt.text && improving) stopImproving()
                         if (next.text != prompt.text && next.text != improved) beforeImprove = null
+                        // A note stays while only the cursor moves; new words clear it.
+                        if (next.text != prompt.text) note = null
                         prompt = next
-                        note = null
                     }, focus, System::currentTimeMillis, actions,
                         Modifier.widthIn(max = 720.dp).fillMaxWidth()
                             // Taps on the card's own empty space stay on the card.
@@ -286,7 +298,7 @@ class AiPromptActivity : ComponentActivity() {
                 }
                 // Only said here: a refusal at this endpoint doesn't mark the key refused for Create too.
                 is PromptReply.Failed ->
-                    note = StripNote("Not improved: " + reply.message.replaceFirstChar { it.lowercase() }, warn = true)
+                    note = StripNote("Couldn't improve the prompt: " + reply.message.replaceFirstChar { it.lowercase() }, warn = true)
             }
         }
     }
@@ -354,6 +366,7 @@ class AiPromptActivity : ComponentActivity() {
 
     override fun onDestroy() {
         stopImproving()
+        AiComposerLink.host?.promptState(prompt.text.isBlank(), false, session)
         // Closed without Create (✕, Back, a tap outside, Home): the words come back next time.
         if (isFinishing && !submitted) AiComposerLink.host?.composerClosed(prompt.text, session)
         super.onDestroy()

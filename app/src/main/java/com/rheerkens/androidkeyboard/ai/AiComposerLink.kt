@@ -42,6 +42,12 @@ interface AiComposerHost {
     fun addPromptPhotos(uris: List<Uri>, session: Int)
 
     fun removePromptImage(id: Long)
+
+    /**
+     * The prompt in the window of [session]: whether its words are all blank ([empty]) and whether Improve
+     * is rewriting them ([improving]). The keyboard's Create (Enter) follows the window's Create from it.
+     */
+    fun promptState(empty: Boolean, improving: Boolean, session: Int)
 }
 
 object AiComposerLink {

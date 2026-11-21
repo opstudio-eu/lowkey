@@ -258,6 +258,10 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
     private val inAiPrompt = MutableStateFlow(false)
     /** That field is empty: Create (Enter) shows dimmed. */
     private val aiPromptEmpty = MutableStateFlow(true)
+    /** Improve is rewriting the prompt window's words: Create (Enter) dims, as for an empty prompt. */
+    private val aiPromptImproving = MutableStateFlow(false)
+    /** The open prompt window reports whether its words are blank ([promptState]); until it does, the keyboard looks. */
+    private var promptStateFromWindow = false
     /** The app's field the prompt window was opened from, where its image goes. */
     private var composerEditor: String? = null
     /**
@@ -440,6 +444,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
                 val fan by fanSpec.collectAsState()
                 val inPrompt by inAiPrompt.collectAsState()
                 val promptEmpty by aiPromptEmpty.collectAsState()
+                val promptImproving by aiPromptImproving.collectAsState()
                 val ready by aiReady.collectAsState()
                 val failure by aiFailure.collectAsState()
                 val savedSecrets by AppGraph.secrets.saved.collectAsState()
@@ -488,7 +493,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
                         models = models,
                         pickerOpen = picker && m == InputMode.VOICE,
                         // In the image prompt window, Enter is its Create button.
-                        enterKind = if (inPrompt) promptEnterKind(aiSetup(s, savedSecrets, refused), promptEmpty) else ek,
+                        enterKind = if (inPrompt) promptEnterKind(aiSetup(s, savedSecrets, refused), promptEmpty, promptImproving) else ek,
                         rowHeightDp = s.keyboardHeight.rowHeightDp,
                         colors = colors,
                         background = background,
@@ -764,7 +769,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         sensitiveField.value = bridge.isSensitiveField
         // Before the clip chips: in the prompt window, image chips add the image to the prompt.
         inAiPrompt.value = AiComposerLink.isPromptField(info, packageName)
-        if (inAiPrompt.value) aiPromptEmpty.value = editorEmpty()
+        if (inAiPrompt.value && !promptStateFromWindow) aiPromptEmpty.value = editorEmpty()
         // Also applies a changed Keep copied clips setting.
         scheduleClipPrune()
         refreshClipChips()
@@ -849,7 +854,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         selStart = newSelStart
         selEnd = newSelEnd
         if (inputViewActive) retireAiCardOnSend()
-        if (inputViewActive && inAiPrompt.value) aiPromptEmpty.value = editorEmpty()
+        if (inputViewActive && inAiPrompt.value && !promptStateFromWindow) aiPromptEmpty.value = editorEmpty()
         if (voice.currentSessionId == null) {
             // In either mode, an update outside a session settles our earlier writes.
             voiceSink.ownership.observedIdle()
@@ -1949,6 +1954,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         promptImagesLoading = 0
         promptImagesFlow.value = retry?.images.orEmpty()
         val session = ++composerSession
+        aiPromptImproving.value = false
+        promptStateFromWindow = false
         return try {
             startActivity(AiPromptActivity.intent(this, retry?.text.orEmpty().take(ImageApi.MAX_PROMPT_CHARS), session))
             true
@@ -2017,6 +2024,15 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
 
     override fun removePromptImage(id: Long) {
         promptImagesFlow.value = promptImagesFlow.value.filterNot { it.id == id }
+    }
+
+    override fun promptState(empty: Boolean, improving: Boolean, session: Int) {
+        // A window the keyboard has since replaced changes nothing.
+        if (session != composerSession) return
+        // The window sees all its words; the keyboard sees only a few around the cursor.
+        promptStateFromWindow = true
+        aiPromptEmpty.value = empty
+        aiPromptImproving.value = improving
     }
 
     /** Create in the prompt window: starts the image for the field the window was opened from. */
@@ -2126,8 +2142,10 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
 
     private fun editorEmpty(): Boolean {
         val ic = currentInputConnection ?: return false
-        // Blank counts as empty: a web page's emptied text box may keep a line break.
-        return ic.getTextBeforeCursor(8, 0).isNullOrBlank() && ic.getTextAfterCursor(8, 0).isNullOrBlank()
+        // Blank counts as empty: a web page's emptied text box may keep a line break. Selected words
+        // (Select all) count too: they sit between the text before and after the cursor.
+        return ic.getTextBeforeCursor(8, 0).isNullOrBlank() && ic.getTextAfterCursor(8, 0).isNullOrBlank() &&
+            ic.getSelectedText(0).isNullOrBlank()
     }
 
     /** After the app's own Send: its field emptied while a card was up, so the card has done its job. */
@@ -2184,7 +2202,10 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         aiSetupOf(s, saved) { AppGraph.secrets.isRefused(it, saved, refused) }
 
     /** Enter in the prompt window: what its button says, dimmed while there is nothing to send. */
-    private fun promptEnterKind(setup: AiSetup?, empty: Boolean): EnterKind = when (setup) {
+    private fun promptEnterKind(setup: AiSetup?, empty: Boolean, improving: Boolean): EnterKind = if (improving) {
+        // As the window's Create: dimmed until Improve ends, even if the service was switched meanwhile.
+        EnterKind.CREATE_EMPTY
+    } else when (setup) {
         AiSetup.NO_KEY -> EnterKind.ADD_KEY
         AiSetup.NO_SERVER -> EnterKind.ADD_SERVER
         AiSetup.BAD_SERVER -> EnterKind.FIX_SERVER
