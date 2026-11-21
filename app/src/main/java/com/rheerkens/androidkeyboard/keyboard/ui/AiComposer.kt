@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
@@ -82,6 +83,7 @@ import com.rheerkens.androidkeyboard.ai.AiTask
 import com.rheerkens.androidkeyboard.ai.ImageApi
 import com.rheerkens.androidkeyboard.ai.ImageModel
 import com.rheerkens.androidkeyboard.ai.ImageQuality
+import com.rheerkens.androidkeyboard.clipboard.ClipEntry
 import com.rheerkens.androidkeyboard.ui.SlimIcons
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -154,6 +156,18 @@ internal interface AiComposerActions {
     fun onSelectService(service: AiService)
     fun onSelectModel(id: String)
     fun onSelectQuality(quality: ImageQuality)
+    /** The picture button left of the box: shows (or hides) the tray of recent images and Photos. */
+    fun onToggleTray()
+    /** Photos in the tray: the system's photo picker. */
+    fun onPickPhotos()
+    /** A recent image in the tray, added to the prompt. */
+    fun onAddRecent(entry: ClipEntry)
+    /** ✕ on an added picture: it isn't sent. */
+    fun onRemoveImage(id: Long)
+    /** Improve: the AI rewrites the prompt; again while it works stops it. */
+    fun onImprove()
+    /** Undo after Improve: the words from before. */
+    fun onUndoImprove()
 }
 
 /**
@@ -189,8 +203,19 @@ internal fun AiPromptCard(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp).semantics { liveRegion = LiveRegionMode.Polite })
         }
-        PromptField(prompt, onPromptChange, focus,
-            if (ai.tasks.isEmpty()) AiAction.CREATE_IMAGE.promptHint else "Describe another image…", actions)
+        if (ai.images.isNotEmpty()) AddedPictures(ai.images, actions)
+        Row(verticalAlignment = Alignment.Bottom) {
+            AddPictureButton(ai.trayOpen, ai.images.size < ImageApi.MAX_INPUT_IMAGES, actions)
+            PromptField(prompt, onPromptChange, focus,
+                when {
+                    ai.images.isNotEmpty() -> AiAction.EDIT_IMAGE.promptHint
+                    ai.tasks.isEmpty() -> AiAction.CREATE_IMAGE.promptHint
+                    else -> "Describe another image…"
+                },
+                ai.improving, actions, Modifier.weight(1f))
+        }
+        if (ai.beforeImprove != null && !ai.improving) ImprovedLine(actions)
+        if (ai.trayOpen) PictureTray(ai, actions)
         Row(verticalAlignment = Alignment.CenterVertically) {
             // The chip takes what room is left, and shortens its label only when that runs out.
             Box(Modifier.weight(1f)) { ModelChip(ai, actions) }
@@ -243,13 +268,20 @@ internal fun typedLineBreak(before: String, after: String): Boolean =
  */
 @Composable
 private fun PromptField(
-    value: TextFieldValue, onChange: (TextFieldValue) -> Unit, focus: FocusRequester, hint: String, actions: AiComposerActions,
+    value: TextFieldValue, onChange: (TextFieldValue) -> Unit, focus: FocusRequester, hint: String, improving: Boolean,
+    actions: AiComposerActions, modifier: Modifier = Modifier,
 ) {
     val c = LocalKeyboardColors.current
     BasicTextField(
         value = value,
         onValueChange = { next ->
-            if (typedLineBreak(value.text, next.text)) actions.onSubmit() else onChange(flattenPrompt(next))
+            when {
+                typedLineBreak(value.text, next.text) -> actions.onSubmit()
+                // While Improve rewrites them, the words stay as they are (Stop, the same button, ends it). Not
+                // readOnly: that ends the input session, the keyboard hides, and with it the window.
+                improving -> {}
+                else -> onChange(flattenPrompt(next))
+            }
         },
         textStyle = TextStyle(color = c.keyText, fontSize = 16.sp, lineHeight = 22.sp),
         cursorBrush = SolidColor(c.enter),
@@ -260,24 +292,186 @@ private fun PromptField(
             platformImeOptions = PlatformImeOptions(AiComposerLink.PROMPT_FIELD),
         ),
         keyboardActions = TextKeyboardActions(onGo = { actions.onSubmit() }),
-        modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp).focusRequester(focus)
+        modifier = modifier.padding(bottom = 2.dp).focusRequester(focus)
             .semantics { contentDescription = "Image prompt" },
         decorationBox = { inner ->
-            // Outlined like a focused text box, as it is.
-            Box(
+            // Outlined like a focused text box, as it is. Improve sits at its end, like a chat app's mic.
+            Row(
                 Modifier.fillMaxWidth().heightIn(min = 48.dp)
                     .background(c.key, RoundedCornerShape(10.dp)).border(2.dp, c.enter, RoundedCornerShape(10.dp))
-                    .padding(horizontal = 12.dp, vertical = 12.dp),
-                contentAlignment = Alignment.CenterStart,
+                    .padding(start = 12.dp, end = 4.dp),
+                verticalAlignment = Alignment.Bottom,
             ) {
-                if (value.text.isEmpty()) {
-                    Text(hint, color = c.muted, fontSize = 16.sp, lineHeight = 22.sp, maxLines = 1,
-                        overflow = TextOverflow.Ellipsis)
+                Box(Modifier.weight(1f).padding(vertical = 12.dp).alpha(if (improving) DIMMED_ALPHA else 1f),
+                    contentAlignment = Alignment.CenterStart) {
+                    if (value.text.isEmpty()) {
+                        Text(hint, color = c.muted, fontSize = 16.sp, lineHeight = 22.sp, maxLines = 1,
+                            overflow = TextOverflow.Ellipsis)
+                    }
+                    inner()
                 }
-                inner()
+                ImproveButton(improving, value.text.isNotBlank(), actions)
             }
         },
     )
+}
+
+/**
+ * Improve, at the end of the box: the AI rewrites the prompt into a more vivid, specific one. While
+ * it works it shows a ring, and a tap stops it.
+ */
+@Composable
+private fun ImproveButton(improving: Boolean, hasText: Boolean, actions: AiComposerActions) {
+    val c = LocalKeyboardColors.current
+    val enabled = improving || hasText
+    PressTarget(if (improving) "Stop improving the prompt" else "Improve the prompt with AI", Modifier.height(44.dp),
+        onTap = if (enabled) actions::onImprove else null) { pressed ->
+        Row(
+            Modifier.fillMaxHeight().padding(vertical = 6.dp).alpha(if (enabled) 1f else DIMMED_ALPHA)
+                .background(if (pressed) c.keyPressed else c.keyMod, RoundedCornerShape(16.dp))
+                .padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (improving) {
+                CircularProgressIndicator(Modifier.size(14.dp), color = c.enter, trackColor = c.keyPressed, strokeWidth = 2.dp)
+            } else {
+                Icon(SlimIcons.Wand, null, tint = c.enter, modifier = Modifier.size(16.dp))
+            }
+            Spacer(Modifier.width(6.dp))
+            Text(if (improving) "Stop" else "Improve", color = c.keyText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                maxLines = 1)
+        }
+    }
+}
+
+/** Under the box after Improve, until the words change: what happened, and Undo. */
+@Composable
+private fun ImprovedLine(actions: AiComposerActions) {
+    val c = LocalKeyboardColors.current
+    Row(Modifier.fillMaxWidth().padding(start = 52.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(SlimIcons.Wand, null, tint = c.enter, modifier = Modifier.size(14.dp))
+        Spacer(Modifier.width(6.dp))
+        Text("Prompt improved", color = c.muted, fontSize = 13.sp, maxLines = 1,
+            modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite })
+        PanelButton("Undo", "Undo, bring back your own words", icon = SlimIcons.Undo, background = c.keyMod, height = 40.dp,
+            onTap = actions::onUndoImprove)
+    }
+}
+
+/** Left of the box, like a chat app's attach button: opens the tray of pictures to add. */
+@Composable
+private fun AddPictureButton(open: Boolean, room: Boolean, actions: AiComposerActions) {
+    val c = LocalKeyboardColors.current
+    PressTarget(if (open) "Hide the pictures" else "Add a picture to the prompt", Modifier.size(48.dp).padding(bottom = 2.dp),
+        onTap = actions::onToggleTray) { pressed ->
+        Box(
+            Modifier.fillMaxSize().padding(end = 4.dp, top = 2.dp, bottom = 2.dp).alpha(if (room || open) 1f else DIMMED_ALPHA)
+                .background(
+                    when {
+                        pressed -> c.keyPressed
+                        open -> c.keyOn
+                        else -> c.keyMod
+                    },
+                    RoundedCornerShape(10.dp),
+                )
+                .then(if (open) Modifier.border(1.5.dp, c.enter, RoundedCornerShape(10.dp)) else Modifier),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(SlimIcons.ImageAdd, null, tint = c.keyText, modifier = Modifier.size(22.dp))
+        }
+    }
+}
+
+/** The pictures that go with the prompt, each with ✕; the service changes or combines them. */
+@Composable
+private fun AddedPictures(images: List<com.rheerkens.androidkeyboard.ai.PromptImage>, actions: AiComposerActions) {
+    val c = LocalKeyboardColors.current
+    Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        images.forEachIndexed { i, image ->
+            androidx.compose.runtime.key(image.id) {
+                Box(Modifier.size(64.dp)) {
+                    val thumb = image.thumbnail
+                    Box(
+                        Modifier.align(Alignment.BottomStart).size(56.dp).clip(RoundedCornerShape(10.dp)).background(c.key)
+                            .border(1.dp, c.divider, RoundedCornerShape(10.dp)),
+                    ) {
+                        if (thumb != null) {
+                            Image(thumb.asImageBitmap(), "Picture ${i + 1} for the prompt", Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop)
+                        }
+                    }
+                    PressTarget("Remove picture ${i + 1}", Modifier.align(Alignment.TopEnd).size(30.dp),
+                        onTap = { actions.onRemoveImage(image.id) }) { pressed ->
+                        Box(
+                            Modifier.fillMaxSize().padding(3.dp)
+                                .background(if (pressed) c.keyPressed else c.keyMod, CircleShape)
+                                .border(1.dp, c.divider, CircleShape),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(SlimIcons.Close, null, tint = c.keyText, modifier = Modifier.size(12.dp))
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.width(4.dp))
+        }
+        Text(if (images.size == 1) "Goes with your prompt" else "${images.size} pictures go with your prompt",
+            color = c.muted, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f).padding(start = 6.dp))
+    }
+}
+
+/**
+ * The + tray: Photos (the system's photo picker, which needs no permission), then the images in the
+ * clipboard row and recent screenshots. A tap adds one; a chip in the keyboard's clipboard row does too.
+ */
+@Composable
+private fun PictureTray(ai: AiUi, actions: AiComposerActions) {
+    val c = LocalKeyboardColors.current
+    val room = ai.images.size < ImageApi.MAX_INPUT_IMAGES
+    Column(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 2.dp)) {
+        Text(
+            if (room) "Add a picture to change or combine" else "That's ${ImageApi.MAX_INPUT_IMAGES} pictures, the most for one prompt",
+            color = if (room) c.muted else c.amber, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
+            overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 4.dp, bottom = 4.dp).semantics { heading() },
+        )
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).alpha(if (room) 1f else DIMMED_ALPHA),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            PressTarget("Choose from your photos", Modifier.size(64.dp), onTap = if (room) actions::onPickPhotos else null) { pressed ->
+                Column(
+                    Modifier.fillMaxSize().background(if (pressed) c.keyPressed else c.keyMod, RoundedCornerShape(10.dp)),
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+                ) {
+                    Icon(SlimIcons.Photos, null, tint = c.keyText, modifier = Modifier.size(22.dp))
+                    Text("Photos", color = c.keyText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                }
+            }
+            ai.recentImages.forEach { entry ->
+                androidx.compose.runtime.key(entry.key) {
+                    val thumb = when (entry) {
+                        is ClipEntry.Image -> entry.thumbnail
+                        is ClipEntry.Screenshot -> entry.thumbnail
+                        is ClipEntry.Text -> null
+                    }
+                    val label = if (entry is ClipEntry.Screenshot) "Add this screenshot" else "Add this copied image"
+                    PressTarget(label, Modifier.size(64.dp), onTap = if (room) ({ actions.onAddRecent(entry) }) else null) { pressed ->
+                        Box(Modifier.fillMaxSize().clip(RoundedCornerShape(10.dp)).background(c.key)
+                            .border(if (pressed) 2.dp else 1.dp, if (pressed) c.enter else c.divider, RoundedCornerShape(10.dp))) {
+                            if (thumb != null) {
+                                Image(thumb.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (ai.recentImages.isEmpty()) {
+            Text("Images you copy and new screenshots show here too", color = c.muted, fontSize = 12.sp, maxLines = 2,
+                modifier = Modifier.padding(start = 4.dp, top = 4.dp))
+        }
+    }
 }
 
 /** The defaults, like a chat app's model chip: "Flare · Fast · ≈$0.01". Tap for the choices. */
@@ -445,6 +639,8 @@ private fun AiReadyCard(ready: AiReady, width: Dp, maxHeight: Dp, actions: Keybo
                 CardIcon(if (preview) SlimIcons.ChevronDown else SlimIcons.ChevronUp,
                     if (preview) "Hide the preview" else "Preview the image") { preview = !preview }
             }
+            // Change it: the prompt window opens with this image added.
+            CardIcon(SlimIcons.Wand, "Change this image with AI") { actions.onEditAiResult(ready.entry.key) }
             if (ready.pasteable) {
                 Spacer(Modifier.width(4.dp))
                 CardButton("Insert", "Insert the image", primary = true) { actions.onInsertAiResult(ready.entry.key) }

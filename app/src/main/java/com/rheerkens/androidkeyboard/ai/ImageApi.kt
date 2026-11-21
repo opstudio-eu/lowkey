@@ -13,12 +13,17 @@ sealed interface ImageReply {
     data class Failed(val message: String, val refused: Boolean = false) : ImageReply
 }
 
+/** A picture sent along with the prompt ([ImageApi.editBody]): already shrunk and encoded. */
+class InputImage(val bytes: ByteArray, val mimeType: String)
+
 /**
- * The OpenAI Image API (`POST …/images/generations`, [AiAction.CREATE_IMAGE]), which "your own
- * server" speaks as well: the request body and how to read the answer. No Android or network code
- * here, so it is tested on the JVM.
+ * The OpenAI Image API (`POST …/images/generations`, [AiAction.CREATE_IMAGE], and `…/images/edits`
+ * with input images, [AiAction.EDIT_IMAGE]), which "your own server" speaks as well: the request
+ * body and how to read the answer. No Android or network code here, so it is tested on the JVM.
  */
 object ImageApi {
+    /** Most pictures sent with one prompt; the API takes up to 16, a keyboard prompt needs a few. */
+    const val MAX_INPUT_IMAGES = 4
     /** Longest prompt sent; the API's own limit is far higher, a keyboard prompt is short. */
     const val MAX_PROMPT_CHARS = 2_000
     /** Largest image kept: the clipboard history's limit for an image. */
@@ -32,6 +37,33 @@ object ImageApi {
             .put("n", 1)
             .apply { if (quality != null) put("quality", quality.api) }
             .toString()
+
+    /**
+     * The `multipart/form-data` body for `images/edits`, split by [boundary]: the same fields as
+     * [requestBody], then each picture as a file. One picture goes as `image`, several as `image[]`,
+     * as OpenAI's own SDKs send them.
+     */
+    fun editBody(boundary: String, prompt: String, model: String?, quality: ImageQuality?, images: List<InputImage>): ByteArray {
+        val out = java.io.ByteArrayOutputStream()
+        fun text(s: String) = out.write(s.toByteArray(Charsets.UTF_8))
+        fun field(name: String, value: String) {
+            text("--$boundary\r\nContent-Disposition: form-data; name=\"$name\"\r\n\r\n$value\r\n")
+        }
+        if (model != null) field("model", model)
+        field("prompt", prompt.take(MAX_PROMPT_CHARS))
+        field("n", "1")
+        if (quality != null) field("quality", quality.api)
+        val name = if (images.size == 1) "image" else "image[]"
+        images.take(MAX_INPUT_IMAGES).forEachIndexed { i, image ->
+            val ext = image.mimeType.substringAfter('/').replace("jpeg", "jpg")
+            text("--$boundary\r\nContent-Disposition: form-data; name=\"$name\"; filename=\"image-${i + 1}.$ext\"\r\n" +
+                "Content-Type: ${image.mimeType}\r\n\r\n")
+            out.write(image.bytes)
+            text("\r\n")
+        }
+        text("--$boundary--\r\n")
+        return out.toByteArray()
+    }
 
     /** Reads the answer to a request: [code] is the HTTP status, [body] the response text. */
     fun parse(code: Int, body: String): ImageReply {

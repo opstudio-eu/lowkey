@@ -18,7 +18,12 @@ enum class AiAction(
     val path: String,
 ) {
     CREATE_IMAGE("Create image", "Describe it; it lands in your clipboard", "Describe an image…", "Create", "images/generations"),
+    /** Create image with pictures added to the prompt: the service changes or combines them. */
+    EDIT_IMAGE("Change image", "Add pictures and say what to change", "Describe the change…", "Create", "images/edits"),
 }
+
+/** Under the API base: Improve in the prompt window rewrites the prompt with a text model ([PromptApi]). */
+const val CHAT_PATH = "chat/completions"
 
 /** One action running in the background, listed in the composer with a Stop button. */
 data class AiTask(val id: Long, val action: AiAction, val prompt: String, val startedAtMs: Long)

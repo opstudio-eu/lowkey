@@ -18,14 +18,28 @@ data class ImageJob(
     val model: String?,
     val quality: ImageQuality?,
     val prompt: String,
+    /** Pictures added to the prompt: sent as a multipart upload to `images/edits` ([endpoint]). */
+    val images: List<InputImage> = emptyList(),
+)
+
+/** Improve in the prompt window: the prompt to rewrite, and where. */
+data class PromptJob(
+    val endpoint: String,
+    val token: String?,
+    val model: String?,
+    /** OpenAI itself, which takes [PromptApi]'s OpenAI-only options. */
+    val openAi: Boolean,
+    val prompt: String,
+    /** How many pictures go with the prompt; the pictures themselves aren't sent to rewrite it. */
+    val imageCount: Int,
 )
 
 /**
- * Sends one prompt to the Image API and returns the image. Blocking: call on an IO dispatcher.
- * [cancel] drops the connection, which ends a blocking read; callers still drop late results
- * themselves.
+ * Sends one request to the AI service: an image for a prompt ([generate]) or a better prompt
+ * ([improve]). Blocking: call on an IO dispatcher. [cancel] drops the connection, which ends a
+ * blocking read; callers still drop late results themselves.
  */
-class ImageGenerator(
+class AiClient(
     private val open: (String) -> HttpURLConnection = { URL(it).openConnection() as HttpURLConnection },
 ) {
     /** Guards [active] and [generation]: a cancel and a request registering a connection never interleave. */
@@ -35,12 +49,12 @@ class ImageGenerator(
     private var generation = 0
 
     /**
-     * Set by [cancel] and never cleared: the keyboard uses one generator per image, so a Stop that comes
+     * Set by [cancel] and never cleared: the keyboard uses one client per request, so a Stop that comes
      * before the request has even started still keeps it from being sent.
      */
     private var cancelled = false
 
-    /** Stops the request in progress, if any. The service may still have made (and billed) the image. */
+    /** Stops the request in progress, if any. The service may still have made (and billed) the result. */
     fun cancel() {
         val connection = synchronized(lock) {
             cancelled = true
@@ -65,48 +79,68 @@ class ImageGenerator(
         open(url).also { active = it; opened.get()?.add(it) }
     }
 
-    fun generate(job: ImageJob): ImageReply = try {
+    fun generate(job: ImageJob): ImageReply = request({ ImageReply.Failed(failure(it, "image service")) }) {
+        val reply = if (job.images.isEmpty()) {
+            val body = ImageApi.requestBody(job.prompt, job.model, job.quality).toByteArray(Charsets.UTF_8)
+            post(job.endpoint, job.token, "application/json", body, MAX_RESPONSE_BYTES, ImageApi::parse)
+        } else {
+            val boundary = "lowkey-" + java.util.UUID.randomUUID().toString()
+            val body = ImageApi.editBody(boundary, job.prompt, job.model, job.quality, job.images)
+            post(job.endpoint, job.token, "multipart/form-data; boundary=$boundary", body, MAX_RESPONSE_BYTES, ImageApi::parse)
+        }
+        if (reply is ImageReply.Link) download(reply.url) else reply
+    }
+
+    /** A rewritten prompt for [job]'s, from the service's text model. */
+    fun improve(job: PromptJob): PromptReply = request({ PromptReply.Failed(failure(it, "AI service")) }) {
+        val body = PromptApi.requestBody(job.prompt, job.model, job.openAi, job.imageCount).toByteArray(Charsets.UTF_8)
+        post(job.endpoint, job.token, "application/json", body, MAX_PROMPT_RESPONSE_BYTES, PromptApi::parse)
+    }
+
+    /** Runs [send] for this thread's request, turning a failed connection into [failed]'s reply. */
+    private inline fun <R> request(failed: (Exception) -> R, send: () -> R): R = try {
         opened.set(mutableListOf())
         started.set(synchronized(lock) { generation })
-        val reply = post(job)
-        if (reply is ImageReply.Link) download(reply.url) else reply
-    } catch (_: SocketTimeoutException) {
-        ImageReply.Failed("The image service took too long")
-    } catch (_: UnknownHostException) {
-        ImageReply.Failed("Can't reach the image service. Check the address and your connection")
-    } catch (_: SSLException) {
-        ImageReply.Failed("The image service's secure connection failed")
+        send()
     } catch (e: IOException) {
-        ImageReply.Failed(when {
-            e is TooLarge -> "The image is too large"
-            e.message?.contains("Cleartext", ignoreCase = true) == true -> "Use https:// for your server"
-            else -> "Can't reach the image service"
-        })
-    } catch (_: SecurityException) {
-        ImageReply.Failed("Lowkey isn't allowed to use the internet")
-    } catch (_: IllegalArgumentException) {
-        // A malformed link in the answer, or an address the platform refuses.
-        ImageReply.Failed("The image service sent a bad link")
+        failed(e)
+    } catch (e: SecurityException) {
+        failed(e)
+    } catch (e: IllegalArgumentException) {
+        failed(e)
     } finally {
         synchronized(lock) { if (opened.get()?.any { it === active } == true) active = null }
         opened.remove()
         started.remove()
     }
 
+    /** What went wrong with the connection to the [service], for the user. */
+    private fun failure(e: Exception, service: String): String = when (e) {
+        is SocketTimeoutException -> "The $service took too long"
+        is UnknownHostException -> "Can't reach the $service. Check the address and your connection"
+        is SSLException -> "The $service's secure connection failed"
+        is TooLarge -> if (service == "image service") "The image is too large" else "The $service sent too much"
+        is IOException ->
+            if (e.message?.contains("Cleartext", ignoreCase = true) == true) "Use https:// for your server" else "Can't reach the $service"
+        is SecurityException -> "Lowkey isn't allowed to use the internet"
+        // A malformed link in the answer, or an address the platform refuses.
+        else -> "The $service sent a bad link"
+    }
+
     private class TooLarge : IOException("Response too large")
 
-    private fun post(job: ImageJob): ImageReply {
-        val connection = connect(job.endpoint)
+    private fun <R> post(endpoint: String, token: String?, contentType: String, body: ByteArray, maxResponse: Int,
+        parse: (Int, String) -> R): R {
+        val connection = connect(endpoint)
         try {
             connection.requestMethod = "POST"
             connection.connectTimeout = CONNECT_TIMEOUT_MS
             connection.readTimeout = READ_TIMEOUT_MS
             connection.instanceFollowRedirects = false
             connection.doOutput = true
-            connection.setRequestProperty("Content-Type", "application/json")
+            connection.setRequestProperty("Content-Type", contentType)
             connection.setRequestProperty("Accept", "application/json")
-            job.token?.takeIf { it.isNotBlank() }?.let { connection.setRequestProperty("Authorization", "Bearer ${it.trim()}") }
-            val body = ImageApi.requestBody(job.prompt, job.model, job.quality).toByteArray(Charsets.UTF_8)
+            token?.takeIf { it.isNotBlank() }?.let { connection.setRequestProperty("Authorization", "Bearer ${it.trim()}") }
             connection.setFixedLengthStreamingMode(body.size)
             // disconnect() does nothing before the connection has started, so a Stop just before it is
             // checked here; one while it starts is caught after, before the prompt (the body) is sent.
@@ -117,8 +151,8 @@ class ImageGenerator(
             }
             val code = connection.responseCode
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-            val text = stream?.use { readLimited(it, MAX_RESPONSE_BYTES) }?.toString(Charsets.UTF_8) ?: ""
-            return ImageApi.parse(code, text)
+            val text = stream?.use { readLimited(it, maxResponse) }?.toString(Charsets.UTF_8) ?: ""
+            return parse(code, text)
         } finally {
             connection.disconnect()
         }
@@ -162,5 +196,7 @@ class ImageGenerator(
         private const val READ_TIMEOUT_MS = 240_000
         /** Base64 makes the JSON about a third larger than the image, which the history caps. */
         private const val MAX_RESPONSE_BYTES = ImageApi.MAX_IMAGE_BYTES / 3 * 4 + 64 * 1024
+        /** A rewritten prompt is a few hundred bytes; the rest of a chat answer is small too. */
+        private const val MAX_PROMPT_RESPONSE_BYTES = 256 * 1024
     }
 }

@@ -14,15 +14,35 @@ data class JobCheck(val job: ImageJob?, val problem: String?)
 
 /**
  * The request for [prompt] with the current [settings], reading the API key or token through
- * [secret]. Says what is missing instead when the service isn't set up.
+ * [secret]. With [images], the service changes or combines them ([AiAction.EDIT_IMAGE]). Says what
+ * is missing instead when the service isn't set up.
  */
-fun imageJob(settings: Settings, prompt: String, secret: (Secret) -> String?, allowLocalHttp: Boolean): JobCheck {
+fun imageJob(
+    settings: Settings, prompt: String, secret: (Secret) -> String?, allowLocalHttp: Boolean,
+    images: List<InputImage> = emptyList(),
+): JobCheck {
     val text = prompt.trim()
-    if (text.isEmpty()) return JobCheck(null, "Describe the image first")
+    if (text.isEmpty()) return JobCheck(null, if (images.isEmpty()) "Describe the image first" else "Say what to change first")
     val connection = aiConnection(settings, secret, allowLocalHttp)
-    val endpoint = connection.base?.endpoint(AiAction.CREATE_IMAGE.path) ?: return JobCheck(null, connection.problem)
+    val action = if (images.isEmpty()) AiAction.CREATE_IMAGE else AiAction.EDIT_IMAGE
+    val endpoint = connection.base?.endpoint(action.path) ?: return JobCheck(null, connection.problem)
     val model = if (settings.aiService == AiService.OPENAI) settings.imageModel else settings.imageServerModel.trim()
-    return JobCheck(ImageJob(endpoint, connection.token, model.ifEmpty { null }, settings.imageQuality, text), null)
+    return JobCheck(ImageJob(endpoint, connection.token, model.ifEmpty { null }, settings.imageQuality, text,
+        images.take(ImageApi.MAX_INPUT_IMAGES)), null)
+}
+
+/** Improve's request, or why it can't be sent yet ([problem]). */
+data class PromptJobCheck(val job: PromptJob?, val problem: String?)
+
+/** Improve for [prompt], sent with [imageCount] pictures added: the same connection as Create. */
+fun promptJob(settings: Settings, prompt: String, secret: (Secret) -> String?, allowLocalHttp: Boolean, imageCount: Int): PromptJobCheck {
+    val text = prompt.trim()
+    if (text.isEmpty()) return PromptJobCheck(null, "Type a few words first")
+    val connection = aiConnection(settings, secret, allowLocalHttp)
+    val endpoint = connection.base?.endpoint(CHAT_PATH) ?: return PromptJobCheck(null, connection.problem)
+    val openAi = settings.aiService == AiService.OPENAI
+    val model = if (openAi) PromptApi.OPENAI_MODEL else settings.promptServerModel.trim().ifEmpty { null }
+    return PromptJobCheck(PromptJob(endpoint, connection.token, model, openAi, text, imageCount), null)
 }
 
 /** The shared connection for any AI action, or what is missing in Settings ([problem]). */
