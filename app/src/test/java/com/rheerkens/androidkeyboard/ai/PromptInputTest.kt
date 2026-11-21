@@ -28,7 +28,6 @@ class PromptInputTest {
         assertEquals("https://api.openai.com/v1/images/edits", job.endpoint)
         assertEquals(1, job.images.size)
         assertEquals("https://api.openai.com/v1/images/generations", imageJob(on, "a cat", { "sk-test" }, false).job!!.endpoint)
-        assertEquals("Say what to change first", imageJob(on, " ", { "sk-test" }, false, listOf(InputImage(png, "image/png"))).problem)
         val many = List(ImageApi.MAX_INPUT_IMAGES + 2) { InputImage(png, "image/png") }
         assertEquals(ImageApi.MAX_INPUT_IMAGES, imageJob(on, "x", { "sk-test" }, false, many).job!!.images.size)
     }

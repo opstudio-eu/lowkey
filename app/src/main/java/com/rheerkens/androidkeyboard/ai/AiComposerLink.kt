@@ -16,14 +16,15 @@ interface AiComposerHost {
 
     /**
      * Starts an image for [prompt], with the pictures added to it ([promptImages]); null once it runs,
-     * otherwise why it couldn't start.
+     * otherwise why it couldn't start. [session]: the window's, from its intent; a window the keyboard has
+     * since replaced (one left behind the photo picker, or closing late) changes nothing.
      */
-    fun submitImagePrompt(prompt: String): String?
+    fun submitImagePrompt(prompt: String, session: Int): String?
 
     fun stopImage(id: Long)
 
     /** The window closed without Create: [draft] (and its pictures) come back with the next prompt for the same field. */
-    fun composerClosed(draft: String)
+    fun composerClosed(draft: String, session: Int)
 
     /** Pictures added to the prompt, sent with it; the window shows them above the box. */
     val promptImages: StateFlow<List<PromptImage>>
@@ -34,8 +35,8 @@ interface AiComposerHost {
     /** Adds [entry] (an image or a screenshot) to the prompt; a note on the keyboard says when it can't. */
     fun addPromptImage(entry: ClipEntry)
 
-    /** Adds photos picked in the system's photo picker. */
-    fun addPromptPhotos(uris: List<Uri>)
+    /** Adds photos picked in the system's photo picker, as many as there is room for. */
+    fun addPromptPhotos(uris: List<Uri>, session: Int)
 
     fun removePromptImage(id: Long)
 }

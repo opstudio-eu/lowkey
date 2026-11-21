@@ -72,6 +72,8 @@ class AiPromptActivity : ComponentActivity() {
     private var note by mutableStateOf<StripNote?>(null)
     /** Create started an image: the words don't come back as a draft. */
     private var submitted = false
+    /** Which prompt the keyboard opened this window for ([AiComposerHost.submitImagePrompt]). */
+    private var session = -1
     private var trayOpen by mutableStateOf(false)
 
     /** The system's photo picker is open over the window, which stays (and keeps its words) meanwhile. */
@@ -108,6 +110,7 @@ class AiPromptActivity : ComponentActivity() {
             overrideActivityTransition(OVERRIDE_TRANSITION_OPEN, 0, 0)
             overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE, 0, 0)
         }
+        session = intent.getIntExtra(EXTRA_SESSION, -1)
         val start = intent.getStringExtra(EXTRA_PROMPT).orEmpty().take(ImageApi.MAX_PROMPT_CHARS)
         prompt = TextFieldValue(start, TextRange(start.length))
         setContent {
@@ -181,7 +184,8 @@ class AiPromptActivity : ComponentActivity() {
                     contentAlignment = Alignment.BottomCenter,
                 ) {
                     AiPromptCard(ai, prompt, { next ->
-                        // Typed into: Improve's Undo goes once the improved words change.
+                        // Typed into: Improve stops (the words typed win), and its Undo goes once the improved words change.
+                        if (next.text != prompt.text && improving) stopImproving()
                         if (next.text != prompt.text && next.text != improved) beforeImprove = null
                         prompt = next
                         note = null
@@ -219,10 +223,14 @@ class AiPromptActivity : ComponentActivity() {
     private fun pickPhotos(host: AiComposerHost) {
         val room = ImageApi.MAX_INPUT_IMAGES - host.promptImages.value.size
         if (room <= 0 || picking) return
-        val request = PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
         picking = true
         try {
-            if (room == 1) pickOne.launch(request) else pickSome.launch(request)
+            if (room == 1) {
+                pickOne.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            } else {
+                pickSome.launch(PickVisualMediaRequest.Builder()
+                    .setMediaType(ActivityResultContracts.PickVisualMedia.ImageOnly).setMaxItems(room).build())
+            }
         } catch (_: RuntimeException) {
             // No photo picker on this phone (ActivityNotFoundException).
             picking = false
@@ -232,9 +240,11 @@ class AiPromptActivity : ComponentActivity() {
 
     private fun picked(uris: List<Uri>) {
         picking = false
+        // The window closes when the keyboard hides only once it has shown again.
+        imeSeen = false
         refocus++
         if (uris.isEmpty()) return
-        AiComposerLink.host?.addPromptPhotos(uris)
+        AiComposerLink.host?.addPromptPhotos(uris, session)
         trayOpen = false
     }
 
@@ -258,8 +268,6 @@ class AiPromptActivity : ComponentActivity() {
             note = StripNote(check.problem ?: "AI isn't set up", warn = true)
             return
         }
-        val secret = if (job.openAi) Secret.OPENAI_API_KEY else Secret.SERVER_TOKEN
-        val version = AppGraph.secrets.version(secret)
         val client = AiClient()
         improver = client
         improving = true
@@ -276,10 +284,9 @@ class AiPromptActivity : ComponentActivity() {
                     beforeImprove = words
                     prompt = TextFieldValue(reply.prompt, TextRange(reply.prompt.length))
                 }
-                is PromptReply.Failed -> {
-                    if (reply.refused) AppGraph.secrets.markRefused(secret, version)
+                // Only said here: a refusal at this endpoint doesn't mark the key refused for Create too.
+                is PromptReply.Failed ->
                     note = StripNote("Not improved: " + reply.message.replaceFirstChar { it.lowercase() }, warn = true)
-                }
             }
         }
     }
@@ -300,7 +307,7 @@ class AiPromptActivity : ComponentActivity() {
             return
         }
         if (prompt.text.isBlank()) return
-        val problem = host.submitImagePrompt(prompt.text)
+        val problem = host.submitImagePrompt(prompt.text, session)
         if (problem != null) {
             note = StripNote(problem, warn = true)
             return
@@ -348,17 +355,19 @@ class AiPromptActivity : ComponentActivity() {
     override fun onDestroy() {
         stopImproving()
         // Closed without Create (✕, Back, a tap outside, Home): the words come back next time.
-        if (isFinishing && !submitted) AiComposerLink.host?.composerClosed(prompt.text)
+        if (isFinishing && !submitted) AiComposerLink.host?.composerClosed(prompt.text, session)
         super.onDestroy()
     }
 
     companion object {
         private const val EXTRA_PROMPT = "prompt"
+        private const val EXTRA_SESSION = "session"
 
-        /** Opens the window from the keyboard (its own task), with [prompt] already typed. */
-        fun intent(context: Context, prompt: String): Intent =
+        /** Opens the window from the keyboard (its own task), with [prompt] already typed, for prompt [session]. */
+        fun intent(context: Context, prompt: String, session: Int): Intent =
             Intent(context, AiPromptActivity::class.java)
                 .putExtra(EXTRA_PROMPT, prompt)
+                .putExtra(EXTRA_SESSION, session)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
     }
 }

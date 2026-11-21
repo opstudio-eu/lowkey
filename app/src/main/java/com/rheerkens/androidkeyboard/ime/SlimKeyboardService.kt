@@ -281,6 +281,13 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
     private var promptImagesLoading = 0
     /** Counts each new prompt: a picture still being read for an older one is dropped. */
     private var promptImagesEpoch = 0
+    /**
+     * Counts prompt windows: each gets its own in its intent, so a replaced one (left behind the photo
+     * picker, or closing late) can't save its words over, or clear the pictures of, the window now open.
+     */
+    private var composerSession = 0
+    /** The window the wand opened with a ready image: closed with no words, it leaves the saved draft alone. */
+    private var wandSession = -1
 
     private val clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
         refreshClipboard()
@@ -1308,7 +1315,9 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
                 is ClipboardContent.Text -> bridge.pasteText(target, content.text)
                 is ClipboardContent.Image -> {
                     if (inAiPrompt.value) {
-                        attachPromptImage(content.uri)
+                        // Kept out of the history, so not sent to the AI either.
+                        if (content.sensitive) showNote("Sensitive images aren't added to the prompt", warn = true)
+                        else attachPromptImage(content.uri)
                         return
                     }
                     if (!bridge.acceptsImage(content.mimeType)) {
@@ -1918,7 +1927,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
      * so the keys (and other voice tools) type into it like into any app, and the app below stays where
      * it is. Its image is for the field it was opened from.
      */
-    private fun openAiComposer(): Boolean {
+    /** [fresh]: an empty prompt, leaving this field's saved draft for the next ✨. */
+    private fun openAiComposer(fresh: Boolean = false): Boolean {
         if (!settings.current.aiKeyboard || bridge.isSensitiveField || inAiPrompt.value) return false
         emojiOpen.value = false
         pickerOpen.value = false
@@ -1930,15 +1940,16 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         // Text selected in the chat is not taken: the prompt is the user's own, typed there.
         // Another field's words stay saved for that field.
         val editor = bridge.editorKey()
-        val retry = retryPrompt?.takeIf { it.editor == editor }
+        val retry = if (fresh) null else retryPrompt?.takeIf { it.editor == editor }
         if (retry != null) retryPrompt = null
         composerEditor = editor
         pendingAiCard = null
         promptImagesEpoch++
         promptImagesLoading = 0
         promptImagesFlow.value = retry?.images.orEmpty()
+        val session = ++composerSession
         return try {
-            startActivity(AiPromptActivity.intent(this, retry?.text.orEmpty().take(ImageApi.MAX_PROMPT_CHARS)))
+            startActivity(AiPromptActivity.intent(this, retry?.text.orEmpty().take(ImageApi.MAX_PROMPT_CHARS), session))
             true
         } catch (_: RuntimeException) {
             if (retry != null) retryPrompt = retry
@@ -1951,11 +1962,17 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
     /** In the prompt window every image chip can be added to the prompt; elsewhere the app must take images. */
     private fun takesImage(mimeType: String): Boolean = inAiPrompt.value || bridge.acceptsImage(mimeType)
 
-    /** Reads [uri] into a picture for the prompt, shrunk for upload; a note says why when it can't. */
-    private fun attachPromptImage(uri: Uri) {
-        if (promptImagesFlow.value.size + promptImagesLoading >= ImageApi.MAX_INPUT_IMAGES) {
+    /** Room left for pictures in the prompt, counting those still being read. */
+    private fun promptImageRoom(): Int = ImageApi.MAX_INPUT_IMAGES - promptImagesFlow.value.size - promptImagesLoading
+
+    /**
+     * Reads [uri] into a picture for the prompt, shrunk for upload; a note says why when it can't.
+     * False when there was no room for it.
+     */
+    private fun attachPromptImage(uri: Uri): Boolean {
+        if (promptImageRoom() <= 0) {
             showNote("Up to ${ImageApi.MAX_INPUT_IMAGES} pictures per prompt", warn = true)
-            return
+            return false
         }
         val epoch = promptImagesEpoch
         val id = ++nextPromptImage
@@ -1968,9 +1985,11 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
             }
             // Sent or closed meanwhile: it was for an older prompt.
             if (epoch != promptImagesEpoch) return@launch
+            // In the order they were added (ids count up), however long each took to read.
             if (image == null) showNote("This picture couldn't be added", warn = true)
-            else promptImagesFlow.value = promptImagesFlow.value + image
+            else promptImagesFlow.value = (promptImagesFlow.value + image).sortedBy { it.id }
         }
+        return true
     }
 
     // ---- The prompt window (AiComposerHost) ----
@@ -1980,16 +1999,19 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
     override val recentImages: StateFlow<List<ClipEntry>> get() = recentImagesFlow
 
     override fun addPromptImage(entry: ClipEntry) {
-        when (entry) {
-            is ClipEntry.Text -> return
+        val added = when (entry) {
+            is ClipEntry.Text -> false
             is ClipEntry.Image -> attachPromptImage(entry.uri)
             is ClipEntry.Screenshot -> attachPromptImage(entry.mediaUri)
         }
-        clipHistory.markUsed(entry)
+        if (added) clipHistory.markUsed(entry)
     }
 
-    override fun addPromptPhotos(uris: List<Uri>) {
-        uris.forEach(::attachPromptImage)
+    override fun addPromptPhotos(uris: List<Uri>, session: Int) {
+        if (session != composerSession) return
+        val room = promptImageRoom()
+        uris.take(room).forEach(::attachPromptImage)
+        if (uris.size > room) showNote("Up to ${ImageApi.MAX_INPUT_IMAGES} pictures per prompt", warn = true)
     }
 
     override fun removePromptImage(id: Long) {
@@ -1997,7 +2019,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
     }
 
     /** Create in the prompt window: starts the image for the field the window was opened from. */
-    override fun submitImagePrompt(prompt: String): String? {
+    override fun submitImagePrompt(prompt: String, session: Int): String? {
+        if (session != composerSession) return "Open the prompt again with ✨"
         val text = prompt.trim()
         if (text.isEmpty()) return "Describe the image first"
         if (!settings.current.aiKeyboard) return "AI on the keyboard is off"
@@ -2021,11 +2044,14 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
     }
 
     /** The window closed without Create: its words come back with the next prompt for the same field. */
-    override fun composerClosed(draft: String) {
+    override fun composerClosed(draft: String, session: Int) {
+        if (session != composerSession) return
         val images = promptImagesFlow.value
         promptImagesEpoch++
         promptImagesLoading = 0
         promptImagesFlow.value = emptyList()
+        // The wand's image alone isn't a draft: it is still in the clipboard row, and the saved one stays.
+        if (session == wandSession && draft.isBlank()) return
         if (draft.isNotBlank() || images.isNotEmpty()) retryPrompt = RetryPrompt(composerEditor, draft.trim(), images)
     }
 
@@ -2072,7 +2098,11 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
             return
         }
         clearAiCards()
-        if (openAiComposer()) attachPromptImage(entry.uri)
+        // Just this image: a saved draft for this field (words, other pictures) stays for the next ✨.
+        if (openAiComposer(fresh = true)) {
+            wandSession = composerSession
+            attachPromptImage(entry.uri)
+        }
     }
 
     override fun onDismissAiResult(card: String) {

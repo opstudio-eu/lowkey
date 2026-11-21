@@ -277,9 +277,8 @@ private fun PromptField(
         onValueChange = { next ->
             when {
                 typedLineBreak(value.text, next.text) -> actions.onSubmit()
-                // While Improve rewrites them, the words stay as they are (Stop, the same button, ends it). Not
-                // readOnly: that ends the input session, the keyboard hides, and with it the window.
-                improving -> {}
+                // Typing (or dictating) while Improve works stops it (the window does): the words typed win.
+                // Not readOnly instead: that ends the input session, the keyboard hides, and with it the window.
                 else -> onChange(flattenPrompt(next))
             }
         },

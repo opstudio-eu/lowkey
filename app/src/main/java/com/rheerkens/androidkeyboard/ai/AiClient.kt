@@ -82,11 +82,12 @@ class AiClient(
     fun generate(job: ImageJob): ImageReply = request({ ImageReply.Failed(failure(it, "image service")) }) {
         val reply = if (job.images.isEmpty()) {
             val body = ImageApi.requestBody(job.prompt, job.model, job.quality).toByteArray(Charsets.UTF_8)
-            post(job.endpoint, job.token, "application/json", body, MAX_RESPONSE_BYTES, ImageApi::parse)
+            post(job.endpoint, job.token, "application/json", body, MAX_RESPONSE_BYTES, READ_TIMEOUT_MS, ImageApi::parse)
         } else {
             val boundary = "lowkey-" + java.util.UUID.randomUUID().toString()
             val body = ImageApi.editBody(boundary, job.prompt, job.model, job.quality, job.images)
-            post(job.endpoint, job.token, "multipart/form-data; boundary=$boundary", body, MAX_RESPONSE_BYTES, ImageApi::parse)
+            post(job.endpoint, job.token, "multipart/form-data; boundary=$boundary", body, MAX_RESPONSE_BYTES, READ_TIMEOUT_MS,
+                ImageApi::parse)
         }
         if (reply is ImageReply.Link) download(reply.url) else reply
     }
@@ -94,7 +95,7 @@ class AiClient(
     /** A rewritten prompt for [job]'s, from the service's text model. */
     fun improve(job: PromptJob): PromptReply = request({ PromptReply.Failed(failure(it, "AI service")) }) {
         val body = PromptApi.requestBody(job.prompt, job.model, job.openAi, job.imageCount).toByteArray(Charsets.UTF_8)
-        post(job.endpoint, job.token, "application/json", body, MAX_PROMPT_RESPONSE_BYTES, PromptApi::parse)
+        post(job.endpoint, job.token, "application/json", body, MAX_PROMPT_RESPONSE_BYTES, PROMPT_READ_TIMEOUT_MS, PromptApi::parse)
     }
 
     /** Runs [send] for this thread's request, turning a failed connection into [failed]'s reply. */
@@ -130,12 +131,12 @@ class AiClient(
     private class TooLarge : IOException("Response too large")
 
     private fun <R> post(endpoint: String, token: String?, contentType: String, body: ByteArray, maxResponse: Int,
-        parse: (Int, String) -> R): R {
+        readTimeout: Int, parse: (Int, String) -> R): R {
         val connection = connect(endpoint)
         try {
             connection.requestMethod = "POST"
             connection.connectTimeout = CONNECT_TIMEOUT_MS
-            connection.readTimeout = READ_TIMEOUT_MS
+            connection.readTimeout = readTimeout
             connection.instanceFollowRedirects = false
             connection.doOutput = true
             connection.setRequestProperty("Content-Type", contentType)
@@ -196,6 +197,8 @@ class AiClient(
         private const val READ_TIMEOUT_MS = 240_000
         /** Base64 makes the JSON about a third larger than the image, which the history caps. */
         private const val MAX_RESPONSE_BYTES = ImageApi.MAX_IMAGE_BYTES / 3 * 4 + 64 * 1024
+        /** A short text answer; longer means the text model hangs. */
+        private const val PROMPT_READ_TIMEOUT_MS = 60_000
         /** A rewritten prompt is a few hundred bytes; the rest of a chat answer is small too. */
         private const val MAX_PROMPT_RESPONSE_BYTES = 256 * 1024
     }

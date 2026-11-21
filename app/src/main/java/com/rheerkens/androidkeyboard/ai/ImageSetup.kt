@@ -22,7 +22,7 @@ fun imageJob(
     images: List<InputImage> = emptyList(),
 ): JobCheck {
     val text = prompt.trim()
-    if (text.isEmpty()) return JobCheck(null, if (images.isEmpty()) "Describe the image first" else "Say what to change first")
+    if (text.isEmpty()) return JobCheck(null, "Describe the image first")
     val connection = aiConnection(settings, secret, allowLocalHttp)
     val action = if (images.isEmpty()) AiAction.CREATE_IMAGE else AiAction.EDIT_IMAGE
     val endpoint = connection.base?.endpoint(action.path) ?: return JobCheck(null, connection.problem)
