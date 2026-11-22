@@ -14,9 +14,14 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -329,23 +334,61 @@ fun PressTarget(
     ) { content(pressed) }
 }
 
-/** Visual key cap (concept 4: 7 dp radius, 3 × 2.5 dp gutter, subtle bottom shadow). */
+/**
+ * Visual key cap (concept 4: 7 dp radius, 3 × 2.5 dp gutter, subtle bottom shadow).
+ * When [notch] is set (the pointing stick's crater centre in this cap's coordinates), the cap's
+ * corner is bevelled and punched out so the crater recesses into the keyboard background or photo.
+ */
 @Composable
 fun KeyCap(
     background: Color,
     modifier: Modifier = Modifier,
+    notch: Offset? = null,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val shape = RoundedCornerShape(7.dp)
-    Box(
-        modifier
-            .fillMaxSize()
-            .padding(horizontal = 2.5.dp, vertical = 3.dp)
-            .shadow(1.dp, shape, clip = false)
-            .background(background, shape),
-        contentAlignment = Alignment.Center,
-        content = content,
-    )
+    if (notch == null) {
+        Box(
+            modifier
+                .fillMaxSize()
+                .padding(horizontal = 2.5.dp, vertical = 3.dp)
+                .shadow(1.dp, shape, clip = false)
+                .background(background, shape),
+            contentAlignment = Alignment.Center,
+            content = content,
+        )
+        return
+    }
+    Box(modifier.fillMaxSize()) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                .drawWithContent {
+                    drawContent()
+                    drawCraterCutout(notch)
+                },
+        ) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 2.5.dp, vertical = 3.dp)
+                    .shadow(1.dp, shape, clip = false)
+                    .background(background, shape)
+                    .clip(shape)
+                    .drawBehind {
+                        drawCraterChamfer(notch - Offset(2.5.dp.toPx(), 3.dp.toPx()), background)
+                    },
+            )
+        }
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = 2.5.dp, vertical = 3.dp),
+            contentAlignment = Alignment.Center,
+            content = content,
+        )
+    }
 }
 
 private const val REPEAT_START_MS = 400L
