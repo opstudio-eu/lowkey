@@ -9,6 +9,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.findRootCoordinates
@@ -388,8 +389,12 @@ private fun KeyView(
                 }
             }
         }
+        // Dimmed (Create with no words yet, or while Improve rewrites them): it does nothing, with no
+        // click or sound, and TalkBack says it is disabled.
         is Key.Enter -> PressTarget(
-            enterKind.label ?: "Enter, new line", modifier, gestureKey = key, onDown = actions::onKeyDown, onTap = { actions.onKey(key) },
+            enterKind.label ?: "Enter, new line", if (enterKind.dimmed) modifier.semantics { disabled() } else modifier,
+            gestureKey = key, onDown = if (enterKind.dimmed) ({}) else actions::onKeyDown,
+            onTap = if (enterKind.dimmed) null else ({ actions.onKey(key) }),
             rollover = rollover,
         ) { pressed ->
             KeyCap(if (pressed && !enterKind.dimmed) c.enterPressed else c.enter,

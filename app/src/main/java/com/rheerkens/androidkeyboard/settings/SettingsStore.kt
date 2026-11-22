@@ -105,6 +105,7 @@ class SettingsStore(context: Context) {
             imageModel = prefs.getString(K_IMAGE_MODEL, null)?.takeIf { it.isNotBlank() } ?: d.imageModel,
             imageServerModel = prefs.getString(K_IMAGE_SERVER_MODEL, null) ?: d.imageServerModel,
             imageQuality = enumOr(prefs.getString(K_IMAGE_QUALITY, null), d.imageQuality),
+            promptServerModel = prefs.getString(K_PROMPT_SERVER_MODEL, null) ?: d.promptServerModel,
             saveImagesToGallery = prefs.getBoolean(K_IMAGE_GALLERY, d.saveImagesToGallery),
             checkForUpdates = prefs.getBoolean(K_CHECK_UPDATES, d.checkForUpdates),
             matchTermCase = prefs.getBoolean(K_TERM_CASE, d.matchTermCase),
@@ -156,6 +157,7 @@ class SettingsStore(context: Context) {
         putString(K_IMAGE_MODEL, s.imageModel)
         putString(K_IMAGE_SERVER_MODEL, s.imageServerModel)
         putString(K_IMAGE_QUALITY, s.imageQuality.name)
+        putString(K_PROMPT_SERVER_MODEL, s.promptServerModel)
         putBoolean(K_IMAGE_GALLERY, s.saveImagesToGallery)
         putBoolean(K_CHECK_UPDATES, s.checkForUpdates)
         putBoolean(K_TERM_CASE, s.matchTermCase)
@@ -212,6 +214,7 @@ class SettingsStore(context: Context) {
         const val K_AI_SERVER = "ai_server_url"
         const val K_IMAGE_MODEL = "image_model"
         const val K_IMAGE_QUALITY = "image_quality"
+        const val K_PROMPT_SERVER_MODEL = "prompt_server_model"
         const val K_IMAGE_SERVER_MODEL = "image_server_model"
         const val K_IMAGE_GALLERY = "image_save_to_gallery"
         const val K_VIBRATE = "vibrate"

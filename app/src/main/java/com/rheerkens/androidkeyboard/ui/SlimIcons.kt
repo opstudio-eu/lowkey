@@ -31,6 +31,22 @@ object SlimIcons {
         stroke("server", "M4 4h16v6H4zM4 14h16v6H4z", filled = "M7 6.3h1.4v1.4H7zM7 16.3h1.4v1.4H7z")
     }
     val Floating by lazy { stroke("floating", "M3 4h18v16H3zM8 10h10v7H8z") }
+    /** A wand with sparks: Improve, which rewrites the prompt. */
+    val Wand by lazy {
+        stroke("wand", "M4.5 19.5l10 -10", width = 2f,
+            filled = "M16.5 2.5l.9 2.6 2.6.9 -2.6.9 -.9 2.6 -.9 -2.6 -2.6 -.9 2.6 -.9z" +
+                "M20.5 10.5l.5 1.2 1.2.5 -1.2.5 -.5 1.2 -.5 -1.2 -1.2 -.5 1.2 -.5z" +
+                "M9.5 3l.5 1.2 1.2.5 -1.2.5 -.5 1.2 -.5 -1.2 -1.2 -.5 1.2 -.5z")
+    }
+    /** A picture with a plus: add a picture to the prompt. */
+    val ImageAdd by lazy {
+        stroke("imageAdd", "M13 4.5H6.5a2 2 0 0 0 -2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2 -2V11",
+            "M4.5 16l4 -4 3.5 3.5 2 -2 5.5 5.5", "M18.5 2.5v6M15.5 5.5h6")
+    }
+    /** A stack of photos: the system's photo picker. */
+    val Photos by lazy {
+        stroke("photos", "M7 7.5h12.5v12H7z", "M4.5 16.5V4.5h12", "M7 17l3.5 -3.5 3 3 2 -2 4 4")
+    }
     private fun stroke(name: String, vararg paths: String, width: Float = 1.8f, filled: String? = null) =
         ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f).apply {
             paths.forEach { d ->

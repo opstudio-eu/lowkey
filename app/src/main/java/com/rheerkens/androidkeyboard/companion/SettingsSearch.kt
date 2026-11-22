@@ -90,6 +90,7 @@ val settingsIndex: List<SettingEntry> = listOfNotNull(
     row("OpenAI API key", Destination.SETTINGS_EXPERIMENTAL, "api key", "openai", "key", "image generation"),
     row("Image model", Destination.SETTINGS_EXPERIMENTAL, "gpt image", "flare", "sunburst", "image generation"),
     row("Server model", Destination.SETTINGS_EXPERIMENTAL, "model", "own server", "image generation"),
+    row("Text model", Destination.SETTINGS_EXPERIMENTAL, "model", "own server", "improve prompt", "chat"),
     row("Image quality", Destination.SETTINGS_EXPERIMENTAL, "fast", "best", "cost", "image generation"),
     row("Access token", Destination.SETTINGS_EXPERIMENTAL, "bearer", "token", "password", "own server", "image generation"),
     row("Server address", Destination.SETTINGS_EXPERIMENTAL, "own server", "url", "endpoint", "tailscale", "image generation"),

@@ -50,7 +50,7 @@ object AiConnection {
             return ApiBase(null, "Use https://. Lowkey doesn't send prompts over plain http")
         }
         val path = (uri.rawPath ?: "").trimEnd('/')
-        val actionPath = AiAction.entries.map { "/" + it.path }.firstOrNull { path.endsWith(it) }
+        val actionPath = (AiAction.entries.map { it.path } + CHAT_PATH).map { "/$it" }.firstOrNull { path.endsWith(it) }
         val base = when {
             actionPath != null -> path.removeSuffix(actionPath)
             path.endsWith("/v1") -> path
