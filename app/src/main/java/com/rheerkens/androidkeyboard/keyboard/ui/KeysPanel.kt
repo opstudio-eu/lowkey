@@ -574,9 +574,13 @@ private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardAction
     if (open && popups != null) DisposableEffect(popups, key) { popups += key; onDispose { popups -= key } }
     val slot = remember { Any() }
     if (isStick && corners != null) DisposableEffect(corners) { onDispose { corners.remove(slot) } }
-    // Where the key's touch area is, in root coordinates: whether a nub reaches into it.
+    // Where the key's touch area and drawn cap sit, in root coordinates: whether a nub reaches into them.
     var bounds by remember(key) { mutableStateOf<Rect?>(null) }
+    var capBounds by remember(key) { mutableStateOf<Rect?>(null) }
     val slide = if (nubSlide == null || corners == null) null else bounds?.let { nubSlideFor(nubSlide, it, corners.values, density) }
+    val notch = if (nubSlide == null || corners == null) null else capBounds?.let {
+        craterNotch(it, corners.values.map(NubSpot::corner), with(density) { CRATER_OUTER_RADIUS.toPx() })
+    }
     val popup = remember(placement, choices.size, density) {
         val p = placement
         if (p == null || choices.isEmpty()) null else with(density) {
@@ -613,9 +617,11 @@ private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardAction
                 val inRoot = coords.positionInRoot()
                 val area = Rect(inRoot, coords.size.toSize())
                 if (bounds != area) bounds = area
+                val width = coords.size.width * key.weight / total
+                val height = coords.size.height.toFloat()
+                val capArea = Rect(inRoot + Offset(capLeft, 0f), androidx.compose.ui.geometry.Size(width, height))
+                if (capBounds != capArea) capBounds = capArea
                 if (isStick && corners != null) {
-                    val width = coords.size.width * key.weight / total
-                    val height = coords.size.height.toFloat()
                     val spot = NubSpot(inRoot + Offset(capLeft + width, height), width, height)
                     if (corners[slot] != spot) corners[slot] = spot
                 }
@@ -639,7 +645,7 @@ private fun CharKey(key: Key.Char, state: KeyboardState, actions: KeyboardAction
         onLongPressMove = popup?.let { p -> { at: Offset -> selected = p.select(at.x - (placement?.capLeft ?: 0f), at.y) } },
         slide = slide,
     ) { pressed ->
-        KeyCap(if (pressed) c.keyPressed else if (key.numberRow) c.numberKey else c.key, Modifier.drawnKey(before, after, key.weight)) {
+        KeyCap(if (pressed) c.keyPressed else if (key.numberRow) c.numberKey else c.key, Modifier.drawnKey(before, after, key.weight), notch = notch) {
             val hint = key.hint
             Text(
                 label, color = c.keyText, fontSize = 21.sp, maxLines = 1,
