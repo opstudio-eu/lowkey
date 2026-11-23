@@ -175,7 +175,7 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     // The real org.json for JVM tests of the Image API parsing (Android ships it; the unit-test jar stubs it).
-    testImplementation("org.json:json:20250517")
+    testImplementation("org.json:json:20260719")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
 }
 
