@@ -48,7 +48,7 @@ object EmojiSuggestions {
     /** Typed emoticons and their emoji. Mouths that are letters come in both cases (":d" too). */
     private val emoticons = listOf(
         ":-)" to "🙂", ":)" to "🙂", "(:" to "🙂", ";-)" to "😉", ";)" to "😉",
-        ":-D" to "😃", ":D" to "😃", ":-d" to "😃", ":d" to "😃", "xD" to "😆", "XD" to "😆",
+        ":-D" to "😃", ":D" to "😃", ":-d" to "😃", ":d" to "😃", "xD" to "😆", "XD" to "😆", "xd" to "😆",
         ":'(" to "😢", ":-(" to "🙁", ":(" to "🙁",
         ":-P" to "😛", ":P" to "😛", ":-p" to "😛", ":p" to "😛", ";-P" to "😜", ";P" to "😜", ";-p" to "😜", ";p" to "😜",
         ":-O" to "😮", ":O" to "😮", ":-o" to "😮", ":o" to "😮", ":-*" to "😘", ":*" to "😘",
@@ -61,21 +61,22 @@ object EmojiSuggestions {
      * It must start the text or follow a space; after a word only the ones with eyes count
      * ("see you;)"), never ":/" (a link's "https:/") or the letter ones ("taxD"). After a tapped
      * suggestion the keyboard moves its space behind punctuation, so "you ;)" arrives as
-     * "you; )": that counts too.
+     * "you; )" and "you :D" as "you: D": those count too, unless the mouth is a lower-case
+     * letter ("a: d" is text).
      */
     fun emoticon(before: String, catalog: EmojiCatalog?): Suggestion? {
         if (catalog == null) return null
         for ((face, value) in emoticons) {
-            val eyes = face[0] in ":;" && face != ":/" && face != ":-/"
+            val eyesFirst = face[0] in ":;"
+            val split = face[0] + " " + face.substring(1)
             val typed = when {
                 before.endsWith(face) -> face
-                eyes && !face.last().isLetter() && before.endsWith(face[0] + " " + face.substring(1)) ->
-                    face[0] + " " + face.substring(1)
+                eyesFirst && !face.last().isLowerCase() && before.endsWith(split) -> split
                 else -> continue
             }
             val prev = before.getOrNull(before.length - typed.length - 1)
-            val bounded = if (typed != face) prev?.isLetter() == true
-                else prev == null || prev.isWhitespace() || (prev.isLetter() && eyes)
+            val bounded = if (typed != face) prev != null && !prev.isWhitespace()
+                else prev == null || prev.isWhitespace() || (prev.isLetter() && eyesFirst && face != ":/" && face != ":-/")
             if (!bounded) continue
             val emoji = catalog.find(value) ?: return null
             return Suggestion(emoji.value, emojiName = emoji.name, replaceChars = typed.length)

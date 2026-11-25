@@ -1871,7 +1871,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         if (typed.isEmpty() || bridge.isSensitiveField) {
             invalidateStrip()
             cachedCorrection = null
-            val selection = typed.isEmpty() && settings.current.suggestionStrip && bridge.hasSelection()
+            val selection = typed.isEmpty() && !bridge.isSensitiveField && settings.current.suggestionStrip && bridge.hasSelection()
             val predictions = if (typed.isEmpty() && bridge.allowsTextShortcuts &&
                 settings.current.suggestionStrip && !selection) {
                 PersonalPredictions.nextWords(bridge.textBeforeCursor(NextWordPredictor.CONTEXT_LIMIT), dictionary.state.value.terms,

@@ -117,6 +117,12 @@ class EmojiSearchTest {
         assertEquals("😉", face("see you;)")?.text)
         // After a tapped suggestion the space moves behind the eyes: "you ;)" arrives as "you; )".
         assertEquals(3, face("See you; )")?.replaceChars)
+        assertEquals("😃", face("you: D")?.text)
+        assertEquals(3, face("you: D")?.replaceChars)
+        assertEquals("😕", face("hmm: /")?.text)
+        // After an emoji just tapped, the next emoticon is split the same way.
+        assertEquals("🙂", face("😉: )")?.text)
+        assertEquals("😆", face("lol xd")?.text)
         assertEquals("😜", face("ha ;-P")?.text)
         assertEquals("😐", face("hmm :-|")?.text)
         assertEquals("😃", face("great :d")?.text)
