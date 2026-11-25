@@ -105,6 +105,9 @@ private val FALLBACK_TRAVEL = 179.dp
 /** Room the slider's window keeps below the top of the screen, for the status bar. */
 private val SCREEN_TOP_MARGIN = 48.dp
 
+/** False while the keys type into something other than the editor (the emoji search): no hold slider. */
+val LocalBackspaceSlider = androidx.compose.runtime.staticCompositionLocalOf { true }
+
 /**
  * Backspace: a tap deletes one character. Holding raises a vertical slider instead of repeating:
  * sliding up erases word by word, the top erases everything before the cursor (all text when the
@@ -141,6 +144,8 @@ fun BackspaceKey(
     val latestPress by rememberUpdatedState(onPress)
     val latestFan by rememberUpdatedState(fan)
     val latestSwipeDown by rememberUpdatedState(onSwipeDown)
+    // Off while the keys type an emoji search: a hold then deletes one character, like a tap.
+    val slider = LocalBackspaceSlider.current
     val c = LocalKeyboardColors.current
     var pressed by remember { mutableStateOf(false) }
     var keyTop by remember { mutableFloatStateOf(0f) }
@@ -167,6 +172,7 @@ fun BackspaceKey(
             coords = it
         }.semantics {
             contentDescription = when {
+                !slider -> "Backspace. Tap to delete a letter of the search"
                 fan != null -> "Backspace. Tap to delete a character. Hold or drag for more: up erases words, " +
                     "then left into the text deletes from the word under your finger, " +
                     "up-left types a space, left is ${fan.actionLabel}"
@@ -187,7 +193,8 @@ fun BackspaceKey(
                 try { latest.onDeleteBeforeCursor() } finally { latest.onBackspaceHoldEnded() }
                 true
             }
-            customActions = buildList {
+            // The search has its own Clear button; these act on the editor's text.
+            customActions = if (!slider) emptyList() else buildList {
                 add(beforeCursor)
                 add(clearAll)
                 fan?.sectors?.map { it.command }?.filter { it != FanCommand.WORDS && fan.enabled(it) }?.forEach { command ->
@@ -195,7 +202,7 @@ fun BackspaceKey(
                 }
                 onSwipeDown?.let { add(CustomAccessibilityAction("Minimize keyboard") { latestSwipeDown?.invoke(); true }) }
             }
-        }.pointerInput(sliderInPopup, hasFan, hasSwipeDown) {
+        }.pointerInput(sliderInPopup, hasFan, hasSwipeDown, slider) {
             coroutineScope {
                 val gestureScope = this
                 awaitEachGesture {
@@ -232,6 +239,7 @@ fun BackspaceKey(
                     // instead and deletes nothing until it slides; sliding up starts it right away.
                     var held = false
                     val reveal = gestureScope.launch {
+                        if (!slider) return@launch
                         delay(HOLD_MS)
                         held = true
                         if (latestFan != null) fanOrigin = center else rail = geometry
@@ -423,7 +431,7 @@ fun BackspaceKey(
                                 }
                                 continue
                             }
-                            if (!unsupported && down.position.y - position.y > 8.dp.toPx()) {
+                            if (slider && !unsupported && down.position.y - position.y > 8.dp.toPx()) {
                                 startSliding(geometry, position.y)
                             }
                         }

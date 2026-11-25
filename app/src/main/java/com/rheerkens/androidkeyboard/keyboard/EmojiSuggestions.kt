@@ -3,8 +3,9 @@ package com.rheerkens.androidkeyboard.keyboard
 import com.rheerkens.androidkeyboard.dictionary.Suggestion
 
 /**
- * One emoji for a typed word, from small offline aliases and, for English, the emoji's own
- * Unicode names ([EmojiNameIndex]). Never guesses from ambiguous prefixes such as "he".
+ * One emoji for a typed word, from small offline aliases; for English, the emoji's own Unicode
+ * names ([EmojiNameIndex]); for other languages with CLDR names, emoji whose whole name is the word.
+ * Never guesses from ambiguous prefixes such as "he".
  */
 object EmojiSuggestions {
     private fun words(vararg entries: Pair<String, String>) = buildMap {
@@ -15,7 +16,7 @@ object EmojiSuggestions {
         "en" to words(
             "👋" to "hi hello hey bye goodbye", "❤️" to "love heart",
             "🍺" to "beer", "🥂" to "cheers", "🍕" to "pizza", "🎂" to "birthday cake",
-            "😊" to "happy smile", "😂" to "laugh laughing", "😢" to "sad crying",
+            "😊" to "happy smile", "😂" to "laugh laughing", "😢" to "sad crying", "😉" to "wink winks winky",
             "🙏" to "thanks thank", "👍" to "okay", "🎉" to "party congratulations",
             "☀️" to "sun sunny", "🌧️" to "rain", "🔥" to "fire", "🐶" to "dog", "🐱" to "cat",
             "💧" to "water", "⚽" to "ball balls soccer", "❄️" to "snow", "🏃" to "running",
@@ -37,11 +38,61 @@ object EmojiSuggestions {
         "nl" to words(
             "👋" to "hoi hallo hey dag doei", "❤️" to "liefde hart", "☕" to "koffie thee",
             "🍺" to "bier", "🥂" to "proost", "🍕" to "pizza", "🎂" to "verjaardag taart",
-            "😊" to "blij glimlach", "😂" to "lach lachen", "😢" to "verdrietig huilen",
+            "😊" to "blij glimlach", "😂" to "lach lachen", "😢" to "verdrietig huilen", "😉" to "knipoog knipogen",
             "🙏" to "dank bedankt", "👍" to "oké oke duim duimpje", "🎉" to "feest gefeliciteerd",
             "☀️" to "zon zonnig", "🌧️" to "regen", "🔥" to "vuur", "🐶" to "hond", "🐱" to "kat",
-            "🚗" to "auto",
+            "🚗" to "auto", "🪑" to "stoel",
         ),
+    )
+
+    /** Typed emoticons and their emoji. Mouths that are letters come in both cases (":d" too). */
+    private val emoticons = listOf(
+        ":-)" to "🙂", ":)" to "🙂", "(:" to "🙂", ";-)" to "😉", ";)" to "😉",
+        ":-D" to "😃", ":D" to "😃", ":-d" to "😃", ":d" to "😃", "xD" to "😆", "XD" to "😆", "xd" to "😆", "Xd" to "😆",
+        ":'(" to "😢", ":-(" to "🙁", ":(" to "🙁",
+        ":-P" to "😛", ":P" to "😛", ":-p" to "😛", ":p" to "😛", ";-P" to "😜", ";P" to "😜", ";-p" to "😜", ";p" to "😜",
+        ":-O" to "😮", ":O" to "😮", ":-o" to "😮", ":o" to "😮", ":-*" to "😘", ":*" to "😘",
+        "</3" to "💔", "<3" to "❤️", ":-/" to "😕", ":/" to "😕", ":-|" to "😐", ":|" to "😐",
+        "B-)" to "😎", "B)" to "😎", "^_^" to "😊", "^^" to "😊",
+    )
+
+    /**
+     * The emoji for an emoticon just typed before the cursor (";)" offers 😉), to replace it.
+     * It must start the text or follow a space; after a word only the ones with eyes count
+     * ("see you;)"), never ":/" (a link's "https:/") or the letter ones ("taxD"). After a tapped
+     * suggestion the keyboard moves its space behind punctuation, so "you ;)" arrives as
+     * "you; )" and "you :D" as "you: D": those count too, unless the mouth is a lower-case
+     * letter ("a: d" is text).
+     */
+    fun emoticon(before: String, catalog: EmojiCatalog?): Suggestion? {
+        if (catalog == null) return null
+        for ((face, value) in emoticons) {
+            val eyesFirst = face[0] in ":;"
+            val split = face[0] + " " + face.substring(1)
+            val typed = when {
+                before.endsWith(face) -> face
+                eyesFirst && !face.last().isLowerCase() && before.endsWith(split) -> split
+                else -> continue
+            }
+            val prev = before.getOrNull(before.length - typed.length - 1)
+            val bounded = if (typed != face) prev != null && !prev.isWhitespace()
+                else prev == null || prev.isWhitespace() || (prev.isLetter() && eyesFirst && face != ":/" && face != ":-/")
+            if (!bounded) continue
+            val emoji = catalog.find(value) ?: return null
+            return Suggestion(emoji.value, emojiName = emoji.name, replaceChars = typed.length)
+        }
+        return null
+    }
+
+    /** The emoji an emoticon stands for ("<3" is ❤️), for a search typed as one; null otherwise. */
+    fun emoticonValue(text: String): String? =
+        emoticons.firstOrNull { it.first.equals(text.trim(), ignoreCase = true) }?.second
+
+    /** Everyday words that are also a whole emoji name: "elf" is eleven before it is an elf. */
+    private val common = mapOf(
+        "nl" to ("man vrouw volwassene kind elf bot gat rol ram slot slip step das ooi bel been pot pen kus golf " +
+            // Dutch verb forms, and names that are everyday English words for the many who type both.
+            "vlieg koken schop schoppen rechter ogen bank mist beer mug pet slang spin peer brood veer").split(' ').toSet(),
     )
 
     /**
@@ -60,7 +111,13 @@ object EmojiSuggestions {
             } else null
             // A keyword's emoji the device cannot show blocks name guesses for that language too:
             // without 🪨, "stone" must not fall through to a curling stone.
-            val emoji = if (alias != null) catalog.find(alias) else if (code == "en") catalog.nameIndex.find(word) else null
+            val emoji = when {
+                alias != null -> catalog.find(alias)
+                code == "en" -> catalog.nameIndex.find(word)
+                // Other languages: an emoji whose whole name is the word, so "fiets" offers 🚲.
+                word !in common[code].orEmpty() -> catalog.singleWordName(code, word)
+                else -> null
+            }
             if (emoji != null) return Suggestion(emoji.value, emojiName = emoji.name)
         }
         return null
@@ -125,7 +182,7 @@ class EmojiNameIndex(entries: List<EmojiItem>) {
 
     companion object {
         private val SEPARATORS = Regex("[^\\p{L}]+")
-        private val PICTURES = setOf(
+        internal val PICTURES = setOf(
             "Smileys & Emotion", "People & Body", "Animals & Nature", "Food & Drink",
             "Travel & Places", "Activities", "Objects",
         )

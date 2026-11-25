@@ -321,7 +321,9 @@ class Suggester(private val lexicon: () -> Lexicon, private val keys: KeyGrid = 
                 listOf(literal, best, others.firstOrNull { it.text != best.text })
             }
             // Preserve the Space slot and saved-term priority; emoji are optional side suggestions.
-            return if (emoji?.emojiName != null && slots[2]?.isPersonal != true) slots.take(2) + emoji else slots
+            // An emoticon (":D") is what was typed, not a guess from its last letter: it always shows.
+            val show = emoji?.emojiName != null && (emoji.replaceChars > 0 || slots[2]?.isPersonal != true)
+            return if (show) slots.take(2) + emoji!! else slots
         }
 
         fun matchCase(typed: String, word: String): String = when {

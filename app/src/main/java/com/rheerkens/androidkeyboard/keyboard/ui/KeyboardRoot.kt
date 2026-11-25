@@ -89,6 +89,8 @@ data class KeyboardUiState(
      */
     val belowPanelDp: Float = 0f,
     val emojiCatalog: com.rheerkens.androidkeyboard.keyboard.EmojiCatalog? = null,
+    /** Searching emoji: the letter keys type into this search instead of the editor. */
+    val emojiSearch: EmojiSearchState? = null,
     val recentEmoji: List<String> = emptyList(),
     /** The enabled, installed keyboards in globe order, offered by holding the emoji key. */
     val keyboards: List<com.rheerkens.androidkeyboard.keyboard.TypingKeyboard> = emptyList(),
@@ -150,7 +152,11 @@ internal fun KeyboardContent(
                                 actions.onSetMinimized(true); true
                             })
                         }) {
-                        Row(Modifier.fillMaxSize().padding(top = KEYBOARD_GRIP_SPACE_DP.dp), verticalAlignment = Alignment.CenterVertically) {
+                        val search = state.emojiSearch.takeIf { state.emojiOpen && !state.toolsOpen }
+                        if (search != null) {
+                            EmojiSearchBar(search.query, actions,
+                                Modifier.fillMaxSize().padding(top = KEYBOARD_GRIP_SPACE_DP.dp))
+                        } else Row(Modifier.fillMaxSize().padding(top = KEYBOARD_GRIP_SPACE_DP.dp), verticalAlignment = Alignment.CenterVertically) {
                             VoiceEntryButton(state.voice, actions, talk, more, moreLabel)
                             SuggestionStrip(state.strip, state.clipHistory, state.inputSession, actions, undoClear = state.fan.undoClear)
                             if (state.ai.available) {
@@ -163,6 +169,17 @@ internal fun KeyboardContent(
                     }
                     if (state.toolsOpen) {
                         KeyboardTools(state, actions)
+                    } else if (state.emojiOpen && state.emojiSearch != null) {
+                        // The results take one row's worth of height from the keys, so the keyboard keeps its size.
+                        val rows = state.keyRows
+                        val keyRowHeight = state.rowHeightDp - (EMOJI_RESULTS_DP + rows - 1) / rows
+                        EmojiSearchResults(state.emojiSearch, state.emojiCatalog, state.recentEmoji, actions)
+                        CompositionLocalProvider(LocalBackspaceSlider provides false) {
+                            KeysPanel(state.layout, state.keyboard, keyRowHeight, EnterKind.DONE, actions, state.splitGapDp, rows,
+                                state.keyboards, languageMenu, pointingStick = false, stickSpeed = state.stickSpeed)
+                        }
+                        // Whole dp per row can take a little more than the results need; give that back here.
+                        Spacer(Modifier.height(((state.rowHeightDp - keyRowHeight) * rows - EMOJI_RESULTS_DP).dp))
                     } else if (state.emojiOpen) {
                         EmojiPanel(state.emojiCatalog, state.recentEmoji,
                             (state.keyRows * state.rowHeightDp + 4).dp, state.belowPanelDp.dp, actions)

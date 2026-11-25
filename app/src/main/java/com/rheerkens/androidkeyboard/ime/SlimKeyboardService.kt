@@ -108,6 +108,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.ensureActive
 import com.rheerkens.androidkeyboard.keyboard.KeyboardPlacement
 import com.rheerkens.androidkeyboard.keyboard.EmojiCatalog
+import com.rheerkens.androidkeyboard.keyboard.EmojiAnnotations
+import com.rheerkens.androidkeyboard.keyboard.ui.EmojiSearchState
 import com.rheerkens.androidkeyboard.keyboard.EmojiHistory
 import com.rheerkens.androidkeyboard.keyboard.PlacementProfile
 import com.rheerkens.androidkeyboard.keyboard.PlacementMode
@@ -156,6 +158,9 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
     private val pickerOpen = MutableStateFlow(false)
     private val emojiOpen = MutableStateFlow(false)
     private val emojiCatalog = MutableStateFlow<EmojiCatalog?>(null)
+    /** The emoji search above the letter keys: what is typed and what it finds; null when not searching. */
+    private val emojiSearch = MutableStateFlow<EmojiSearchState?>(null)
+    private val searchingEmoji get() = emojiOpen.value && emojiSearch.value != null
     private var backspaceTarget: EditorBridge.Target? = null
     /** An active hold-and-slide Backspace, how much of its text before the cursor is in the field, and its level. */
     private var scrub: BackspaceScrub? = null
@@ -363,9 +368,17 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
             emojiCatalog.value = withContext(Dispatchers.IO) {
                 runCatching {
                     val paint = android.graphics.Paint()
+                    // Without a keyword file, search falls back to the Unicode names; the panel still works.
+                    val annotations = EMOJI_KEYWORD_LANGUAGES.mapNotNull { language ->
+                        runCatching {
+                            language to EmojiAnnotations.parse(assets.open("emoji/keywords-$language.txt").bufferedReader().use { it.readText() })
+                        }.getOrNull()
+                    }.toMap()
                     EmojiCatalog.parse(assets.open("emoji/emoji-test.txt").bufferedReader().use { it.readText() })
+                        .withAnnotations(annotations)
                         .supported(paint::hasGlyph)
-                        .also { it.nameIndex } // Index emoji names here, not on the first keystroke.
+                        // Index emoji names and search words here, not on the first keystroke.
+                        .also { it.nameIndex; it.search.prepare(EMOJI_KEYWORD_LANGUAGES) }
                 }.getOrElse { EmojiCatalog(emptyList()) }
             }
             if (inputViewActive && mode.value == InputMode.KEYS) refreshStrip()
@@ -384,7 +397,15 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         physicalKeyboard.value = hasPhysicalKeyboard(resources.configuration)
         mode.value = initialMode()
         pickerOpen.onEach(::updatePickerBack).launchIn(scope)
-        emojiOpen.onEach(::updateEmojiBack).launchIn(scope)
+        emojiOpen.onEach { open ->
+            // Whatever closes emoji also ends a search in it, and gives Shift back to the editor.
+            if (!open && emojiSearch.value != null) {
+                emojiSearch.value = null
+                keyboard.showHome()
+                updateShift()
+            }
+            updateEmojiBack(open)
+        }.launchIn(scope)
         // Refresh suggestions when the dictionary changes; readiness when models change.
         dictionary.state.drop(1).onEach { refreshStrip() }.launchIn(scope)
         // Follow keyboards changed in Settings while the keyboard is open (e.g. the current one
@@ -436,6 +457,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
                 val picker by pickerOpen.collectAsState()
                 val emoji by emojiOpen.collectAsState()
                 val catalog by emojiCatalog.collectAsState()
+                val search by emojiSearch.collectAsState()
                 val sensitive by sensitiveField.collectAsState()
                 val physical by physicalKeyboard.collectAsState()
                 val clips by clipChips.collectAsState()
@@ -502,6 +524,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
                         stickSpeed = s.stickSpeed.scale,
                         emojiOpen = emoji && m == InputMode.KEYS,
                         emojiCatalog = catalog,
+                        emojiSearch = search.takeIf { emoji && m == InputMode.KEYS },
                         recentEmoji = if (sensitive) emptyList() else s.recentEmoji,
                         placement = placement,
                         profile = profile,
@@ -902,8 +925,10 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
     }
 
     override fun onKey(key: Key) {
+        if (searchingEmoji && typeIntoEmojiSearch(key)) return
         if (key !is Key.Space) doubleSpacePeriod.reset()
-        if (key !is Key.Emoji) emojiOpen.value = false
+        // While searching emoji the letters type the search; Shift, ?123 and the globe keep it open.
+        if (key !is Key.Emoji && !searchingEmoji) emojiOpen.value = false
         clearPrompt()
         if (key !is Key.Shift && key !is Key.LayerSwitch) clearNote()
         // Any key other than Backspace accepts the last autocorrection (Space may set a new one).
@@ -935,6 +960,10 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
     }
 
     override fun onBackspace() {
+        if (searchingEmoji) {
+            deleteFromEmojiSearch()
+            return
+        }
         doubleSpacePeriod.reset()
         clearNote()
         markOwnEdit()
@@ -1051,6 +1080,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
     }
 
     override fun onClearAllText() {
+        if (searchingEmoji) return setEmojiQuery("")
         val target = backspaceTarget ?: return
         if (!bridge.isCurrent(target) || mode.value != InputMode.KEYS) return
         lastCorrection = null
@@ -1066,6 +1096,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
     }
 
     override fun onDeleteBeforeCursor() {
+        if (searchingEmoji) return setEmojiQuery("")
         val target = backspaceTarget ?: return
         if (!bridge.isCurrent(target) || mode.value != InputMode.KEYS) return
         lastCorrection = null
@@ -1087,6 +1118,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
     }
 
     override fun onBackspaceScrubStart(): BackspaceScrub? {
+        // The search is not the editor: Backspace there deletes, and slides do nothing.
+        if (searchingEmoji) return null
         val target = backspaceTarget ?: return null
         if (!bridge.isCurrent(target) || mode.value != InputMode.KEYS) return null
         bridge.finishComposingText()
@@ -1232,6 +1265,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         settings.update { it.copy(currentKeyboard = next.id) }
         preloadLanguages()
         refreshStrip()
+        // Another keyboard can bring other search languages.
+        emojiSearch.value?.takeIf { searchingEmoji }?.let { setEmojiQuery(it.query) }
     }
 
     override fun onGlobeLongPress() {
@@ -1245,6 +1280,57 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
     override fun onCloseEmoji() {
         emojiOpen.value = false
         keyboard.showHome()
+    }
+
+    override fun onOpenEmojiSearch() {
+        if (!inputViewActive || !emojiOpen.value) return
+        clearPrompt()
+        clearNote()
+        // Letters, lower case (also in a number field): emoji names are found whatever the case.
+        keyboard.setLayer(Layer.LETTERS)
+        keyboard.setAutoShift(false)
+        setEmojiQuery("")
+    }
+
+    override fun onCloseEmojiSearch() {
+        emojiSearch.value = null
+        keyboard.showHome()
+        // Searching turned auto-capitals off; the editor's sentence start decides again.
+        updateShift()
+    }
+
+    override fun onClearEmojiSearch() {
+        if (searchingEmoji) setEmojiQuery("")
+    }
+
+    private fun setEmojiQuery(query: String) {
+        val catalog = emojiCatalog.value
+        val languages = AppGraph.suggestionLanguages(keyboard.state.value.keyboard).map { it.id }
+        emojiSearch.value = EmojiSearchState(query, catalog?.search?.search(query, languages).orEmpty())
+    }
+
+    /** The keys type into the emoji search; false for keys that work as usual (Shift, ?123, globe). */
+    private fun typeIntoEmojiSearch(key: Key): Boolean {
+        val query = emojiSearch.value?.query ?: return false
+        when (key) {
+            is Key.Char -> {
+                if (query.length < MAX_EMOJI_QUERY) setEmojiQuery(query + key.output.lowercase())
+                keyboard.onCharTyped()
+            }
+            is Key.Space -> if (query.isNotBlank() && !query.endsWith(' ')) setEmojiQuery("$query ")
+            is Key.Backspace -> deleteFromEmojiSearch()
+            // Enter and the emoji key go back to all emoji.
+            is Key.Enter, is Key.Emoji -> onCloseEmojiSearch()
+            else -> return false
+        }
+        return true
+    }
+
+    private fun deleteFromEmojiSearch() {
+        val query = emojiSearch.value?.query ?: return
+        if (query.isEmpty()) return
+        val chars = java.text.BreakIterator.getCharacterInstance().apply { setText(query) }
+        setEmojiQuery(query.substring(0, chars.preceding(query.length).coerceAtLeast(0)))
     }
 
     override fun onChooseEmoji(value: String) {
@@ -1272,20 +1358,29 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         doubleSpacePeriod.reset()
         if (suggestion.emojiName != null) {
             if (!inputViewActive || bridge.isSensitiveField || !settings.current.suggestionStrip) return
-            val available = EmojiSuggestions.suggest(bridge.currentWordBeforeCursor(),
-                AppGraph.suggestionLanguages(keyboard.state.value.keyboard).map { it.id }, emojiCatalog.value)
+            val available = EmojiSuggestions.emoticon(bridge.textBeforeCursor(8), emojiCatalog.value)
+                ?: EmojiSuggestions.suggest(bridge.currentWordBeforeCursor(),
+                    AppGraph.suggestionLanguages(keyboard.state.value.keyboard).map { it.id }, emojiCatalog.value)
             if (available != suggestion) return
         }
+        val emoticon = suggestion.emojiName != null && suggestion.replaceChars > 0
+        // Replacing before the cursor would leave a selection standing.
+        if (emoticon && bridge.hasSelection()) return
         clearNote()
         lastCorrection = null
         markOwnEdit()
         val typed = bridge.currentWordBeforeCursor()
-        val phrase = if (suggestion.replaceChars > 0) {
+        val phrase = if (!emoticon && suggestion.replaceChars > 0) {
             savedPhrase(suggester(), dictionary.state.value.terms)
         } else {
             null
         }
-        if (phrase != null && phrase == suggestion.replaceChars to suggestion.text) {
+        if (emoticon) {
+            // An emoticon becomes its emoji, a word of its own ("you;)" gives "you 😉").
+            val n = suggestion.replaceChars
+            val lead = if (bridge.textBeforeCursor(n + 1).let { it.length > n && !it[0].isWhitespace() }) " " else ""
+            bridge.replaceBeforeCursor(n, lead + suggestion.text + " ")
+        } else if (phrase != null && phrase == suggestion.replaceChars to suggestion.text) {
             bridge.replaceBeforeCursor(phrase.first, phrase.second + " ")
         } else if (typed.isEmpty()) {
             val before = bridge.textBeforeCursor(1)
@@ -1553,7 +1648,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         val dispatcher = window.onBackInvokedDispatcher
         val current = emojiBackCallback as OnBackInvokedCallback?
         if (open && current == null) {
-            val cb = OnBackInvokedCallback { emojiOpen.value = false }
+            // Back leaves a search for all emoji first, then closes emoji.
+            val cb = OnBackInvokedCallback { if (searchingEmoji) onCloseEmojiSearch() else emojiOpen.value = false }
             dispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, cb)
             emojiBackCallback = cb
         } else if (!open && current != null) {
@@ -1596,7 +1692,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
                 menuBackHandler?.let { it(); return true }
                 layoutBackHandler?.invoke()
                 pickerOpen.value = false
-                emojiOpen.value = false
+                if (searchingEmoji) onCloseEmojiSearch() else emojiOpen.value = false
             }
             return true
         }
@@ -1762,6 +1858,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
 
     /** [before]: the text before the cursor if just read, to spare the editor another call. */
     private fun updateShift(before: String? = null) {
+        // The search stays lower case; Shift follows the editor again when it closes.
+        if (searchingEmoji) return
         keyboard.setAutoShift(settings.current.autoCapitalize && bridge.capsModeAtCursor(before))
     }
 
@@ -1773,15 +1871,20 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         if (typed.isEmpty() || bridge.isSensitiveField) {
             invalidateStrip()
             cachedCorrection = null
+            val selection = typed.isEmpty() && !bridge.isSensitiveField && settings.current.suggestionStrip && bridge.hasSelection()
             val predictions = if (typed.isEmpty() && bridge.allowsTextShortcuts &&
-                settings.current.suggestionStrip && !bridge.hasSelection()) {
+                settings.current.suggestionStrip && !selection) {
                 PersonalPredictions.nextWords(bridge.textBeforeCursor(NextWordPredictor.CONTEXT_LIMIT), dictionary.state.value.terms,
                     learnedModel(), capitalize = keyboard.state.value.shift != ShiftState.OFF)
             } else emptyList()
+            // An emoticon just typed (";)") offers its emoji on the right, to replace it.
+            val emoticon = if (typed.isEmpty() && !bridge.isSensitiveField && settings.current.suggestionStrip &&
+                !selection) EmojiSuggestions.emoticon(snapshot.before, emojiCatalog.value) else null
+            val slots = Suggester.arrangeForStrip("", predictions)
             val image = strip.value.clipboard as? ClipboardContent.Image
             strip.value = strip.value.copy(
-                slots = Suggester.arrangeForStrip("", predictions),
-                typingWord = predictions.isNotEmpty(),
+                slots = if (emoticon != null) slots.take(2) + emoticon else slots,
+                typingWord = predictions.isNotEmpty() || emoticon != null,
                 imagePasteSupported = image != null && takesImage(image.mimeType),
             )
             return
@@ -1802,7 +1905,9 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         // The language written in leads, whichever language the keyboard lists first.
         val suggester = suggester().leading(context.lead)
         val session = inputSession.value
-        val emoji = EmojiSuggestions.suggest(typed, context.languages, emojiCatalog.value)
+        // ":D" ends in a letter, so it is a word too: its emoji still beats a guess from "D".
+        val emoji = EmojiSuggestions.emoticon(snapshot.before, emojiCatalog.value)
+            ?: EmojiSuggestions.suggest(typed, context.languages, emojiCatalog.value)
         val learned = learnedModel()
         // Space recases a saved multi-word term first (see typeSpace); show that in the middle.
         val phrase = if (correcting) savedPhrase(suggester, terms, snapshot.before) else null
@@ -2562,6 +2667,9 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         const val MAX_CLIP_CHIPS = 12
         /** Prune a moment after a clip expires, so one pass catches it. */
         private const val CLIP_PRUNE_SLACK_MS = 1_000L
+        /** Languages with CLDR emoji names and keywords in `assets/emoji/keywords-<code>.txt`. */
+        private val EMOJI_KEYWORD_LANGUAGES = listOf("en", "nl")
+        private const val MAX_EMOJI_QUERY = 40
         /** Private clips remembered; only the current system clip matters, so a few suffice. */
         private const val MAX_PRIVATE_CLIPS = 32
         const val PREVIEW_PX = 720
