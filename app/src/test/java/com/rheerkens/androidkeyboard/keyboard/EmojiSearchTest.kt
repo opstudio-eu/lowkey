@@ -93,6 +93,10 @@ class EmojiSearchTest {
         assertEquals("😉", EmojiSuggestions.suggest("wink", listOf("en_US"), catalog)?.text)
         assertEquals("😉", EmojiSuggestions.suggest("knipoog", listOf("nl"), catalog)?.text)
         assertEquals("😉", find(";)").first())
+        // The search types lower case: ":D", "xD" and "B)" arrive as ":d", "xd" and "b)".
+        assertEquals("😃", find(":d").first())
+        assertEquals("😆", find("xd").first())
+        assertEquals("😎", find("b)").first())
         assertTrue("😉" in find("wink").take(3))
     }
 
@@ -111,6 +115,11 @@ class EmojiSearchTest {
         assertEquals("😆", face("haha xD")?.text)
         // Straight after a word, faces with eyes still count.
         assertEquals("😉", face("see you;)")?.text)
+        // After a tapped suggestion the space moves behind the eyes: "you ;)" arrives as "you; )".
+        assertEquals(3, face("See you; )")?.replaceChars)
+        assertEquals("😜", face("ha ;-P")?.text)
+        assertEquals("😐", face("hmm :-|")?.text)
+        assertEquals("😃", face("great :d")?.text)
     }
 
     @Test fun emoticonLookalikesInTextOfferNothing() {
@@ -119,6 +128,8 @@ class EmojiSearchTest {
         assertNull(face("f(x)"))
         assertNull(face("see you ;) "))
         assertNull(face("3<3"))
+        assertNull(face("; )"))
+        assertNull(face("a: d"))
         assertNull(EmojiSuggestions.emoticon(";)", null))
     }
 }

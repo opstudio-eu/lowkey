@@ -45,36 +45,47 @@ object EmojiSuggestions {
         ),
     )
 
-    /** Typed emoticons and their emoji, longest first so ";-)" wins over "-)". */
+    /** Typed emoticons and their emoji. Mouths that are letters come in both cases (":d" too). */
     private val emoticons = listOf(
         ":-)" to "🙂", ":)" to "🙂", "(:" to "🙂", ";-)" to "😉", ";)" to "😉",
-        ":-D" to "😃", ":D" to "😃", "xD" to "😆", "XD" to "😆", ":'(" to "😢", ":-(" to "🙁", ":(" to "🙁",
-        ":-P" to "😛", ":P" to "😛", ":p" to "😛", ";P" to "😜", ";p" to "😜", ":-O" to "😮", ":O" to "😮",
-        ":o" to "😮", ":-*" to "😘", ":*" to "😘", "</3" to "💔", "<3" to "❤️", ":-/" to "😕", ":/" to "😕",
-        ":|" to "😐", "B-)" to "😎", "B)" to "😎", "^_^" to "😊", "^^" to "😊",
-    ).sortedByDescending { it.first.length }
+        ":-D" to "😃", ":D" to "😃", ":-d" to "😃", ":d" to "😃", "xD" to "😆", "XD" to "😆",
+        ":'(" to "😢", ":-(" to "🙁", ":(" to "🙁",
+        ":-P" to "😛", ":P" to "😛", ":-p" to "😛", ":p" to "😛", ";-P" to "😜", ";P" to "😜", ";-p" to "😜", ";p" to "😜",
+        ":-O" to "😮", ":O" to "😮", ":-o" to "😮", ":o" to "😮", ":-*" to "😘", ":*" to "😘",
+        "</3" to "💔", "<3" to "❤️", ":-/" to "😕", ":/" to "😕", ":-|" to "😐", ":|" to "😐",
+        "B-)" to "😎", "B)" to "😎", "^_^" to "😊", "^^" to "😊",
+    )
 
     /**
      * The emoji for an emoticon just typed before the cursor (";)" offers 😉), to replace it.
      * It must start the text or follow a space; after a word only the ones with eyes count
-     * ("see you;)"), never ":/" (a link's "https:/") or the letter ones ("taxD").
+     * ("see you;)"), never ":/" (a link's "https:/") or the letter ones ("taxD"). After a tapped
+     * suggestion the keyboard moves its space behind punctuation, so "you ;)" arrives as
+     * "you; )": that counts too.
      */
     fun emoticon(before: String, catalog: EmojiCatalog?): Suggestion? {
         if (catalog == null) return null
         for ((face, value) in emoticons) {
-            if (!before.endsWith(face)) continue
-            val prev = before.getOrNull(before.length - face.length - 1)
-            val bounded = prev == null || prev.isWhitespace() ||
-                (prev.isLetter() && face[0] in ":;" && face != ":/" && face != ":-/")
+            val eyes = face[0] in ":;" && face != ":/" && face != ":-/"
+            val typed = when {
+                before.endsWith(face) -> face
+                eyes && !face.last().isLetter() && before.endsWith(face[0] + " " + face.substring(1)) ->
+                    face[0] + " " + face.substring(1)
+                else -> continue
+            }
+            val prev = before.getOrNull(before.length - typed.length - 1)
+            val bounded = if (typed != face) prev?.isLetter() == true
+                else prev == null || prev.isWhitespace() || (prev.isLetter() && eyes)
             if (!bounded) continue
             val emoji = catalog.find(value) ?: return null
-            return Suggestion(emoji.value, emojiName = emoji.name, replaceChars = face.length)
+            return Suggestion(emoji.value, emojiName = emoji.name, replaceChars = typed.length)
         }
         return null
     }
 
     /** The emoji an emoticon stands for ("<3" is ❤️), for a search typed as one; null otherwise. */
-    fun emoticonValue(text: String): String? = emoticons.firstOrNull { it.first == text.trim() }?.second
+    fun emoticonValue(text: String): String? =
+        emoticons.firstOrNull { it.first.equals(text.trim(), ignoreCase = true) }?.second
 
     /** Everyday words that are also a whole emoji name: "elf" is eleven before it is an elf. */
     private val common = mapOf(

@@ -1363,18 +1363,23 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
                     AppGraph.suggestionLanguages(keyboard.state.value.keyboard).map { it.id }, emojiCatalog.value)
             if (available != suggestion) return
         }
+        val emoticon = suggestion.emojiName != null && suggestion.replaceChars > 0
+        // Replacing before the cursor would leave a selection standing.
+        if (emoticon && bridge.hasSelection()) return
         clearNote()
         lastCorrection = null
         markOwnEdit()
         val typed = bridge.currentWordBeforeCursor()
-        val phrase = if (suggestion.replaceChars > 0) {
+        val phrase = if (!emoticon && suggestion.replaceChars > 0) {
             savedPhrase(suggester(), dictionary.state.value.terms)
         } else {
             null
         }
-        if (suggestion.emojiName != null && suggestion.replaceChars > 0) {
-            // An emoticon becomes its emoji.
-            bridge.replaceBeforeCursor(suggestion.replaceChars, suggestion.text + " ")
+        if (emoticon) {
+            // An emoticon becomes its emoji, a word of its own ("you;)" gives "you 😉").
+            val n = suggestion.replaceChars
+            val lead = if (bridge.textBeforeCursor(n + 1).let { it.length > n && it[0].isLetterOrDigit() }) " " else ""
+            bridge.replaceBeforeCursor(n, lead + suggestion.text + " ")
         } else if (phrase != null && phrase == suggestion.replaceChars to suggestion.text) {
             bridge.replaceBeforeCursor(phrase.first, phrase.second + " ")
         } else if (typed.isEmpty()) {
@@ -1866,14 +1871,15 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         if (typed.isEmpty() || bridge.isSensitiveField) {
             invalidateStrip()
             cachedCorrection = null
+            val selection = typed.isEmpty() && settings.current.suggestionStrip && bridge.hasSelection()
             val predictions = if (typed.isEmpty() && bridge.allowsTextShortcuts &&
-                settings.current.suggestionStrip && !bridge.hasSelection()) {
+                settings.current.suggestionStrip && !selection) {
                 PersonalPredictions.nextWords(bridge.textBeforeCursor(NextWordPredictor.CONTEXT_LIMIT), dictionary.state.value.terms,
                     learnedModel(), capitalize = keyboard.state.value.shift != ShiftState.OFF)
             } else emptyList()
             // An emoticon just typed (";)") offers its emoji on the right, to replace it.
             val emoticon = if (typed.isEmpty() && !bridge.isSensitiveField && settings.current.suggestionStrip &&
-                !bridge.hasSelection()) EmojiSuggestions.emoticon(snapshot.before, emojiCatalog.value) else null
+                !selection) EmojiSuggestions.emoticon(snapshot.before, emojiCatalog.value) else null
             val slots = Suggester.arrangeForStrip("", predictions)
             val image = strip.value.clipboard as? ClipboardContent.Image
             strip.value = strip.value.copy(
