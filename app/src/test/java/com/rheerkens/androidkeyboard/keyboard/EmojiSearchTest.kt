@@ -88,4 +88,37 @@ class EmojiSearchTest {
         // The small alias list still comes first.
         assertEquals("🐶", nl("hond"))
     }
+
+    @Test fun winkAndItsEmoticonOfferTheWink() {
+        assertEquals("😉", EmojiSuggestions.suggest("wink", listOf("en_US"), catalog)?.text)
+        assertEquals("😉", EmojiSuggestions.suggest("knipoog", listOf("nl"), catalog)?.text)
+        assertEquals("😉", find(";)").first())
+        assertTrue("😉" in find("wink").take(3))
+    }
+
+    private fun face(before: String) = EmojiSuggestions.emoticon(before, catalog)
+
+    @Test fun anEmoticonJustTypedOffersItsEmojiToReplaceIt() {
+        val wink = face("See you ;)")!!
+        assertEquals("😉", wink.text)
+        assertEquals(2, wink.replaceChars)
+        assertNotNull(wink.emojiName)
+        assertEquals(3, face("ok ;-)")?.replaceChars)
+        assertEquals("🙂", face(":)")?.text)
+        assertEquals("😃", face("great :D")?.text)
+        assertEquals("❤️", face("love you <3")?.text)
+        assertEquals("💔", face("</3")?.text)
+        assertEquals("😆", face("haha xD")?.text)
+        // Straight after a word, faces with eyes still count.
+        assertEquals("😉", face("see you;)")?.text)
+    }
+
+    @Test fun emoticonLookalikesInTextOfferNothing() {
+        assertNull(face("https:/"))
+        assertNull(face("taxD"))
+        assertNull(face("f(x)"))
+        assertNull(face("see you ;) "))
+        assertNull(face("3<3"))
+        assertNull(EmojiSuggestions.emoticon(";)", null))
+    }
 }

@@ -1358,8 +1358,9 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         doubleSpacePeriod.reset()
         if (suggestion.emojiName != null) {
             if (!inputViewActive || bridge.isSensitiveField || !settings.current.suggestionStrip) return
-            val available = EmojiSuggestions.suggest(bridge.currentWordBeforeCursor(),
-                AppGraph.suggestionLanguages(keyboard.state.value.keyboard).map { it.id }, emojiCatalog.value)
+            val available = EmojiSuggestions.emoticon(bridge.textBeforeCursor(8), emojiCatalog.value)
+                ?: EmojiSuggestions.suggest(bridge.currentWordBeforeCursor(),
+                    AppGraph.suggestionLanguages(keyboard.state.value.keyboard).map { it.id }, emojiCatalog.value)
             if (available != suggestion) return
         }
         clearNote()
@@ -1371,7 +1372,10 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         } else {
             null
         }
-        if (phrase != null && phrase == suggestion.replaceChars to suggestion.text) {
+        if (suggestion.emojiName != null && suggestion.replaceChars > 0) {
+            // An emoticon becomes its emoji.
+            bridge.replaceBeforeCursor(suggestion.replaceChars, suggestion.text + " ")
+        } else if (phrase != null && phrase == suggestion.replaceChars to suggestion.text) {
             bridge.replaceBeforeCursor(phrase.first, phrase.second + " ")
         } else if (typed.isEmpty()) {
             val before = bridge.textBeforeCursor(1)
@@ -1867,10 +1871,14 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
                 PersonalPredictions.nextWords(bridge.textBeforeCursor(NextWordPredictor.CONTEXT_LIMIT), dictionary.state.value.terms,
                     learnedModel(), capitalize = keyboard.state.value.shift != ShiftState.OFF)
             } else emptyList()
+            // An emoticon just typed (";)") offers its emoji on the right, to replace it.
+            val emoticon = if (typed.isEmpty() && !bridge.isSensitiveField && settings.current.suggestionStrip &&
+                !bridge.hasSelection()) EmojiSuggestions.emoticon(snapshot.before, emojiCatalog.value) else null
+            val slots = Suggester.arrangeForStrip("", predictions)
             val image = strip.value.clipboard as? ClipboardContent.Image
             strip.value = strip.value.copy(
-                slots = Suggester.arrangeForStrip("", predictions),
-                typingWord = predictions.isNotEmpty(),
+                slots = if (emoticon != null) slots.take(2) + emoticon else slots,
+                typingWord = predictions.isNotEmpty() || emoticon != null,
                 imagePasteSupported = image != null && takesImage(image.mimeType),
             )
             return
@@ -1891,7 +1899,9 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         // The language written in leads, whichever language the keyboard lists first.
         val suggester = suggester().leading(context.lead)
         val session = inputSession.value
-        val emoji = EmojiSuggestions.suggest(typed, context.languages, emojiCatalog.value)
+        // ":D" ends in a letter, so it is a word too: its emoji still beats a guess from "D".
+        val emoji = EmojiSuggestions.emoticon(snapshot.before, emojiCatalog.value)
+            ?: EmojiSuggestions.suggest(typed, context.languages, emojiCatalog.value)
         val learned = learnedModel()
         // Space recases a saved multi-word term first (see typeSpace); show that in the middle.
         val phrase = if (correcting) savedPhrase(suggester, terms, snapshot.before) else null

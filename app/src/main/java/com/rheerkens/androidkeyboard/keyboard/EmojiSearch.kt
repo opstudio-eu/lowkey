@@ -25,7 +25,7 @@ class EmojiAnnotations(val names: Map<String, String>, val keywords: Map<String,
 }
 
 /**
- * Finds emoji by what a person would call them: the Unicode name ("thumbs up") and, for each
+ * Finds emoji by what a person would call them, or by an emoticon (";)"): the Unicode name ("thumbs up") and, for each
  * language asked for, CLDR's name and keywords ("duim omhoog", "goed", "like"). Every word typed
  * has to start a word of the emoji's names or keywords, so "red hea" finds ❤️. Whole names first,
  * then whole keywords and names that start with the query, then other prefixes of a name or
@@ -63,6 +63,8 @@ class EmojiSearch(private val catalog: EmojiCatalog) {
      * always counts, as the Unicode names are English. An empty query finds nothing.
      */
     fun search(query: String, languages: List<String>, limit: Int = MAX_RESULTS): List<EmojiItem> {
+        // An emoticon has no letters to match: ";)" finds 😉.
+        EmojiSuggestions.emoticonValue(query)?.let { value -> return listOfNotNull(catalog.find(value)) }
         val q = normalize(query)
         val tokens = q.split(' ').filter { it.isNotEmpty() }
         if (tokens.isEmpty()) return emptyList()
