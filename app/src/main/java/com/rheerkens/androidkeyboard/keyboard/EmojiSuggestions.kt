@@ -48,7 +48,7 @@ object EmojiSuggestions {
     /** Typed emoticons and their emoji. Mouths that are letters come in both cases (":d" too). */
     private val emoticons = listOf(
         ":-)" to "🙂", ":)" to "🙂", "(:" to "🙂", ";-)" to "😉", ";)" to "😉",
-        ":-D" to "😃", ":D" to "😃", ":-d" to "😃", ":d" to "😃", "xD" to "😆", "XD" to "😆", "xd" to "😆",
+        ":-D" to "😃", ":D" to "😃", ":-d" to "😃", ":d" to "😃", "xD" to "😆", "XD" to "😆", "xd" to "😆", "Xd" to "😆",
         ":'(" to "😢", ":-(" to "🙁", ":(" to "🙁",
         ":-P" to "😛", ":P" to "😛", ":-p" to "😛", ":p" to "😛", ";-P" to "😜", ";P" to "😜", ";-p" to "😜", ";p" to "😜",
         ":-O" to "😮", ":O" to "😮", ":-o" to "😮", ":o" to "😮", ":-*" to "😘", ":*" to "😘",

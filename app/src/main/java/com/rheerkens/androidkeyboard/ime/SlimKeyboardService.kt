@@ -1378,7 +1378,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         if (emoticon) {
             // An emoticon becomes its emoji, a word of its own ("you;)" gives "you 😉").
             val n = suggestion.replaceChars
-            val lead = if (bridge.textBeforeCursor(n + 1).let { it.length > n && it[0].isLetterOrDigit() }) " " else ""
+            val lead = if (bridge.textBeforeCursor(n + 1).let { it.length > n && !it[0].isWhitespace() }) " " else ""
             bridge.replaceBeforeCursor(n, lead + suggestion.text + " ")
         } else if (phrase != null && phrase == suggestion.replaceChars to suggestion.text) {
             bridge.replaceBeforeCursor(phrase.first, phrase.second + " ")

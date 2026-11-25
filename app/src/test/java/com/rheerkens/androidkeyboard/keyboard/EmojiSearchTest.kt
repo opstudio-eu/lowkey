@@ -123,9 +123,18 @@ class EmojiSearchTest {
         // After an emoji just tapped, the next emoticon is split the same way.
         assertEquals("🙂", face("😉: )")?.text)
         assertEquals("😆", face("lol xd")?.text)
+        // Auto-capitals at a sentence start turn "xd" into "Xd".
+        assertEquals("😆", face("Xd")?.text)
         assertEquals("😜", face("ha ;-P")?.text)
         assertEquals("😐", face("hmm :-|")?.text)
         assertEquals("😃", face("great :d")?.text)
+    }
+
+    @Test fun anEmoticonShowsEvenWhenSavedTermsStartWithItsLastLetter() {
+        val slots = com.rheerkens.androidkeyboard.dictionary.Suggester.arrangeForStrip("D",
+            listOf(com.rheerkens.androidkeyboard.dictionary.Suggestion("Docker", isPersonal = true),
+                com.rheerkens.androidkeyboard.dictionary.Suggestion("Dave", isPersonal = true)), emoji = face("great :D"))
+        assertEquals("😃", slots[2]?.text)
     }
 
     @Test fun emoticonLookalikesInTextOfferNothing() {
