@@ -80,9 +80,11 @@ class EmojiSearch(private val catalog: EmojiCatalog) {
 
     private fun score(query: String, tokens: List<String>, phrases: List<Phrase>): Int? {
         var best = Int.MAX_VALUE
+        // "cars" is the keyword "car" as much as the keyword "cars".
+        val whole = listOf(query) + EmojiNameIndex.singulars(query)
         for (p in phrases) {
             val rank = when {
-                p.text == query -> if (p.isName) EXACT_NAME else EXACT_KEYWORD
+                p.text in whole -> if (p.isName) EXACT_NAME else EXACT_KEYWORD
                 // "thumbs" names 👍 thumbs up as well as a keyword "thumbs" names 👎.
                 p.isName && p.text.startsWith("$query ") -> EXACT_KEYWORD
                 p.text.startsWith(query) -> if (p.isName) NAME_PREFIX else KEYWORD_PREFIX
@@ -91,15 +93,15 @@ class EmojiSearch(private val catalog: EmojiCatalog) {
             best = minOf(best, rank)
         }
         if (best != Int.MAX_VALUE) return best
-        var whole = true
+        var allWhole = true
         for (token in tokens) {
             // A plural finds its singular too: "cats" is 🐈 cat.
             val forms = listOf(token) + EmojiNameIndex.singulars(token)
             if (phrases.any { p -> p.words.any { it in forms } }) continue
             if (phrases.none { p -> p.words.any { it.startsWith(token) } }) return null
-            whole = false
+            allWhole = false
         }
-        return if (whole) WHOLE_WORDS else PREFIXES
+        return if (allWhole) WHOLE_WORDS else PREFIXES
     }
 
     companion object {

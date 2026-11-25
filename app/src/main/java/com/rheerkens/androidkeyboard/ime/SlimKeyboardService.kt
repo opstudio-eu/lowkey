@@ -398,8 +398,12 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         mode.value = initialMode()
         pickerOpen.onEach(::updatePickerBack).launchIn(scope)
         emojiOpen.onEach { open ->
-            // Whatever closes emoji also ends a search in it.
-            if (!open) emojiSearch.value = null
+            // Whatever closes emoji also ends a search in it, and gives Shift back to the editor.
+            if (!open && emojiSearch.value != null) {
+                emojiSearch.value = null
+                keyboard.showHome()
+                updateShift()
+            }
             updateEmojiBack(open)
         }.launchIn(scope)
         // Refresh suggestions when the dictionary changes; readiness when models change.
@@ -934,8 +938,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
             is Key.Shift -> keyboard.onShiftTap()
             is Key.LayerSwitch -> {
                 keyboard.setLayer(key.target)
-                // The search stays lower case; Shift is for the editor's text.
-                if (!searchingEmoji) updateShift()
+                updateShift()
             }
             is Key.Globe -> useKeyboard(keyboard.cycleKeyboard(AppGraph.usableKeyboards()))
             is Key.Emoji -> {
@@ -1847,6 +1850,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
 
     /** [before]: the text before the cursor if just read, to spare the editor another call. */
     private fun updateShift(before: String? = null) {
+        // The search stays lower case; Shift follows the editor again when it closes.
+        if (searchingEmoji) return
         keyboard.setAutoShift(settings.current.autoCapitalize && bridge.capsModeAtCursor(before))
     }
 

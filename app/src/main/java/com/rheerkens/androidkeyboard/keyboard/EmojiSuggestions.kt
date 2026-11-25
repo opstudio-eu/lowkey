@@ -49,7 +49,7 @@ object EmojiSuggestions {
     private val common = mapOf(
         "nl" to ("man vrouw volwassene kind elf bot gat rol ram slot slip step das ooi bel been pot pen kus golf " +
             // Dutch verb forms, and names that are everyday English words for the many who type both.
-            "vlieg koken schop ogen bank mist mug pet slang spin peer brood veer").split(' ').toSet(),
+            "vlieg koken schop schoppen rechter ogen bank mist beer mug pet slang spin peer brood veer").split(' ').toSet(),
     )
 
     /**

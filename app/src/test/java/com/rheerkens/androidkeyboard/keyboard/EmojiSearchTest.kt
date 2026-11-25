@@ -31,6 +31,8 @@ class EmojiSearchTest {
 
     @Test fun pluralsFindTheirSingular() {
         assertTrue("🐈" in find("cats"))
+        // As high as the singular: 🚗 car, not 🚍 for the keyword "cars".
+        assertEquals("🚗", find("cars").first())
     }
 
     @Test fun caseAndAccentsDoNotMatter() {
@@ -79,6 +81,8 @@ class EmojiSearchTest {
         assertNull(nl("mug"))
         assertNull(nl("pet"))
         assertEquals("🪑", nl("stoel"))
+        // With Dutch first, the English word beer still gets 🍺, not the Dutch bear.
+        assertEquals("🍺", EmojiSuggestions.suggest("beer", listOf("nl", "en_US"), catalog)?.text)
         // The small alias list still comes first.
         assertEquals("🐶", nl("hond"))
     }

@@ -105,6 +105,9 @@ private val FALLBACK_TRAVEL = 179.dp
 /** Room the slider's window keeps below the top of the screen, for the status bar. */
 private val SCREEN_TOP_MARGIN = 48.dp
 
+/** False while the keys type into something other than the editor (the emoji search): no hold slider. */
+val LocalBackspaceSlider = androidx.compose.runtime.staticCompositionLocalOf { true }
+
 /**
  * Backspace: a tap deletes one character. Holding raises a vertical slider instead of repeating:
  * sliding up erases word by word, the top erases everything before the cursor (all text when the
@@ -127,9 +130,6 @@ private val SCREEN_TOP_MARGIN = 48.dp
  * more, against the text as it was when the slide began. Releasing keeps it; sliding back over the
  * keyboard puts everything back, and releasing there cancels.
  */
-/** False while the keys type into something other than the editor (the emoji search): no hold slider. */
-val LocalBackspaceSlider = androidx.compose.runtime.staticCompositionLocalOf { true }
-
 @Composable
 fun BackspaceKey(
     actions: KeyboardActions,
@@ -172,6 +172,7 @@ fun BackspaceKey(
             coords = it
         }.semantics {
             contentDescription = when {
+                !slider -> "Backspace. Tap to delete a letter of the search"
                 fan != null -> "Backspace. Tap to delete a character. Hold or drag for more: up erases words, " +
                     "then left into the text deletes from the word under your finger, " +
                     "up-left types a space, left is ${fan.actionLabel}"
@@ -192,7 +193,8 @@ fun BackspaceKey(
                 try { latest.onDeleteBeforeCursor() } finally { latest.onBackspaceHoldEnded() }
                 true
             }
-            customActions = buildList {
+            // The search has its own Clear button; these act on the editor's text.
+            customActions = if (!slider) emptyList() else buildList {
                 add(beforeCursor)
                 add(clearAll)
                 fan?.sectors?.map { it.command }?.filter { it != FanCommand.WORDS && fan.enabled(it) }?.forEach { command ->
