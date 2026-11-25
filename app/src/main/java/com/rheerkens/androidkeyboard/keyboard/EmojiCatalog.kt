@@ -3,8 +3,11 @@ package com.rheerkens.androidkeyboard.keyboard
 data class EmojiVariant(val value: String, val name: String)
 data class EmojiItem(val value: String, val name: String, val category: String, val variants: List<EmojiVariant>)
 
-/** Unicode data only; glyph rendering belongs to the device, not a downloaded image service. */
-class EmojiCatalog(val entries: List<EmojiItem>) {
+/**
+ * Unicode data only; glyph rendering belongs to the device, not a downloaded image service.
+ * [annotations]: CLDR names and keywords by language code ("en", "nl"), for search and suggestions.
+ */
+class EmojiCatalog(val entries: List<EmojiItem>, val annotations: Map<String, EmojiAnnotations> = emptyMap()) {
     private val byValue = entries.flatMap { item ->
         item.variants.map { variant -> variant.value to item.copy(value = variant.value, name = variant.name) }
     }.toMap()
@@ -12,13 +15,40 @@ class EmojiCatalog(val entries: List<EmojiItem>) {
     val categories: List<String> = entries.map { it.category }.distinct()
     /** English emoji names as keywords for suggestions; built on first use. */
     val nameIndex: EmojiNameIndex by lazy { EmojiNameIndex(entries) }
+    /** Search by name and keyword for the emoji panel; built on first use. */
+    val search: EmojiSearch by lazy { EmojiSearch(this) }
+    /** One-word CLDR names in each language other than English, as keywords for suggestions. */
+    private val singleWordNames = HashMap<String, Map<String, EmojiItem>>()
     fun find(value: String): EmojiItem? = byValue[value]
     fun suffixOf(text: String): String? = longestFirst.firstOrNull { text.endsWith(it) }
 
     fun supported(hasGlyph: (String) -> Boolean): EmojiCatalog = EmojiCatalog(entries.mapNotNull { item ->
         val variants = item.variants.filter { hasGlyph(it.value) }
         variants.firstOrNull()?.let { first -> item.copy(value = first.value, name = first.name, variants = variants) }
-    })
+    }, annotations)
+
+    fun withAnnotations(annotations: Map<String, EmojiAnnotations>) = EmojiCatalog(entries, annotations)
+
+    /**
+     * The picture whose whole CLDR name in [language] is [word] ("fiets" is 🚲 in Dutch). Symbols
+     * and flags don't count, as for English names (see [EmojiNameIndex]).
+     */
+    fun singleWordName(language: String, word: String): EmojiItem? {
+        val table = synchronized(singleWordNames) {
+            singleWordNames.getOrPut(language) {
+                val names = annotations[language]?.names ?: return@getOrPut emptyMap()
+                val items = entries
+                buildMap {
+                    items.forEach { item ->
+                        if (item.category !in EmojiNameIndex.PICTURES) return@forEach
+                        val name = names[item.value]?.lowercase() ?: return@forEach
+                        if (name.length >= 3 && name.all { it.isLetter() }) putIfAbsent(name, item)
+                    }
+                }
+            }
+        }
+        return table[word.lowercase()]
+    }
 
     companion object {
         private val version = Regex("\\s+E[0-9.]+\\s+")

@@ -3,8 +3,9 @@ package com.rheerkens.androidkeyboard.keyboard
 import com.rheerkens.androidkeyboard.dictionary.Suggestion
 
 /**
- * One emoji for a typed word, from small offline aliases and, for English, the emoji's own
- * Unicode names ([EmojiNameIndex]). Never guesses from ambiguous prefixes such as "he".
+ * One emoji for a typed word, from small offline aliases; for English, the emoji's own Unicode
+ * names ([EmojiNameIndex]); for other languages with CLDR names, emoji whose whole name is the word.
+ * Never guesses from ambiguous prefixes such as "he".
  */
 object EmojiSuggestions {
     private fun words(vararg entries: Pair<String, String>) = buildMap {
@@ -44,6 +45,11 @@ object EmojiSuggestions {
         ),
     )
 
+    /** Everyday words that are also a whole emoji name: "elf" is eleven before it is an elf. */
+    private val common = mapOf(
+        "nl" to "man vrouw volwassene kind elf bot gat rol ram slot slip step das ooi bel been pot pen kus golf".split(' ').toSet(),
+    )
+
     /**
      * The emoji for [typed] in the first of [languages] that has one: its aliases first, then for
      * English the emoji names, so "thumb" offers 👍 (thumbs up) and "pancakes" 🥞.
@@ -60,7 +66,13 @@ object EmojiSuggestions {
             } else null
             // A keyword's emoji the device cannot show blocks name guesses for that language too:
             // without 🪨, "stone" must not fall through to a curling stone.
-            val emoji = if (alias != null) catalog.find(alias) else if (code == "en") catalog.nameIndex.find(word) else null
+            val emoji = when {
+                alias != null -> catalog.find(alias)
+                code == "en" -> catalog.nameIndex.find(word)
+                // Other languages: an emoji whose whole name is the word, so "fiets" offers 🚲.
+                word !in common[code].orEmpty() -> catalog.singleWordName(code, word)
+                else -> null
+            }
             if (emoji != null) return Suggestion(emoji.value, emojiName = emoji.name)
         }
         return null
@@ -125,7 +137,7 @@ class EmojiNameIndex(entries: List<EmojiItem>) {
 
     companion object {
         private val SEPARATORS = Regex("[^\\p{L}]+")
-        private val PICTURES = setOf(
+        internal val PICTURES = setOf(
             "Smileys & Emotion", "People & Body", "Animals & Nature", "Food & Drink",
             "Travel & Places", "Activities", "Objects",
         )

@@ -21,6 +21,12 @@ Unicode Emoji 17.0 data (Unicode License V3)                   UNICODE-LICENSE.t
   SHA-256: 1d8a944f88d7952f7ef7c5167fef3c67995bcae24543949710231b03a201acda
   Copyright 2025 Unicode, Inc. The device supplies emoji glyphs; no font or image assets are bundled.
 
+Unicode CLDR 48 emoji annotations (Unicode License V3)        UNICODE-LICENSE.txt
+  ../emoji/keywords-en.txt and keywords-nl.txt, converted by scripts/build-emoji-keywords.py from
+  common/annotations/{en,nl}.xml and common/annotationsDerived/{en,nl}.xml at
+  https://github.com/unicode-org/cldr/tree/release-48 (pinned SHA-256 values are in the script).
+  Copyright Unicode, Inc. Emoji names and search keywords only.
+
 Java and Kotlin libraries (Apache-2.0, Apache-2.0.txt)
   AndroidX, Jetpack Compose, Material 3, Kotlin standard library, kotlinx.coroutines and their
   dependencies: the exact versions are in dependencies/manifest.txt, and the NOTICE files they carry

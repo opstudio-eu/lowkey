@@ -126,6 +126,12 @@ enum class EditAction(val label: String) {
     UNDO("Undo"),
 }
 
+/** An emoji search typed on the letter keys: the [query] and the emoji it finds, best first. */
+data class EmojiSearchState(
+    val query: String,
+    val results: List<com.rheerkens.androidkeyboard.keyboard.EmojiItem>,
+)
+
 /** Callbacks from the keyboard UI into the input method. */
 interface KeyboardActions {
     /**
@@ -154,6 +160,11 @@ interface KeyboardActions {
     fun onRetryAiFailure(id: Long) {}
     fun onCloseEmoji() {}
     fun onChooseEmoji(value: String) {}
+    /** The search button in the emoji panel: the letter keys then type a search for emoji. */
+    fun onOpenEmojiSearch() {}
+    /** Back from the search to all emoji. */
+    fun onCloseEmojiSearch() {}
+    fun onClearEmojiSearch() {}
     fun onOpenTools() {}
     fun onResizeKeyboard() {}
     fun onSetNumberRow(enabled: Boolean) {}
