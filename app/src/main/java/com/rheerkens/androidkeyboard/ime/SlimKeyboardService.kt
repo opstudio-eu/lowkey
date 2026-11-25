@@ -1280,7 +1280,6 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
     override fun onCloseEmoji() {
         emojiOpen.value = false
         keyboard.showHome()
-        updateShift()
     }
 
     override fun onOpenEmojiSearch() {

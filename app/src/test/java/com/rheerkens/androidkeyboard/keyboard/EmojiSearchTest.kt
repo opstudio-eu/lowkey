@@ -33,6 +33,8 @@ class EmojiSearchTest {
         assertTrue("🐈" in find("cats"))
         // As high as the singular: 🚗 car, not 🚍 for the keyword "cars".
         assertEquals("🚗", find("cars").first())
+        // An emoji named with the plural itself still comes first.
+        assertEquals("🏘️", find("houses").first())
     }
 
     @Test fun caseAndAccentsDoNotMatter() {

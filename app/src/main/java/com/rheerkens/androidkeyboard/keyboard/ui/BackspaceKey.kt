@@ -431,7 +431,7 @@ fun BackspaceKey(
                                 }
                                 continue
                             }
-                            if (!unsupported && down.position.y - position.y > 8.dp.toPx()) {
+                            if (slider && !unsupported && down.position.y - position.y > 8.dp.toPx()) {
                                 startSliding(geometry, position.y)
                             }
                         }

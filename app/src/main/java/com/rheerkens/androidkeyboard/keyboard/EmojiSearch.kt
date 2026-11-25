@@ -67,9 +67,11 @@ class EmojiSearch(private val catalog: EmojiCatalog) {
         val tokens = q.split(' ').filter { it.isNotEmpty() }
         if (tokens.isEmpty()) return emptyList()
         val tables = (languages.map { it.substringBefore('_').lowercase() } + "en").distinct().mapNotNull(::phrases)
+        // "cars" is the keyword "car" as much as the keyword "cars".
+        val singulars = EmojiNameIndex.singulars(q)
         val found = ArrayList<IntArray>()
         catalog.entries.forEachIndexed { index, item ->
-            val rank = score(q, tokens, unicode[index] + tables.flatMap { it[index] }) ?: return@forEachIndexed
+            val rank = score(q, singulars, tokens, unicode[index] + tables.flatMap { it[index] }) ?: return@forEachIndexed
             // Then the emoji people use most, then the shorter Unicode name ("car": 🚗 automobile
             // before 🚃 railway car), then the panel's order.
             found += intArrayOf(rank, popularity[item.value] ?: POPULAR.size, unicode[index][0].words.size, index)
@@ -78,13 +80,13 @@ class EmojiSearch(private val catalog: EmojiCatalog) {
         return found.take(limit).map { catalog.entries[it[3]] }
     }
 
-    private fun score(query: String, tokens: List<String>, phrases: List<Phrase>): Int? {
+    private fun score(query: String, singulars: List<String>, tokens: List<String>, phrases: List<Phrase>): Int? {
         var best = Int.MAX_VALUE
-        // "cars" is the keyword "car" as much as the keyword "cars".
-        val whole = listOf(query) + EmojiNameIndex.singulars(query)
         for (p in phrases) {
             val rank = when {
-                p.text in whole -> if (p.isName) EXACT_NAME else EXACT_KEYWORD
+                p.text == query -> if (p.isName) EXACT_NAME else EXACT_KEYWORD
+                // A singular reading counts as a keyword: "houses" is 🏘️ houses before 🏠 house.
+                p.text in singulars -> EXACT_KEYWORD
                 // "thumbs" names 👍 thumbs up as well as a keyword "thumbs" names 👎.
                 p.isName && p.text.startsWith("$query ") -> EXACT_KEYWORD
                 p.text.startsWith(query) -> if (p.isName) NAME_PREFIX else KEYWORD_PREFIX
