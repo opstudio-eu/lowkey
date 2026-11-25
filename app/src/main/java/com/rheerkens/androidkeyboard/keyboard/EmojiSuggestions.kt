@@ -41,13 +41,15 @@ object EmojiSuggestions {
             "😊" to "blij glimlach", "😂" to "lach lachen", "😢" to "verdrietig huilen",
             "🙏" to "dank bedankt", "👍" to "oké oke duim duimpje", "🎉" to "feest gefeliciteerd",
             "☀️" to "zon zonnig", "🌧️" to "regen", "🔥" to "vuur", "🐶" to "hond", "🐱" to "kat",
-            "🚗" to "auto",
+            "🚗" to "auto", "🪑" to "stoel",
         ),
     )
 
     /** Everyday words that are also a whole emoji name: "elf" is eleven before it is an elf. */
     private val common = mapOf(
-        "nl" to "man vrouw volwassene kind elf bot gat rol ram slot slip step das ooi bel been pot pen kus golf".split(' ').toSet(),
+        "nl" to ("man vrouw volwassene kind elf bot gat rol ram slot slip step das ooi bel been pot pen kus golf " +
+            // Dutch verb forms, and names that are everyday English words for the many who type both.
+            "vlieg koken schop ogen bank mist mug pet slang spin peer brood veer").split(' ').toSet(),
     )
 
     /**

@@ -37,7 +37,7 @@ TONES = set(range(0x1F3FB, 0x1F400))
 
 def key(value: str) -> str:
     """The emoji without variation selectors, as CLDR writes most of them."""
-    return value.replace("️", "")
+    return value.replace("\ufe0f", "")
 
 
 def catalog() -> dict[str, str]:

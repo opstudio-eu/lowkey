@@ -53,6 +53,11 @@ class EmojiSearch(private val catalog: EmojiCatalog) {
         }
     }
 
+    /** Builds the tables for [languages] now (off the main thread), not on the first keystroke. */
+    fun prepare(languages: List<String>) {
+        languages.forEach { phrases(it) }
+    }
+
     /**
      * Emoji for [query] in [languages] (keyboard language ids such as "nl" or "en_US"); English
      * always counts, as the Unicode names are English. An empty query finds nothing.

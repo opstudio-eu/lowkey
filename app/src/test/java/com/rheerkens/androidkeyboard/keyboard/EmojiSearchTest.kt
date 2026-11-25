@@ -75,6 +75,10 @@ class EmojiSearchTest {
         assertNull(nl("elf"))
         assertNull(nl("man"))
         assertNull(nl("omhoog"))
+        // Names that are everyday English words stay words for people who type both.
+        assertNull(nl("mug"))
+        assertNull(nl("pet"))
+        assertEquals("🪑", nl("stoel"))
         // The small alias list still comes first.
         assertEquals("🐶", nl("hond"))
     }

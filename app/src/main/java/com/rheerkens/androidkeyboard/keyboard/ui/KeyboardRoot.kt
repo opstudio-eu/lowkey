@@ -174,8 +174,10 @@ internal fun KeyboardContent(
                         val rows = state.keyRows
                         val keyRowHeight = state.rowHeightDp - (EMOJI_RESULTS_DP + rows - 1) / rows
                         EmojiSearchResults(state.emojiSearch, state.emojiCatalog, state.recentEmoji, actions)
-                        KeysPanel(state.layout, state.keyboard, keyRowHeight, EnterKind.DONE, actions, state.splitGapDp, rows,
-                            state.keyboards, languageMenu, pointingStick = false, stickSpeed = state.stickSpeed)
+                        CompositionLocalProvider(LocalBackspaceSlider provides false) {
+                            KeysPanel(state.layout, state.keyboard, keyRowHeight, EnterKind.DONE, actions, state.splitGapDp, rows,
+                                state.keyboards, languageMenu, pointingStick = false, stickSpeed = state.stickSpeed)
+                        }
                         // Whole dp per row can take a little more than the results need; give that back here.
                         Spacer(Modifier.height(((state.rowHeightDp - keyRowHeight) * rows - EMOJI_RESULTS_DP).dp))
                     } else if (state.emojiOpen) {

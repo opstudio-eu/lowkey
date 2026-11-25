@@ -368,13 +368,17 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
             emojiCatalog.value = withContext(Dispatchers.IO) {
                 runCatching {
                     val paint = android.graphics.Paint()
-                    val annotations = EMOJI_KEYWORD_LANGUAGES.associateWith { language ->
-                        EmojiAnnotations.parse(assets.open("emoji/keywords-$language.txt").bufferedReader().use { it.readText() })
-                    }
+                    // Without a keyword file, search falls back to the Unicode names; the panel still works.
+                    val annotations = EMOJI_KEYWORD_LANGUAGES.mapNotNull { language ->
+                        runCatching {
+                            language to EmojiAnnotations.parse(assets.open("emoji/keywords-$language.txt").bufferedReader().use { it.readText() })
+                        }.getOrNull()
+                    }.toMap()
                     EmojiCatalog.parse(assets.open("emoji/emoji-test.txt").bufferedReader().use { it.readText() })
                         .withAnnotations(annotations)
                         .supported(paint::hasGlyph)
-                        .also { it.nameIndex } // Index emoji names here, not on the first keystroke.
+                        // Index emoji names and search words here, not on the first keystroke.
+                        .also { it.nameIndex; it.search.prepare(EMOJI_KEYWORD_LANGUAGES) }
                 }.getOrElse { EmojiCatalog(emptyList()) }
             }
             if (inputViewActive && mode.value == InputMode.KEYS) refreshStrip()
@@ -930,7 +934,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
             is Key.Shift -> keyboard.onShiftTap()
             is Key.LayerSwitch -> {
                 keyboard.setLayer(key.target)
-                updateShift()
+                // The search stays lower case; Shift is for the editor's text.
+                if (!searchingEmoji) updateShift()
             }
             is Key.Globe -> useKeyboard(keyboard.cycleKeyboard(AppGraph.usableKeyboards()))
             is Key.Emoji -> {
@@ -1257,6 +1262,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         settings.update { it.copy(currentKeyboard = next.id) }
         preloadLanguages()
         refreshStrip()
+        // Another keyboard can bring other search languages.
+        emojiSearch.value?.takeIf { searchingEmoji }?.let { setEmojiQuery(it.query) }
     }
 
     override fun onGlobeLongPress() {
@@ -1270,14 +1277,15 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
     override fun onCloseEmoji() {
         emojiOpen.value = false
         keyboard.showHome()
+        updateShift()
     }
 
     override fun onOpenEmojiSearch() {
         if (!inputViewActive || !emojiOpen.value) return
         clearPrompt()
         clearNote()
-        // Letters, lower case: emoji names are found whatever the case.
-        keyboard.showHome()
+        // Letters, lower case (also in a number field): emoji names are found whatever the case.
+        keyboard.setLayer(Layer.LETTERS)
         keyboard.setAutoShift(false)
         setEmojiQuery("")
     }
@@ -1285,6 +1293,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
     override fun onCloseEmojiSearch() {
         emojiSearch.value = null
         keyboard.showHome()
+        // Searching turned auto-capitals off; the editor's sentence start decides again.
+        updateShift()
     }
 
     override fun onClearEmojiSearch() {
@@ -1302,7 +1312,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         val query = emojiSearch.value?.query ?: return false
         when (key) {
             is Key.Char -> {
-                if (query.length < MAX_EMOJI_QUERY) setEmojiQuery(query + keyboard.applyCase(key.output))
+                if (query.length < MAX_EMOJI_QUERY) setEmojiQuery(query + key.output.lowercase())
                 keyboard.onCharTyped()
             }
             is Key.Space -> if (query.isNotBlank() && !query.endsWith(' ')) setEmojiQuery("$query ")

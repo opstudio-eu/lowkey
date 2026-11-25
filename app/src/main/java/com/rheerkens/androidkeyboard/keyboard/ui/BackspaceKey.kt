@@ -127,6 +127,9 @@ private val SCREEN_TOP_MARGIN = 48.dp
  * more, against the text as it was when the slide began. Releasing keeps it; sliding back over the
  * keyboard puts everything back, and releasing there cancels.
  */
+/** False while the keys type into something other than the editor (the emoji search): no hold slider. */
+val LocalBackspaceSlider = androidx.compose.runtime.staticCompositionLocalOf { true }
+
 @Composable
 fun BackspaceKey(
     actions: KeyboardActions,
@@ -141,6 +144,8 @@ fun BackspaceKey(
     val latestPress by rememberUpdatedState(onPress)
     val latestFan by rememberUpdatedState(fan)
     val latestSwipeDown by rememberUpdatedState(onSwipeDown)
+    // Off while the keys type an emoji search: a hold then deletes one character, like a tap.
+    val slider = LocalBackspaceSlider.current
     val c = LocalKeyboardColors.current
     var pressed by remember { mutableStateOf(false) }
     var keyTop by remember { mutableFloatStateOf(0f) }
@@ -195,7 +200,7 @@ fun BackspaceKey(
                 }
                 onSwipeDown?.let { add(CustomAccessibilityAction("Minimize keyboard") { latestSwipeDown?.invoke(); true }) }
             }
-        }.pointerInput(sliderInPopup, hasFan, hasSwipeDown) {
+        }.pointerInput(sliderInPopup, hasFan, hasSwipeDown, slider) {
             coroutineScope {
                 val gestureScope = this
                 awaitEachGesture {
@@ -232,6 +237,7 @@ fun BackspaceKey(
                     // instead and deletes nothing until it slides; sliding up starts it right away.
                     var held = false
                     val reveal = gestureScope.launch {
+                        if (!slider) return@launch
                         delay(HOLD_MS)
                         held = true
                         if (latestFan != null) fanOrigin = center else rail = geometry

@@ -17,6 +17,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
@@ -176,7 +177,7 @@ internal fun EmojiSearchBar(query: String, actions: KeyboardActions, modifier: M
             Spacer(Modifier.width(8.dp))
             // A long search shows its end, where the typing is.
             Text(query, color = c.keyText, fontSize = 15.sp, maxLines = 1, softWrap = false,
-                modifier = Modifier.weight(1f, fill = false).wrapContentWidth(Alignment.End, unbounded = true))
+                modifier = Modifier.weight(1f, fill = false).clipToBounds().wrapContentWidth(Alignment.End, unbounded = true))
             Box(Modifier.padding(start = 1.dp).size(2.dp, 20.dp).background(c.keyText))
             if (query.isEmpty()) Text("Search emoji", color = c.muted, fontSize = 15.sp, maxLines = 1,
                 modifier = Modifier.padding(start = 4.dp))
