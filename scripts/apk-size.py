@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Shows what takes space in an APK, or compares two APKs.
 
-    scripts/apk-size.py app/build/outputs/apk/release/app-release-unsigned.apk
+    scripts/apk-size.py app/build/outputs/apk/github/release/app-github-release-unsigned.apk
     scripts/apk-size.py before.apk after.apk
 
 Groups the entries into native libraries per ABI, DEX, resources, assets and the rest, by their

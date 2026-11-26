@@ -55,7 +55,7 @@ import com.rheerkens.androidkeyboard.settings.Settings
 import com.rheerkens.androidkeyboard.settings.StickSpeed
 import com.rheerkens.androidkeyboard.settings.ThemeMode
 import com.rheerkens.androidkeyboard.ui.SlimIcons
-import com.rheerkens.androidkeyboard.updates.acceptsReleaseUpdates
+import com.rheerkens.androidkeyboard.updates.selfUpdateEnabled
 
 /** Which settings page to show. Each value is its own page; none of them scrolls to an index. */
 enum class SettingsFocus { TOP, VOICE, KEYBOARD, CLIPBOARD, APPEARANCE }
@@ -226,9 +226,10 @@ private fun LazyListScope.topPage(
             LinkRow("Try it", "Test typing and dictation") { navigate(Destination.TRY_IT) }
             LinkRow(
                 "About & updates",
-                "Version ${BuildConfig.VERSION_NAME} · " +
-                    if (acceptsReleaseUpdates(BuildConfig.APPLICATION_ID)) "automatic update checks ${onOff(s.checkForUpdates)}"
-                    else "preview build",
+                "Version ${BuildConfig.VERSION_NAME}" +
+                    if (selfUpdateEnabled()) " · automatic update checks ${onOff(s.checkForUpdates)}"
+                    else if (BuildConfig.SELF_UPDATE) " · preview build"
+                    else "",
             ) { navigate(Destination.ABOUT) }
         }
     }

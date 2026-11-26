@@ -10,7 +10,7 @@ import java.io.FileNotFoundException;
 
 /** Grants only the generated test PNG; installed in the test APK, never the shipped app. */
 public final class ClipboardFixtureProvider extends ContentProvider {
-    public static final Uri IMAGE = Uri.parse("content://com.rheerkens.androidkeyboard.test.clipboard/image");
+    public static final Uri IMAGE = Uri.parse("content://com.opstudio.lowkey.test.clipboard/image");
     @Override public boolean onCreate() { return true; }
     @Override public String getType(Uri uri) { return "image/png"; }
     @Override public ParcelFileDescriptor openFile(Uri uri, String mode) throws FileNotFoundException {

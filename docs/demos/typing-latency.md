@@ -57,8 +57,8 @@ Build both revisions with the same JDK 21, SDK, debug key and test runner:
 
 ```sh
 ./gradlew -PuiPreview=true testDebugUnitTest assembleDebug assembleDebugAndroidTest
-adb -s "$ANDROID_SERIAL" install -r app/build/outputs/apk/debug/app-debug.apk
-adb -s "$ANDROID_SERIAL" install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb -s "$ANDROID_SERIAL" install -r app/build/outputs/apk/github/debug/app-github-debug.apk
+adb -s "$ANDROID_SERIAL" install -r app/build/outputs/apk/androidTest/github/debug/app-github-debug-androidTest.apk
 ```
 
 Select Lowkey UI Preview as the active keyboard. Close any competing UI automation
@@ -68,7 +68,7 @@ keyboard preferences before finishing.
 ```sh
 adb -s "$ANDROID_SERIAL" shell am instrument -w \
   -e probe latency -e typingDefaults 1 \
-  com.rheerkens.androidkeyboard.uipreview.test/com.rheerkens.androidkeyboard.test.KeyboardTouchProbe
+  com.opstudio.lowkey.uipreview.test/com.rheerkens.androidkeyboard.test.KeyboardTouchProbe
 ```
 
 Repeat three times on each APK. Match each `releases` timestamp to the same-index

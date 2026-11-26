@@ -15,13 +15,14 @@ serial=${1:?Pass the adb device serial}
 apk=${2:?Pass the APK to measure}
 label=${3:?Pass a label for the output}
 runs=${4:-10}
-pkg=com.rheerkens.androidkeyboard
-activity=$pkg/.companion.MainActivity
+pkg=com.opstudio.lowkey
+# Classes stay in the source namespace, which is not the application id.
+activity=$pkg/com.rheerkens.androidkeyboard.companion.MainActivity
 dev() { adb -s "$serial" "$@"; }
 median() { tr ' ' '\n' | grep -E '^[0-9]+$' | sort -n | awk '{a[NR]=$1} END {if (NR) print (NR%2 ? a[(NR+1)/2] : (a[NR/2]+a[NR/2+1])/2); else print "?"}'; }
 
 dev install -r "$apk" >/dev/null
-dev shell ime set $pkg/.ime.SlimKeyboardService >/dev/null
+dev shell ime set $pkg/com.rheerkens.androidkeyboard.ime.SlimKeyboardService >/dev/null
 for mode in verify speed-profile; do
   # One launch first, so ProfileInstaller can write the bundled profile (it waits a few seconds).
   dev shell am force-stop $pkg

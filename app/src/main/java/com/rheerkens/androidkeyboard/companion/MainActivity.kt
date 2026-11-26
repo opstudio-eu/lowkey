@@ -10,7 +10,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rheerkens.androidkeyboard.AppGraph
 import com.rheerkens.androidkeyboard.companion.theme.SlimTheme
 import com.rheerkens.androidkeyboard.updates.Updates
-import com.rheerkens.androidkeyboard.updates.acceptsReleaseUpdates
+import com.rheerkens.androidkeyboard.updates.selfUpdateEnabled
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
@@ -45,7 +45,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         // Opening the app also checks when the daily background check hasn't run lately; the
         // result shows on Home, so no notification.
-        if (acceptsReleaseUpdates(packageName) && AppGraph.settings.current.checkForUpdates && AppGraph.updates.checkDue(Updates.APP_OPEN_CHECK_AFTER_MILLIS)) {
+        if (selfUpdateEnabled() && AppGraph.settings.current.checkForUpdates && AppGraph.updates.checkDue(Updates.APP_OPEN_CHECK_AFTER_MILLIS)) {
             AppGraph.appScope.launch { AppGraph.updates.check(userStarted = false, notify = false) }
         }
     }

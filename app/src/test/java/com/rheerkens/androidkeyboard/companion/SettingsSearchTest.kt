@@ -1,7 +1,7 @@
 package com.rheerkens.androidkeyboard.companion
 
 import com.rheerkens.androidkeyboard.BuildConfig
-import com.rheerkens.androidkeyboard.updates.acceptsReleaseUpdates
+import com.rheerkens.androidkeyboard.updates.selfUpdateEnabled
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -54,7 +54,9 @@ class SettingsSearchTest {
         assertEquals("Voice › Dictation settings", dictation.location)
         assertEquals("Voice › Dictation settings", settingsIndex.first { it.title == "Keep model loaded" }.location)
         // A part of a page names the page it is on.
-        assertEquals("Settings › About & updates", settingsIndex.first { it.title == "Updates" }.location)
+        if (BuildConfig.SELF_UPDATE) {
+            assertEquals("Settings › About & updates", settingsIndex.first { it.title == "Updates" }.location)
+        }
         assertEquals("Settings › About & updates", settingsIndex.first { it.title == "Diagnostics" }.location)
         assertEquals("Settings › Languages & layouts", settingsIndex.first { it.title == "Layouts" }.location)
         assertEquals("Voice", settingsIndex.first { it.title == "Voice typing" }.location)
@@ -117,14 +119,15 @@ class SettingsSearchTest {
     private fun variantOnly() = buildSet {
         // Only debug builds offer the bundled test clips.
         if (!BuildConfig.DEBUG) add("Dictation audio")
-        // UI Preview builds install updates by hand.
-        if (!acceptsReleaseUpdates(BuildConfig.APPLICATION_ID)) add("Check for updates automatically")
+        // Play builds have no updater. UI Preview builds install updates by hand.
+        if (!selfUpdateEnabled()) add("Check for updates automatically")
     }
 
     @Test fun variantOnlyRowsFollowTheBuild() {
         val titles = settingsIndex.map { it.title }
         assertEquals(BuildConfig.DEBUG, "Dictation audio" in titles)
-        assertEquals(acceptsReleaseUpdates(BuildConfig.APPLICATION_ID), "Check for updates automatically" in titles)
+        assertEquals(BuildConfig.SELF_UPDATE, "Updates" in titles)
+        assertEquals(selfUpdateEnabled(), "Check for updates automatically" in titles)
     }
 
     @Test fun dictionaryResultsNameARealTab() {
