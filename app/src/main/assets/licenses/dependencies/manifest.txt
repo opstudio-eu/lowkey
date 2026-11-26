@@ -1,4 +1,4 @@
-Java and Kotlin libraries in the release APK (resolved releaseRuntimeClasspath).
+Java and Kotlin libraries in the release APK (resolved githubReleaseRuntimeClasspath).
 Each line: group:artifact:version, then its source archive. NOTICE files they carry are in this folder.
 
 androidx.activity:activity:1.13.0

@@ -7,7 +7,7 @@ This spec defines every page and behavior of the mock demo. Two mocks implement 
 
 Both mocks use the same page names, labels, and flows so they can be compared. The keyboard follows **concept 4** (`artifacts/keyboard-mockups/concept-4.html`) for its key layout. User feedback on 2026-10-10 reduced its two-line voice panel to one row with a model picker.
 
-Working app name: **Slim Keyboard**. Application ID: `com.rheerkens.androidkeyboard`.
+Working app name: **Slim Keyboard**. Application ID: `com.opstudio.lowkey`.
 
 ## What is simulated
 

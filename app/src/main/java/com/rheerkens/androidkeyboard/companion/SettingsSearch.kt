@@ -2,7 +2,7 @@ package com.rheerkens.androidkeyboard.companion
 
 import com.rheerkens.androidkeyboard.BuildConfig
 import com.rheerkens.androidkeyboard.keyboard.ui.ColorRole
-import com.rheerkens.androidkeyboard.updates.acceptsReleaseUpdates
+import com.rheerkens.androidkeyboard.updates.selfUpdateEnabled
 import java.text.Normalizer
 
 /**
@@ -118,10 +118,11 @@ val settingsIndex: List<SettingEntry> = listOfNotNull(
         "delete words", "slide", "swipe", "trackpad"),
     page("About & updates", Destination.ABOUT, "about", "version", "privacy", "licenses", "open source", "source code", "credits"),
     // At the top of About & updates.
-    page("Updates", Destination.ABOUT, "check for updates", "new version", "upgrade", "install update"),
-    // UI Preview builds install updates by hand, so they have no automatic checks.
+    // Play builds have no updater. UI Preview builds install updates by hand, so they have no automatic checks.
+    page("Updates", Destination.ABOUT, "check for updates", "new version", "upgrade", "install update")
+        .takeIf { BuildConfig.SELF_UPDATE },
     row("Check for updates automatically", Destination.ABOUT, "automatic updates", "notifications", "auto update")
-        .takeIf { acceptsReleaseUpdates(BuildConfig.APPLICATION_ID) },
+        .takeIf { selfUpdateEnabled() },
     // At the end of About & updates.
     row("Diagnostics", Destination.ABOUT, "crash reports", "crashes", "voice sessions", "logs", "debug", "bug report"),
     // Debug builds only, where the bundled test clips exist.

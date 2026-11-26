@@ -1,0 +1,44 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Installs Lowkey's own updates from its GitHub releases; the user allows it once.
+         The Play flavor does not declare this: Play forbids updating outside Play. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Android 12+: lets Lowkey install its own updates without a second confirmation once it
+         installed the current version itself. -->
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
+    <!-- Lets the daily update check wait for a network connection. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Keeps an update download running when the user leaves the app (Settings → About & updates). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Optional: the "update available" notification. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application>
+        <!-- Daily check for a newer release (Settings → About & updates). -->
+        <service
+            android:name=".updates.UpdateCheckJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <!-- Keeps the process running while an update downloads, with a progress notification. -->
+        <service
+            android:name=".updates.UpdateDownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- Result of installing an update; only the package installer's PendingIntent reaches it. -->
+        <receiver
+            android:name=".updates.UpdateInstallReceiver"
+            android:exported="false" />
+
+        <!-- After an update: confirms the new version in a notification, since the app closed. -->
+        <receiver
+            android:name=".updates.UpdatedReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

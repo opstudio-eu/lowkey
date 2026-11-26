@@ -47,12 +47,13 @@ import com.rheerkens.androidkeyboard.updates.UpdateState
 import com.rheerkens.androidkeyboard.updates.UpdateStatus
 import com.rheerkens.androidkeyboard.updates.Updates
 import com.rheerkens.androidkeyboard.updates.acceptsReleaseUpdates
+import com.rheerkens.androidkeyboard.updates.selfUpdateEnabled
 import kotlinx.coroutines.launch
 
 /** Home: shown only while a newer release is known. */
 @Composable
 fun UpdateBanner(modifier: Modifier = Modifier) {
-    if (!acceptsReleaseUpdates(BuildConfig.APPLICATION_ID)) return
+    if (!selfUpdateEnabled()) return
     val state by AppGraph.updates.state.collectAsStateWithLifecycle()
     if (state.update == null) return
     SlimCard(modifier) { UpdateActions(state) }
@@ -64,6 +65,8 @@ fun UpdateBanner(modifier: Modifier = Modifier) {
  */
 @Composable
 fun UpdatesSection() {
+    // Play has no updater. Preview installs of the GitHub build still explain that updates are manual.
+    if (!BuildConfig.SELF_UPDATE) return
     if (!acceptsReleaseUpdates(BuildConfig.APPLICATION_ID)) {
         SettingsGroup("Updates") {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {

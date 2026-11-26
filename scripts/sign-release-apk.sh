@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # Signs an unsigned release APK with the release key and the key-rotation lineage, then checks it.
 #
-#   scripts/sign-release-apk.sh app/build/outputs/apk/release/app-release-unsigned.apk out.apk
+#   scripts/sign-release-apk.sh app/build/outputs/apk/github/release/app-github-release-unsigned.apk out.apk
 #
 # Needs RELEASE_KEYSTORE (path to the PKCS12 keystore) and RELEASE_KEYSTORE_PASSWORD. Keep both
 # outside the repository; CI restores them from Actions secrets.
 #
 # The app was first signed with a development machine's debug key. signing/rotation-lineage.bin is the debug
-# key's signed approval of the release key (APK Signature Scheme v3), so phones with a debug-signed
-# install accept these APKs as updates and keep their data. v3 needs Android 9 (minSdk 28), and
+# key's signed approval of the release key (APK Signature Scheme v3), so a debug-signed install of
+# this same package accepts these APKs as updates and keeps its data. The retired package
+# com.rheerkens.androidkeyboard cannot be updated in place. v3 needs Android 9 (minSdk 28), and
 # v1/v2 are off so the debug key is never needed again.
 set -euo pipefail
 

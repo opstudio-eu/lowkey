@@ -102,21 +102,38 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.rheerkens.androidkeyboard"
+        // Installable id for both flavors. com.rheerkens.androidkeyboard is retired: Android will
+        // not update those installs. The Kotlin namespace below stays the source package.
+        applicationId = "com.opstudio.lowkey"
         minSdk = 28
         targetSdk = 37
         testInstrumentationRunner = "com.rheerkens.androidkeyboard.test.KeyboardTouchProbe"
         versionCode = 78
         versionName = "0.15.2"
+    }
 
-        // The release feed the in-app updater reads. -PupdateFeedUrl=https://… points a test build elsewhere.
-        val updateFeedUrl = providers.gradleProperty("updateFeedUrl")
-            .getOrElse("https://github.com/opstudio-eu/lowkey/releases/latest/download/update.properties")
-        require(updateFeedUrl.startsWith("https://") && '"' !in updateFeedUrl) { "updateFeedUrl must be an HTTPS URL" }
-        buildConfigField("String", "UPDATE_FEED_URL", "\"$updateFeedUrl\"")
-        // -PupdateRequireUserAction=true makes Android ask to confirm every update, as some phones always do.
-        val updateRequireUserAction = providers.gradleProperty("updateRequireUserAction").getOrElse("false").toBoolean()
-        buildConfigField("boolean", "UPDATE_REQUIRE_USER_ACTION", "$updateRequireUserAction")
+    // github: the sideload APK, with the in-app updater. play: the Play bundle, without one.
+    // github is the default, so assembleRelease and testDebugUnitTest keep building that variant.
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("github") {
+            dimension = "distribution"
+            isDefault = true
+            buildConfigField("boolean", "SELF_UPDATE", "true")
+            // The release feed the in-app updater reads. -PupdateFeedUrl=https://… points a test build elsewhere.
+            val updateFeedUrl = providers.gradleProperty("updateFeedUrl")
+                .getOrElse("https://github.com/opstudio-eu/lowkey/releases/latest/download/update.properties")
+            require(updateFeedUrl.startsWith("https://") && '"' !in updateFeedUrl) { "updateFeedUrl must be an HTTPS URL" }
+            buildConfigField("String", "UPDATE_FEED_URL", "\"$updateFeedUrl\"")
+            // -PupdateRequireUserAction=true makes Android ask to confirm every update, as some phones always do.
+            val updateRequireUserAction = providers.gradleProperty("updateRequireUserAction").getOrElse("false").toBoolean()
+            buildConfigField("boolean", "UPDATE_REQUIRE_USER_ACTION", "$updateRequireUserAction")
+        }
+        create("play") {
+            dimension = "distribution"
+            // Play updates this build. No feed and no installer; see src/play.
+            buildConfigField("boolean", "SELF_UPDATE", "false")
+        }
     }
 
     buildFeatures {
@@ -162,6 +179,20 @@ androidComponents {
     }
 }
 
+// Gradle treats some unflavored names, such as testDebugUnitTest, as ambiguous across flavors.
+// isDefault only selects the variant in Android Studio. Point the missing names at the GitHub variant
+// so the commands in CONTRIBUTING keep working. Names AGP already defines are left alone.
+gradle.projectsEvaluated {
+    fun alias(name: String, target: String) {
+        if (tasks.findByName(name) == null) tasks.register(name) { dependsOn(target) }
+    }
+    alias("testDebugUnitTest", "testGithubDebugUnitTest")
+    alias("assembleDebug", "assembleGithubDebug")
+    alias("assembleRelease", "assembleGithubRelease")
+    alias("lintDebug", "lintGithubDebug")
+    alias("assembleDebugAndroidTest", "assembleGithubDebugAndroidTest")
+}
+
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2026.09.00")
     implementation(composeBom)
@@ -186,7 +217,8 @@ val dependencyNoticesDir = layout.projectDirectory.dir("src/main/assets/licenses
 tasks.register("generateDependencyNotices") {
     group = "verification"
     description = "Writes the release dependency manifest and NOTICE files into the license assets."
-    val runtime = configurations.named("releaseRuntimeClasspath")
+    // Both flavors resolve the same libraries. The GitHub release is the one CI publishes.
+    val runtime = configurations.named("githubReleaseRuntimeClasspath")
     val outDir = dependencyNoticesDir.asFile
     doLast {
         val config = runtime.get()
@@ -231,7 +263,7 @@ tasks.register("generateDependencyNotices") {
             return "$repo/${id.group.replace('.', '/')}/${id.module}/${id.version}/${id.module}-${id.version}-sources.jar"
         }
         File(outDir, "manifest.txt").writeText(buildString {
-            append("Java and Kotlin libraries in the release APK (resolved releaseRuntimeClasspath).\n")
+            append("Java and Kotlin libraries in the release APK (resolved githubReleaseRuntimeClasspath).\n")
             append("Each line: group:artifact:version, then its source archive. NOTICE files they carry are in this folder.\n")
             append("\n")
             modules.forEach { append("${it.group}:${it.module}:${it.version}\n    ${sourcesUrl(it)}\n") }

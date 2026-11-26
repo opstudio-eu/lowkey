@@ -12,7 +12,7 @@
             android:exported="true" android:theme="@android:style/Theme.Material.Light.NoActionBar"
             android:windowSoftInputMode="adjustResize" />
         <provider android:name="com.rheerkens.androidkeyboard.test.ClipboardFixtureProvider"
-            android:authorities="com.rheerkens.androidkeyboard.test.clipboard"
+            android:authorities="com.opstudio.lowkey.test.clipboard"
             android:exported="false" android:grantUriPermissions="true" />
     </application>
 </manifest>

@@ -1,11 +1,22 @@
 package com.rheerkens.androidkeyboard.updates
 
+import com.rheerkens.androidkeyboard.BuildConfig
 import java.io.StringReader
 import java.util.Properties
 
+/** Installable id of the app. The previous id, com.rheerkens.androidkeyboard, is retired. */
+internal const val RELEASE_APPLICATION_ID = "com.opstudio.lowkey"
+
 /** The production feed must never offer a different application to a side-by-side test install. */
 internal fun acceptsReleaseUpdates(applicationId: String): Boolean =
-    applicationId == "com.rheerkens.androidkeyboard"
+    applicationId == RELEASE_APPLICATION_ID
+
+/**
+ * Whether this build downloads and installs its own GitHub releases. Play builds never do.
+ * Side-by-side preview installs of the GitHub flavor do not either.
+ */
+internal fun selfUpdateEnabled(): Boolean =
+    BuildConfig.SELF_UPDATE && acceptsReleaseUpdates(BuildConfig.APPLICATION_ID)
 
 /**
  * A release newer than the installed app, as described by the `update.properties` file that CI
