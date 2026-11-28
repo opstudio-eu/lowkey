@@ -35,16 +35,19 @@ class SettingsStore(context: Context) {
     private val lock = Any()
 
     /** Every stored setting as SharedPreferences holds it, for a backup. */
-    fun exportValues(): Map<String, Any> = synchronized(lock) { prefs.all.filterValues { it != null }.mapValues { it.value!! } }
+    fun exportValues(): Map<String, Any> = synchronized(lock) {
+        prefs.all.filter { (key, value) -> value != null && key !in LOCAL_ONLY }.mapValues { it.value!! }
+    }
 
     /**
      * Replaces the stored settings with a backup's [values] (Boolean, Int, Long, Float, String
      * or a set of strings) and loads them, as if the app had started with them.
      */
     fun importValues(values: Map<String, Any>) = synchronized(lock) {
+        val local = prefs.all.filterKeys { it in LOCAL_ONLY }
         prefs.edit(commit = true) {
             clear()
-            for ((key, value) in values) {
+            for ((key, value) in values.filterKeys { it !in LOCAL_ONLY } + local.filterValues { it != null }.mapValues { it.value!! }) {
                 @Suppress("UNCHECKED_CAST")
                 when (value) {
                     is Boolean -> putBoolean(key, value)
@@ -108,7 +111,6 @@ class SettingsStore(context: Context) {
             promptServerModel = prefs.getString(K_PROMPT_SERVER_MODEL, null) ?: d.promptServerModel,
             saveImagesToGallery = prefs.getBoolean(K_IMAGE_GALLERY, d.saveImagesToGallery),
             aiSafetyStrict = prefs.getBoolean(K_AI_SAFETY_STRICT, d.aiSafetyStrict),
-            aiReportEndpoint = prefs.getString(K_AI_REPORT_ENDPOINT, null) ?: d.aiReportEndpoint,
             aiSendNotice = prefs.getString(K_AI_SEND_NOTICE, null) ?: d.aiSendNotice,
             checkForUpdates = prefs.getBoolean(K_CHECK_UPDATES, d.checkForUpdates),
             matchTermCase = prefs.getBoolean(K_TERM_CASE, d.matchTermCase),
@@ -163,9 +165,9 @@ class SettingsStore(context: Context) {
         putString(K_PROMPT_SERVER_MODEL, s.promptServerModel)
         putBoolean(K_IMAGE_GALLERY, s.saveImagesToGallery)
         putBoolean(K_AI_SAFETY_STRICT, s.aiSafetyStrict)
-        putString(K_AI_REPORT_ENDPOINT, s.aiReportEndpoint)
         putString(K_AI_SEND_NOTICE, s.aiSendNotice)
         remove(K_AI_REPORT_EMAIL)
+        remove(K_AI_REPORT_ENDPOINT)
         putBoolean(K_CHECK_UPDATES, s.checkForUpdates)
         putBoolean(K_TERM_CASE, s.matchTermCase)
         putString(K_SPEECH_LANGUAGE, s.speechLanguage)
@@ -225,10 +227,12 @@ class SettingsStore(context: Context) {
         const val K_IMAGE_SERVER_MODEL = "image_server_model"
         const val K_IMAGE_GALLERY = "image_save_to_gallery"
         const val K_AI_SAFETY_STRICT = "ai_safety_strict"
-        const val K_AI_REPORT_ENDPOINT = "ai_report_endpoint"
         const val K_AI_SEND_NOTICE = "ai_send_notice"
-        /** Replaced by [K_AI_REPORT_ENDPOINT]. Dropped on the next save. */
+        /** From unreleased builds that let the user set where reports go; reports now go to one fixed address. Dropped on the next save. */
         const val K_AI_REPORT_EMAIL = "ai_report_email"
+        const val K_AI_REPORT_ENDPOINT = "ai_report_endpoint"
+        /** Kept on this phone only: neither exported nor replaced by an import. */
+        private val LOCAL_ONLY = setOf(K_AI_SEND_NOTICE)
         const val K_VIBRATE = "vibrate"
         const val K_AUTOCAP = "auto_capitalize"
         const val K_AUTOCORRECT = "autocorrect"

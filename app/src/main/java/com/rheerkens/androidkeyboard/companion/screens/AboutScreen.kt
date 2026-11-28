@@ -26,6 +26,8 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.rheerkens.androidkeyboard.BuildConfig
+import com.rheerkens.androidkeyboard.privacy.Disclosures
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -126,12 +128,7 @@ private fun AboutSection(onLicense: (String) -> Unit) {
         )
 
         SettingsGroup("Privacy") {
-            GroupText(
-                "Typed text, audio, dictation and your dictionary stay on your phone. Lowkey goes online only to " +
-                    "download the speech models and keyboard languages you choose, to check for a newer version about " +
-                    "once a day (unless you turn it off above), and to download an update when you tap " +
-                    "Update. Audio is recorded only while you dictate and is not saved.",
-            )
+            GroupText(Disclosures.aboutPrivacy(selfUpdate = BuildConfig.SELF_UPDATE))
         }
 
         SettingsGroup("Open source") {

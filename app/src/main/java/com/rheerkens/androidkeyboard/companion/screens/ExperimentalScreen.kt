@@ -145,7 +145,8 @@ fun ExperimentalScreen(modifier: Modifier) {
                         "With OpenAI, Lowkey also sends that text, and a finished image, to OpenAI's safety check with your key " +
                         "before anything is shown or copied. Your own server is not asked to look at the picture; an on-device list " +
                         "checks the words. The first send to a service asks you to continue; What a request sends shows that again. " +
-                        "A report is posted from this app. If that fails, it stays on this phone. " +
+                        "A content report you confirm is sent to Op Studio from this app, with the content only if you include it. " +
+                        "Without a connection it waits on this phone and is sent automatically later. " +
                         "The key and token are encrypted on this phone and never included in a backup.",
                 )
                 if (s.aiService == AiService.OWN_SERVER) GroupText(

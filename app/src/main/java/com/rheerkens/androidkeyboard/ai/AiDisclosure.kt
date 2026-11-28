@@ -42,7 +42,14 @@ object AiDisclosure {
         }
         return AiSendNotice(
             provider = providerLine(service, serverHost),
-            lines = listOf("The prompt is sent.", pictures, link, "Your IP address is sent with the request. The service can see it.", safety),
+            lines = listOf(
+                "AI on the keyboard is experimental.",
+                "The prompt is sent.",
+                pictures,
+                link,
+                "Your IP address is sent with the request. The service can see it.",
+                safety,
+            ),
         )
     }
 

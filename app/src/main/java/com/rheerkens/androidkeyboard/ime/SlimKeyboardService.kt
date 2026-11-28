@@ -367,6 +367,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         owner.onCreate()
         AiComposerLink.host = this
         AiReportLink.discardImage = discardImageHook
+        // Content reports that couldn't be sent earlier (offline) go now, or when they are due.
+        AppGraph.reportUploads.schedule(AppGraph.appScope)
         bridge = EditorBridge { currentInputConnection }
         clipboardManager = getSystemService(ClipboardManager::class.java)
         clipboardReader = ClipboardReader(contentResolver)

@@ -1,6 +1,5 @@
 package com.rheerkens.androidkeyboard.settings
 
-import com.rheerkens.androidkeyboard.ai.ContentReports
 import com.rheerkens.androidkeyboard.ai.ImageModel
 import com.rheerkens.androidkeyboard.ai.ImageQuality
 import com.rheerkens.androidkeyboard.ai.AiService
@@ -172,11 +171,10 @@ data class Settings(
      * always blocked, and a Play build ignores a saved false (see [com.rheerkens.androidkeyboard.ai.ContentSafetyPolicy]).
      */
     val aiSafetyStrict: Boolean = true,
-    /** Where a content report is posted from the app. A placeholder until a real https address is published. */
-    val aiReportEndpoint: String = ContentReports.PLACEHOLDER_ENDPOINT,
     /**
      * The service the user agreed to send to, from [com.rheerkens.androidkeyboard.ai.AiDisclosure.acceptanceKey].
-     * Empty until they tap Continue on the first send. A different service asks again.
+     * Empty until they tap Continue on the first send. A different service asks again. Not part of a
+     * settings export, so an import doesn't answer for this phone.
      */
     val aiSendNotice: String = "",
     // Diagnostics
