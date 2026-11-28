@@ -18,8 +18,10 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
@@ -29,7 +31,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -45,8 +46,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rheerkens.androidkeyboard.AppGraph
 import com.rheerkens.androidkeyboard.companion.theme.SlimTheme
 import java.io.IOException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /**
  * The keyboard's side of a report opened from a result. Both run in this process. [reporting] is
@@ -60,8 +59,9 @@ object AiReportLink {
 }
 
 /**
- * Report a generated image or an improved prompt without leaving Lowkey. Confirming removes it
- * and posts the report from this app. If the post doesn't go through, the report stays on the phone.
+ * Report a generated image or an improved prompt without leaving Lowkey. After the user confirms,
+ * the result is removed and the report is sent by the app itself ([ContentReportUploader]); offline,
+ * it waits in the queue and goes later.
  */
 class AiReportActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -73,7 +73,7 @@ class AiReportActivity : ComponentActivity() {
             val settings by AppGraph.settings.settings.collectAsStateWithLifecycle()
             SlimTheme(settings.theme) {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    ReportForm(launch = launch, endpoint = settings.aiReportEndpoint, onClose = { finish() })
+                    ReportForm(launch = launch, onClose = { finish() })
                 }
             }
         }
@@ -138,40 +138,16 @@ private data class ReportLaunch(
 )
 
 @Composable
-private fun ReportForm(launch: ReportLaunch, endpoint: String, onClose: () -> Unit) {
+private fun ReportForm(launch: ReportLaunch, onClose: () -> Unit) {
     var reasonName by rememberSaveable { mutableStateOf<String?>(null) }
     var note by rememberSaveable { mutableStateOf("") }
     var include by rememberSaveable { mutableStateOf(false) }
+    var confirming by rememberSaveable { mutableStateOf(false) }
     var reportId by rememberSaveable { mutableStateOf<String?>(null) }
-    var phase by rememberSaveable { mutableStateOf("form") }
     var omitted by rememberSaveable { mutableStateOf(false) }
     var leftover by rememberSaveable { mutableStateOf(false) }
     var missing by rememberSaveable { mutableStateOf(false) }
     var error by rememberSaveable { mutableStateOf<String?>(null) }
-    var keptMessage by rememberSaveable { mutableStateOf<String?>(null) }
-    LaunchedEffect(reportId, phase) {
-        if (phase != "sending") return@LaunchedEffect
-        val id = reportId ?: return@LaunchedEffect
-        val report = AppGraph.reports.find(id)
-        if (report == null) {
-            phase = "sent"
-            return@LaunchedEffect
-        }
-        val bytes = withContext(Dispatchers.IO) { AppGraph.reports.imageFile(report)?.takeIf { it.isFile }?.readBytes() }
-        val result = withContext(Dispatchers.IO) {
-            ContentReportSender().send(ContentReports.endpointOrPlaceholder(endpoint), ContentReports.jsonBody(report, bytes))
-        }
-        when (result) {
-            ReportDelivery.Sent -> {
-                AppGraph.reports.delete(id)
-                phase = "sent"
-            }
-            is ReportDelivery.Kept -> {
-                keptMessage = result.message
-                phase = "kept"
-            }
-        }
-    }
     val reason = reasonName?.let { name -> ReportReason.entries.firstOrNull { it.name == name } }
     val context = LocalContext.current
     Column(
@@ -180,46 +156,9 @@ private fun ReportForm(launch: ReportLaunch, endpoint: String, onClose: () -> Un
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        if (phase != "form") {
-            Text(
-                when (phase) {
-                    "sent" -> "Report sent"
-                    "kept" -> "Saved on this phone"
-                    else -> "Sending the report"
-                },
-                style = MaterialTheme.typography.headlineSmall,
-            )
-            Text(
-                when (phase) {
-                    "sent" -> "Lowkey submitted it. You stayed in the app."
-                    "kept" -> keptMessage ?: "It couldn't be sent just now. It stays on this phone until you send it again from Settings."
-                    else -> "Sending it from Lowkey. You don't need another app."
-                },
-                style = MaterialTheme.typography.bodyLarge,
-            )
-            if (leftover) {
-                Text(
-                    "A copy in Pictures/Lowkey may still be there.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.tertiary,
-                )
-            }
-            if (missing) {
-                Text(
-                    "Lowkey couldn't remove it from the keyboard. Clear the clipboard history if it is still there.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.tertiary,
-                )
-            }
-            if (omitted) {
-                Text(
-                    "The image was too large to include, so the report doesn't contain it.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-            if (phase != "sending") {
-                TextButton(onClick = onClose, modifier = Modifier.fillMaxWidth()) { Text("Done") }
-            }
+        val filed = reportId
+        if (filed != null) {
+            ReportResult(filed, launch.kind, leftover = leftover, missing = missing, omitted = omitted, onClose = onClose)
             return@Column
         }
         Text(
@@ -227,8 +166,8 @@ private fun ReportForm(launch: ReportLaunch, endpoint: String, onClose: () -> Un
             style = MaterialTheme.typography.headlineSmall,
         )
         Text(
-            "This removes it from Lowkey and sends the report from this app. You don't leave Lowkey. " +
-                "The content is included only if you turn that on.",
+            "Lowkey removes it and sends your report to Op Studio, the developer of Lowkey, from inside the app. " +
+                "You don't need to leave Lowkey or use email.",
             style = MaterialTheme.typography.bodyLarge,
         )
         ReportReason.entries.forEach { choice ->
@@ -262,33 +201,48 @@ private fun ReportForm(launch: ReportLaunch, endpoint: String, onClose: () -> Un
                 platformImeOptions = PlatformImeOptions(AiReportActivity.FIELD),
             ),
         )
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = include, onCheckedChange = { include = it })
+        Row(
+            Modifier.fillMaxWidth().toggleable(value = include, role = Role.Checkbox, onValueChange = { include = it }),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Checkbox(checked = include, onCheckedChange = null)
             Text(
-                "Include the content in the report Lowkey sends. Off leaves it out.",
+                ReportCopy.includeLabel(launch.kind),
                 style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(start = 4.dp),
+                modifier = Modifier.padding(start = 8.dp),
             )
         }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TextButton(onClick = onClose, modifier = Modifier.weight(1f)) { Text("Cancel") }
             Button(
-                onClick = {
-                    val chosen = reason ?: return@Button
+                onClick = { confirming = true },
+                enabled = reason != null,
+                modifier = Modifier.weight(1f),
+            ) { Text("Send report") }
+        }
+    }
+    if (confirming && reason != null && reportId == null) {
+        AlertDialog(
+            onDismissRequest = { confirming = false },
+            title = { Text("Send this report?") },
+            text = { Text(ReportCopy.confirmation(launch.kind, include)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirming = false
                     val bytes = if (include && launch.kind == ReportKind.IMAGE) {
                         ContentReports.readCacheImage(context.cacheDir, launch.path)
                     } else {
                         null
                     }
                     if (include && launch.kind == ReportKind.IMAGE && bytes == null) {
-                        error = "Couldn't read the image, so it wasn't removed. You can report it without including the content."
-                        return@Button
+                        error = "Couldn't read the image, so nothing was sent or removed. You can send the report without it."
+                        return@TextButton
                     }
                     val saved = try {
                         AppGraph.reports.add(ReportSubmission(
                             kind = launch.kind,
-                            reason = chosen,
+                            reason = reason,
                             note = note,
                             includeContent = include,
                             text = launch.text,
@@ -296,8 +250,8 @@ private fun ReportForm(launch: ReportLaunch, endpoint: String, onClose: () -> Un
                             imageMime = launch.mime,
                         ))
                     } catch (_: IOException) {
-                        error = "Couldn't save the report, so nothing was removed."
-                        return@Button
+                        error = "Couldn't save the report, so nothing was sent or removed."
+                        return@TextButton
                     }
                     when (launch.kind) {
                         ReportKind.IMAGE -> {
@@ -308,14 +262,57 @@ private fun ReportForm(launch: ReportLaunch, endpoint: String, onClose: () -> Un
                         }
                         ReportKind.IMPROVED_PROMPT -> AiReportLink.discardImproved?.invoke(launch.session)
                     }
+                    AppGraph.reportUploads.schedule(AppGraph.appScope, onlyId = saved.id)
                     omitted = saved.imageOmitted
                     reportId = saved.id
-                    phase = "sending"
                     error = null
-                },
-                enabled = reason != null,
-                modifier = Modifier.weight(1f),
-            ) { Text("Report") }
-        }
+                }) { Text("Send") }
+            },
+            dismissButton = { TextButton(onClick = { confirming = false }) { Text("Cancel") } },
+        )
     }
+}
+
+/** After Send: the result was removed; the report's state follows the queue as it is sent. */
+@Composable
+private fun ReportResult(
+    id: String,
+    kind: ReportKind,
+    leftover: Boolean,
+    missing: Boolean,
+    omitted: Boolean,
+    onClose: () -> Unit,
+) {
+    val reports by AppGraph.reports.reports.collectAsStateWithLifecycle()
+    val report = reports.firstOrNull { it.id == id }
+    val state = ReportCopy.state(report)
+    Text(state.title, style = MaterialTheme.typography.headlineSmall)
+    Text(state.body, style = MaterialTheme.typography.bodyLarge)
+    Text(
+        if (kind == ReportKind.IMAGE) "The image was removed from the keyboard and its clipboard history."
+        else "The improved prompt was removed and your own words are back.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    if (leftover) {
+        Text(
+            "A copy in Pictures/Lowkey may still be there.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.tertiary,
+        )
+    }
+    if (missing) {
+        Text(
+            "Lowkey couldn't remove it from the keyboard. Clear the clipboard history if it is still there.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.tertiary,
+        )
+    }
+    if (omitted) {
+        Text(
+            "The image was too large to send, so the report goes without it.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+    Button(onClick = onClose, modifier = Modifier.fillMaxWidth()) { Text("Done") }
 }

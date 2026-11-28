@@ -154,15 +154,14 @@ class ContentSafetyTest {
             ReportSubmission(ReportKind.IMPROVED_PROMPT, ReportReason.OTHER, "note", false, text, null, null),
             id = "one", nowMs = 1_700_000_000_000,
         )
-        val hidden = ContentReports.jsonBody(without.report, null)
+        val hidden = ContentReports.payload(without.report, null, "1.0")
         assertFalse(hidden.contains(text))
         assertFalse(ContentReports.encode(listOf(without.report)).contains(text))
-        assertEquals(ContentReports.PLACEHOLDER_ENDPOINT, ContentReports.endpointOrPlaceholder(""))
         val with = ContentReports.prepare(
             ReportSubmission(ReportKind.IMPROVED_PROMPT, ReportReason.HATE, "  note  ", true, text, null, null),
             id = "two", nowMs = 1_700_000_000_000,
         )
-        assertTrue(ContentReports.jsonBody(with.report, null).contains(text))
+        assertTrue(ContentReports.payload(with.report, null, "1.0").contains(text))
         val png = ByteArray(8) { 1 }
         val image = ContentReports.prepare(
             ReportSubmission(ReportKind.IMAGE, ReportReason.VIOLENCE, "", true, text, png, "image/png"),
@@ -178,27 +177,15 @@ class ContentSafetyTest {
         )
         assertTrue(huge.report.imageOmitted)
         assertNull(huge.report.imageFile)
-        val posted = ContentReports.jsonBody(huge.report, ByteArray(4))
-        assertFalse(posted.contains("imageBase64\":\"A"))
+        val posted = ContentReports.payload(huge.report, null, "1.0")
+        assertFalse(posted.contains("base64"))
         assertTrue(posted.contains("\"imageOmitted\":true"))
-        val included = ContentReports.jsonBody(image.report, png)
-        assertTrue(included.contains("imageBase64"))
+        val included = ContentReports.payload(image.report, png, "1.0")
+        assertTrue(included.contains("base64"))
         assertTrue(included.contains(text))
-        val leftOut = ContentReports.jsonBody(image.report.copy(includeContent = false, text = null), png)
-        assertFalse(leftOut.contains("imageBase64\":\"A"))
+        val leftOut = ContentReports.payload(image.report.copy(includeContent = false, text = null), png, "1.0")
+        assertFalse(leftOut.contains("base64"))
         assertFalse(leftOut.contains(text))
-    }
-
-    @Test
-    fun reportAddressIsHttpsOnly() {
-        assertEquals(ContentReports.PLACEHOLDER_ENDPOINT, ContentReports.normalizeEndpoint(ContentReports.PLACEHOLDER_ENDPOINT))
-        assertNull(ContentReports.normalizeEndpoint("http://example.com/lowkey/ai-report"))
-        assertNull(ContentReports.normalizeEndpoint("https://user:secret@example.com/lowkey/ai-report"))
-        assertNull(ContentReports.normalizeEndpoint("https://example.com/lowkey/ai-report?token=secret"))
-        assertTrue(ContentReports.isPlaceholder(ContentReports.PLACEHOLDER_ENDPOINT))
-        assertEquals(ReportDelivery.Sent, ContentReports.deliveryOf(204))
-        assertTrue(ContentReports.deliveryOf(302) is ReportDelivery.Kept)
-        assertTrue(ContentReports.deliveryOf(500) is ReportDelivery.Kept)
     }
 
     @Test

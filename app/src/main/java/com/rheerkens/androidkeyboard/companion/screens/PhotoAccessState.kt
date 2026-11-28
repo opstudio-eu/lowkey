@@ -19,6 +19,7 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.rheerkens.androidkeyboard.AppGraph
 import com.rheerkens.androidkeyboard.clipboard.PhotoAccess
 import com.rheerkens.androidkeyboard.clipboard.RecentScreenshots
+import com.rheerkens.androidkeyboard.privacy.Disclosures
 
 /**
  * Photo access for Recent screenshots, shared by the Home setup step and the Settings switch.
@@ -46,17 +47,32 @@ class PhotoAccessState internal constructor(private val context: Context) {
         deniedForever = screenshots.deniedForeverAfterRequest(context as? Activity)
     }
 
+    /** The photos disclosure is showing; Android's dialog follows only after Continue. */
+    var disclosing by mutableStateOf(false)
+        private set
+
     /**
-     * Asks for all photos so Recent screenshots can turn on: the system dialog, or app settings
-     * when Android won't show the dialog again.
+     * Asks for all photos so Recent screenshots can turn on: the disclosure and then the system
+     * dialog, or app settings when Android won't show the dialog again.
      */
     fun request() {
-        val launcher = launcher
         if (deniedForever || launcher == null) {
             openAppSettings(context)
         } else {
-            launcher.launch(RecentScreenshots.REQUEST)
+            disclosing = true
         }
+    }
+
+    /** Continue on the disclosure. */
+    fun acceptDisclosure() {
+        disclosing = false
+        val launcher = launcher
+        if (launcher == null) openAppSettings(context) else launcher.launch(RecentScreenshots.REQUEST)
+    }
+
+    /** Not now on the disclosure: no request, and Recent screenshots stays as it was. */
+    fun declineDisclosure() {
+        disclosing = false
     }
 }
 
@@ -73,6 +89,9 @@ fun rememberPhotoAccess(): PhotoAccessState {
     LifecycleResumeEffect(state) {
         state.refresh()
         onPauseOrDispose { }
+    }
+    if (state.disclosing) {
+        DisclosureDialog(Disclosures.PHOTOS, onAccept = state::acceptDisclosure, onDecline = state::declineDisclosure)
     }
     return state
 }

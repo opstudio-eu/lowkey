@@ -32,6 +32,7 @@ import com.rheerkens.androidkeyboard.AppGraph
 import com.rheerkens.androidkeyboard.companion.Destination
 import com.rheerkens.androidkeyboard.companion.theme.isDark
 import com.rheerkens.androidkeyboard.models.ModelCatalog
+import com.rheerkens.androidkeyboard.privacy.Disclosures
 import com.rheerkens.androidkeyboard.ui.SlimIcons
 
 @Composable
@@ -43,6 +44,8 @@ fun ModelsScreen(modifier: Modifier, navigate: (Destination) -> Unit, tryKeyboar
     var hasMic by remember { mutableStateOf(AppGraph.hasMicPermission(context)) }
     var deniedForever by rememberSaveable { mutableStateOf(false) }
     var denied by rememberSaveable { mutableStateOf(false) }
+    // The disclosure comes first; Android's dialog only after Continue.
+    var micDisclosure by rememberSaveable { mutableStateOf(false) }
     LifecycleResumeEffect(Unit) {
         hasMic = AppGraph.hasMicPermission(context)
         if (hasMic) { denied = false; deniedForever = false }
@@ -66,6 +69,16 @@ fun ModelsScreen(modifier: Modifier, navigate: (Destination) -> Unit, tryKeyboar
     val showModelManagement = state.installed.isNotEmpty() || state.downloads.isNotEmpty() || state.errors.isNotEmpty()
     val progress = state.downloads[model.id]
     val colors = MaterialTheme.colorScheme
+    if (micDisclosure) {
+        DisclosureDialog(
+            Disclosures.MICROPHONE,
+            onAccept = {
+                micDisclosure = false
+                permission.launch(Manifest.permission.RECORD_AUDIO)
+            },
+            onDecline = { micDisclosure = false },
+        )
+    }
     LazyColumn(modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
@@ -84,7 +97,7 @@ fun ModelsScreen(modifier: Modifier, navigate: (Destination) -> Unit, tryKeyboar
                 Button(onClick = {
                     if (deniedForever) context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                         Uri.fromParts("package", context.packageName, null)))
-                    else permission.launch(Manifest.permission.RECORD_AUDIO)
+                    else micDisclosure = true
                 }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                     Text(when { deniedForever -> "Open settings"; denied -> "Try again"; else -> "Allow microphone" })
                 }

@@ -156,6 +156,11 @@ android {
     }
 }
 
+// Whether this build installs its own updates from GitHub releases (About › Privacy says so).
+// Without distribution flavors every build is the GitHub one. The github and play flavors set
+// SELF_UPDATE themselves (play: false), and a flavor's value wins over this default.
+android.defaultConfig.buildConfigField("boolean", "SELF_UPDATE", "true")
+
 androidComponents {
     onVariants { variant ->
         variant.sources.jniLibs?.addGeneratedSourceDirectory(extractSherpaOnnx, ExtractJniLibs::outputDir)
