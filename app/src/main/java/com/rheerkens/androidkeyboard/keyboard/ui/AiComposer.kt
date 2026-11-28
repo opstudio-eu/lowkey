@@ -178,6 +178,8 @@ internal interface AiComposerActions {
     fun onImprove()
     /** Undo after Improve: the words from before. */
     fun onUndoImprove()
+    /** Flag beside Undo: report the improved prompt and put the earlier words back. */
+    fun onReportImproved() {}
 }
 
 /**
@@ -268,7 +270,12 @@ internal fun AiPromptCard(
             AddPictureButton(ai.trayOpen, ai.images.size, actions, Modifier.offset(x = (-4).dp))
             // Improve takes the room between, and shortens its label before Create would.
             Box(Modifier.weight(1f).padding(end = 8.dp)) {
-                ImproveButton(ai.improving, undo = ai.beforeImprove != null && !ai.improving, prompt.text.isNotBlank(), actions)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (ai.beforeImprove != null && !ai.improving) {
+                        CardIcon(SlimIcons.Flag, "Report this improved prompt") { actions.onReportImproved() }
+                    }
+                    ImproveButton(ai.improving, undo = ai.beforeImprove != null && !ai.improving, prompt.text.isNotBlank(), actions)
+                }
             }
             val setup = ai.setup
             // Not while Improve rewrites the words: Create would send the old ones. Stop first, or wait.
@@ -725,6 +732,7 @@ private fun AiReadyCard(ready: AiReady, width: Dp, maxHeight: Dp, actions: Keybo
                 CardIcon(if (preview) SlimIcons.ChevronDown else SlimIcons.ChevronUp,
                     if (preview) "Hide the preview" else "Preview the image") { preview = !preview }
             }
+            CardIcon(SlimIcons.Flag, "Report this image") { actions.onReportAiResult(ready.entry.key) }
             // Change it: the prompt window opens with this image added.
             CardIcon(SlimIcons.Wand, "Change this image with AI") { actions.onEditAiResult(ready.entry.key) }
             if (ready.pasteable) {
@@ -968,6 +976,41 @@ internal fun AiButton(running: Int, actions: KeyboardActions) {
                     modifier = Modifier.align(Alignment.TopEnd).background(c.enter, RoundedCornerShape(7.dp))
                         .padding(horizontal = 4.dp))
             }
+        }
+    }
+}
+
+/**
+ * Shown in place of the prompt, immediately before the first send to a service.
+ * Continue is the only way the request starts.
+ */
+@Composable
+internal fun AiSendNoticeCard(
+    notice: com.rheerkens.androidkeyboard.ai.AiSendNotice,
+    onContinue: () -> Unit,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val c = LocalKeyboardColors.current
+    Column(
+        modifier.shadow(8.dp, RoundedCornerShape(16.dp))
+            .background(c.background, RoundedCornerShape(16.dp))
+            .border(1.dp, c.divider, RoundedCornerShape(16.dp))
+            .heightIn(max = 420.dp)
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(com.rheerkens.androidkeyboard.ai.AiDisclosure.TITLE, color = c.keyText, fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.semantics { heading() })
+        Text(notice.provider, color = c.enter, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        notice.lines.forEach { line ->
+            Text(line, color = c.keyText, fontSize = 15.sp, lineHeight = 20.sp)
+        }
+        Text("Continue sends it. Cancel keeps it on this phone.", color = c.muted, fontSize = 14.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            CardButton("Cancel", "Cancel, don't send this", primary = false, onTap = onCancel)
+            CardButton("Continue", "Continue, send this", primary = true, onTap = onContinue)
         }
     }
 }

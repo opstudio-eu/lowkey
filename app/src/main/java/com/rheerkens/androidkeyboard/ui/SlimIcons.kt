@@ -114,6 +114,8 @@ object SlimIcons {
     val Plus = stroke("plus", "M12 5v14M5 12h14")
     val Minus = stroke("minus", "M5 12h14")
     val Undo = stroke("undo", "M8.5 13.5L4 9l4.5 -4.5", "M4 9h10a5.5 5.5 0 0 1 0 11h-3.5")
+    /** A flag: report a generated image or an improved prompt. */
+    val Flag = stroke("flag", "M6 4.5v15", "M6 4.5h10.5l-2.2 3.2 2.2 3.3H6")
     val Redo = stroke("redo", "M15.5 13.5L20 9l-4.5 -4.5", "M20 9H10a5.5 5.5 0 0 0 0 11h3.5")
     val Download = stroke("download", "M12 4v11M7.5 10.5L12 15l4.5 -4.5M5 19.5h14")
     val Trash = stroke("trash", "M5 7h14M10 7V4.5h4V7M7 7l1 13h8l1 -13")

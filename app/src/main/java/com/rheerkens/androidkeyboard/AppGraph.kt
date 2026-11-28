@@ -71,6 +71,9 @@ object AppGraph {
     /** API keys and tokens for the AI actions, encrypted (Settings › Experimental). */
     lateinit var secrets: com.rheerkens.androidkeyboard.ai.SecretStore
         private set
+    /** AI content reports kept on this phone (Settings › Experimental). Not part of a backup or a settings export. */
+    lateinit var reports: com.rheerkens.androidkeyboard.ai.ContentReportStore
+        private set
     /** Keyboard languages from `assets/dict/languages.txt`. */
     lateinit var languages: LanguageCatalog
         private set
@@ -134,6 +137,7 @@ object AppGraph {
         crashLog = CrashLog(app)
         updates = Updates.create(app)
         secrets = com.rheerkens.androidkeyboard.ai.SecretStore(app)
+        reports = com.rheerkens.androidkeyboard.ai.ContentReportStore(java.io.File(app.filesDir, "ai-reports"))
         languages = LanguageCatalog.parse(app.assets.open(LanguageCatalog.ASSET).use { String(it.readBytes(), Charsets.UTF_8) })
         languagePacks = LanguagePackStore(
             dir = java.io.File(app.filesDir, "dictionaries"),

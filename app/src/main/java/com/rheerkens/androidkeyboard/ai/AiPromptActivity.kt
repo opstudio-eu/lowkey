@@ -54,6 +54,7 @@ import com.rheerkens.androidkeyboard.companion.Destination
 import com.rheerkens.androidkeyboard.companion.theme.resolveDark
 import com.rheerkens.androidkeyboard.keyboard.ui.AiComposerActions
 import com.rheerkens.androidkeyboard.keyboard.ui.AiPromptCard
+import com.rheerkens.androidkeyboard.keyboard.ui.AiSendNoticeCard
 import com.rheerkens.androidkeyboard.keyboard.ui.AiUi
 import com.rheerkens.androidkeyboard.keyboard.ui.LocalKeyboardColors
 import com.rheerkens.androidkeyboard.keyboard.ui.StripNote
@@ -78,9 +79,13 @@ class AiPromptActivity : ComponentActivity() {
 
     /** The system's photo picker is open over the window, which stays (and keeps its words) meanwhile. */
     private var picking = false
+    /** A report of the improved prompt is open; the window stays until that screen closes. */
+    private val discardImprovedHook: (Int) -> Unit = { discardImprovedPrompt(it) }
     /** Counts returns from the photo picker: each one gives the box the focus and the keyboard back. */
     private var refocus by mutableStateOf(0)
 
+    /** The first send to this service is waiting for Continue. Cancel leaves the prompt unsent. */
+    private var pendingSend by mutableStateOf<AiSendKind?>(null)
     /** Improve's request while it runs. */
     private var improver: AiClient? = null
     private var improving by mutableStateOf(false)
@@ -110,6 +115,7 @@ class AiPromptActivity : ComponentActivity() {
             overrideActivityTransition(OVERRIDE_TRANSITION_OPEN, 0, 0)
             overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE, 0, 0)
         }
+        AiReportLink.discardImproved = discardImprovedHook
         session = intent.getIntExtra(EXTRA_SESSION, -1)
         val start = intent.getStringExtra(EXTRA_PROMPT).orEmpty().take(ImageApi.MAX_PROMPT_CHARS)
         prompt = TextFieldValue(start, TextRange(start.length))
@@ -181,6 +187,7 @@ class AiPromptActivity : ComponentActivity() {
                         beforeImprove = null
                         prompt = TextFieldValue(words, TextRange(words.length))
                     }
+                    override fun onReportImproved() = reportImproved()
                 }
             }
             CompositionLocalProvider(LocalKeyboardColors provides colors) {
@@ -189,12 +196,21 @@ class AiPromptActivity : ComponentActivity() {
                 // else closes it.
                 Box(
                     Modifier.fillMaxSize()
-                        .pointerInput(Unit) { detectTapGestures { finish() } }
+                        .pointerInput(pendingSend) { detectTapGestures { if (pendingSend == null) finish() } }
                         .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.systemBars))
                         .padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 4.dp),
                     contentAlignment = Alignment.BottomCenter,
                 ) {
-                    AiPromptCard(ai, prompt, { next ->
+                    val waiting = pendingSend
+                    if (waiting != null) {
+                        val notice = AiDisclosure.notice(waiting, images.size, settings.aiService, serverHostOf(settings))
+                        AiSendNoticeCard(
+                            notice,
+                            onContinue = { acceptSendNotice(host) },
+                            onCancel = { pendingSend = null },
+                            modifier = Modifier.widthIn(max = 720.dp).fillMaxWidth(),
+                        )
+                    } else AiPromptCard(ai, prompt, { next ->
                         // Typed into: Improve stops (the words typed win), and its Undo goes once the improved words change.
                         if (next.text != prompt.text && improving) stopImproving()
                         if (next.text != prompt.text && next.text != improved) beforeImprove = null
@@ -223,7 +239,7 @@ class AiPromptActivity : ComponentActivity() {
         ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { view, insets ->
             val shown = insets.isVisible(WindowInsetsCompat.Type.ime())
             if (shown) imeSeen = true
-            else if (imeSeen && hasWindowFocus() && !isFinishing && !picking) finish()
+            else if (imeSeen && hasWindowFocus() && !isFinishing && !picking && !AiReportLink.reporting) finish()
             ViewCompat.onApplyWindowInsets(view, insets)
         }
     }
@@ -260,6 +276,29 @@ class AiPromptActivity : ComponentActivity() {
         trayOpen = false
     }
 
+    private fun sendNoticeAccepted(): Boolean {
+        val settings = AppGraph.settings.current
+        return AiDisclosure.accepted(settings.aiSendNotice, settings.aiService, settings.aiServerUrl)
+    }
+
+    /** Continue on the first-send notice: remember it, then send what was waiting. */
+    private fun acceptSendNotice(host: AiComposerHost) {
+        val settings = AppGraph.settings.current
+        val key = AiDisclosure.acceptanceKey(settings.aiService, settings.aiServerUrl)
+        AppGraph.settings.update { it.copy(aiSendNotice = key) }
+        val pending = pendingSend
+        pendingSend = null
+        when (pending) {
+            AiSendKind.CREATE -> submit(host) {
+                if (AppGraph.settings.current.vibrateOnKeyPress) {
+                    window.decorView.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                }
+            }
+            AiSendKind.IMPROVE -> improve(host)
+            null -> Unit
+        }
+    }
+
     /**
      * Improve: the service's text model rewrites the prompt into a clearer, more vivid one, which
      * replaces the words (Undo brings them back). Again while it works stops it.
@@ -275,32 +314,98 @@ class AiPromptActivity : ComponentActivity() {
             return
         }
         val words = prompt.text
+        val strict = ContentSafetyPolicy.strict(settings.aiSafetyStrict)
+        LocalBlocklist.check(words, strict, SafetyStage.INPUT)?.let {
+            note = StripNote(it.message, warn = true)
+            return
+        }
         val check = promptJob(settings, words, AppGraph.secrets::get, BuildConfig.DEBUG, host.promptImages.value.size)
         val job = check.job ?: run {
             note = StripNote(check.problem ?: "AI isn't set up", warn = true)
+            return
+        }
+        if (!sendNoticeAccepted()) {
+            pendingSend = AiSendKind.IMPROVE
             return
         }
         val client = AiClient()
         improver = client
         improving = true
         note = null
+        val gate = ContentGate { endpoint, token, body -> client.moderate(endpoint, token, body) }
         lifecycleScope.launch {
-            val reply = withContext(Dispatchers.IO) { client.improve(job) }
-            // Stopped, undone or closed meanwhile.
+            val input = withContext(Dispatchers.IO) {
+                gate.checkText(words, job.endpoint, job.token, strict, SafetyStage.INPUT)
+            }
+            // Stopped, undone or closed meanwhile: a cancelled check must not leave a note.
             if (improver !== client) return@launch
-            improver = null
-            improving = false
+            if (input is SafetyDecision.Blocked) {
+                improver = null
+                improving = false
+                note = StripNote(safetyNote(input), warn = true)
+                return@launch
+            }
+            val reply = withContext(Dispatchers.IO) { client.improve(job) }
+            if (improver !== client) return@launch
             when (reply) {
                 is PromptReply.Text -> {
+                    val output = withContext(Dispatchers.IO) {
+                        gate.checkText(reply.prompt, job.endpoint, job.token, strict, SafetyStage.OUTPUT)
+                    }
+                    if (improver !== client) return@launch
+                    improver = null
+                    improving = false
+                    if (output is SafetyDecision.Blocked) {
+                        note = StripNote(safetyNote(output), warn = true)
+                        return@launch
+                    }
                     improved = reply.prompt
                     beforeImprove = words
                     prompt = TextFieldValue(reply.prompt, TextRange(reply.prompt.length))
                 }
                 // Only said here: a refusal at this endpoint doesn't mark the key refused for Create too.
-                is PromptReply.Failed ->
-                    note = StripNote("Couldn't improve the prompt: " + reply.message.replaceFirstChar { it.lowercase() }, warn = true)
+                is PromptReply.Failed -> {
+                    improver = null
+                    improving = false
+                    note = StripNote(
+                        if (reply.safety) reply.message
+                        else "Couldn't improve the prompt: " + reply.message.replaceFirstChar { it.lowercase() },
+                        warn = true,
+                    )
+                }
             }
         }
+    }
+
+    /** A held-back Improve. A refused key keeps the existing "couldn't improve" wording. */
+    private fun safetyNote(blocked: SafetyDecision.Blocked): String = if (blocked.refused) {
+        "Couldn't improve the prompt: " + blocked.message.replaceFirstChar { it.lowercase() }
+    } else {
+        blocked.message
+    }
+
+    /** Flag beside Undo: report the improved words. The window stays open behind the report. */
+    private fun reportImproved() {
+        if (beforeImprove == null) return
+        val words = improved ?: prompt.text
+        AiReportLink.reporting = true
+        try {
+            startActivity(AiReportActivity.promptIntent(this, session, words))
+        } catch (_: RuntimeException) {
+            AiReportLink.reporting = false
+            note = StripNote("Couldn't open the report", warn = true)
+        }
+    }
+
+    /** The report was filed: the improved words go, and the earlier ones come back. */
+    private fun discardImprovedPrompt(sessionId: Int) {
+        if (sessionId != session || isFinishing) return
+        val words = beforeImprove ?: return
+        stopImproving()
+        beforeImprove = null
+        improved = null
+        prompt = TextFieldValue(words, TextRange(words.length))
+        note = StripNote("Reported and removed")
     }
 
     private fun stopImproving() {
@@ -319,6 +424,18 @@ class AiPromptActivity : ComponentActivity() {
             return
         }
         if (prompt.text.isBlank()) return
+        LocalBlocklist.check(
+            prompt.text,
+            ContentSafetyPolicy.strict(settings.aiSafetyStrict),
+            SafetyStage.INPUT,
+        )?.let {
+            note = StripNote(it.message, warn = true)
+            return
+        }
+        if (!sendNoticeAccepted()) {
+            pendingSend = AiSendKind.CREATE
+            return
+        }
         val problem = host.submitImagePrompt(prompt.text, session)
         if (problem != null) {
             note = StripNote(problem, warn = true)
@@ -361,10 +478,11 @@ class AiPromptActivity : ComponentActivity() {
     /** Away from the window (Home, another app): it closes, as the prompt is for the app below. The photo picker keeps it. */
     override fun onStop() {
         super.onStop()
-        if (!picking && !isChangingConfigurations && !isFinishing) finishNow()
+        if (!picking && !AiReportLink.reporting && !isChangingConfigurations && !isFinishing) finishNow()
     }
 
     override fun onDestroy() {
+        if (AiReportLink.discardImproved === discardImprovedHook) AiReportLink.discardImproved = null
         stopImproving()
         AiComposerLink.host?.promptState(prompt.text.isBlank(), false, session)
         // Closed without Create (✕, Back, a tap outside, Home): the words come back next time.

@@ -80,6 +80,14 @@
             android:theme="@style/AiPromptTheme"
             android:windowSoftInputMode="stateAlwaysVisible|adjustNothing" />
 
+        <!-- Report a generated image or an improved prompt without leaving Lowkey. Not exported. -->
+        <activity
+            android:name=".ai.AiReportActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/AppTheme" />
+
         <!-- Daily check for a newer release (Settings → About & updates). -->
         <service
             android:name=".updates.UpdateCheckJob"

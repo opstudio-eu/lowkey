@@ -80,8 +80,8 @@ data class AiFailure(
     val cardId: String get() = "failure-$id"
 }
 
-/** A finished image: [pasteable] in this field; [onClipboard] when it is also the system clip. */
-data class AiReady(val entry: ClipEntry.Image, val pasteable: Boolean, val onClipboard: Boolean)
+/** A finished image: [pasteable] in this field; [onClipboard] when it is also the system clip. [prompt] is what asked for it. */
+data class AiReady(val entry: ClipEntry.Image, val pasteable: Boolean, val onClipboard: Boolean, val prompt: String = "")
 
 /** Transient message shown in the top strip, e.g. a cancelled-dictation note. */
 data class StripNote(val text: String, val warn: Boolean = false, val id: Long = System.nanoTime())
@@ -154,6 +154,8 @@ interface KeyboardActions {
     fun onDismissAiResult(card: String) {}
     /** ✎ on the ready card: the prompt window opens with that image added, to change it. */
     fun onEditAiResult(key: String) {}
+    /** Flag on the ready card: report the image and remove it from Lowkey. */
+    fun onReportAiResult(key: String) {}
     /** The ready card is being looked at ([holding], a preview is open): it doesn't time out meanwhile. */
     fun onAiCardHold(holding: Boolean) {}
     /** Try again on a failed action: the prompt window with its prompt; or, for a refused key, its editor in Settings. */

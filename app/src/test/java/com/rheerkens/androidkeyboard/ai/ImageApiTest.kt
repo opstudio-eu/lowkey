@@ -109,8 +109,10 @@ class ImageApiTest {
     fun errorsArePlain() {
         assertEquals(ImageReply.Failed("The API key or token was refused", refused = true),
             ImageApi.parse(401, """{"error":{"message":"Incorrect API key provided: sk-abc."}}"""))
-        assertEquals(ImageReply.Failed("Not done: Your request was rejected by the safety system"),
+        assertEquals(ImageReply.Failed(ContentSafety.PROVIDER_REFUSAL, safety = true),
             ImageApi.parse(400, """{"error":{"message":"Your request was rejected by the safety system. More text here."}}"""))
+        assertEquals(ImageReply.Failed("Not done: The prompt is empty"),
+            ImageApi.parse(400, """{"error":{"message":"The prompt is empty"}}"""))
         assertEquals(ImageReply.Failed("Too many requests or no credit left"), ImageApi.parse(429, ""))
         assertEquals(ImageReply.Failed("The AI service had a problem (502). Try again"), ImageApi.parse(502, "Bad gateway"))
     }

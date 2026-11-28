@@ -80,7 +80,7 @@ class SettingsSearchTest {
         Destination.DICTIONARY -> listOf("DictionaryScreen.kt")
         Destination.KEYBOARD_THEME -> listOf("KeyboardThemeScreen.kt")
         Destination.LANGUAGES -> listOf("LanguagesScreen.kt")
-        Destination.SETTINGS_EXPERIMENTAL -> listOf("ExperimentalScreen.kt")
+        Destination.SETTINGS_EXPERIMENTAL -> listOf("ExperimentalScreen.kt", "AiSafetySettings.kt")
         else -> listOf("SettingsScreen.kt")
     }.joinToString("\n") { File(screens, it).readText() }
 

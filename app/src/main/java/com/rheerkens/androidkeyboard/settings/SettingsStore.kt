@@ -107,6 +107,9 @@ class SettingsStore(context: Context) {
             imageQuality = enumOr(prefs.getString(K_IMAGE_QUALITY, null), d.imageQuality),
             promptServerModel = prefs.getString(K_PROMPT_SERVER_MODEL, null) ?: d.promptServerModel,
             saveImagesToGallery = prefs.getBoolean(K_IMAGE_GALLERY, d.saveImagesToGallery),
+            aiSafetyStrict = prefs.getBoolean(K_AI_SAFETY_STRICT, d.aiSafetyStrict),
+            aiReportEndpoint = prefs.getString(K_AI_REPORT_ENDPOINT, null) ?: d.aiReportEndpoint,
+            aiSendNotice = prefs.getString(K_AI_SEND_NOTICE, null) ?: d.aiSendNotice,
             checkForUpdates = prefs.getBoolean(K_CHECK_UPDATES, d.checkForUpdates),
             matchTermCase = prefs.getBoolean(K_TERM_CASE, d.matchTermCase),
             speechLanguage = prefs.getString(K_SPEECH_LANGUAGE, null) ?: d.speechLanguage,
@@ -159,6 +162,10 @@ class SettingsStore(context: Context) {
         putString(K_IMAGE_QUALITY, s.imageQuality.name)
         putString(K_PROMPT_SERVER_MODEL, s.promptServerModel)
         putBoolean(K_IMAGE_GALLERY, s.saveImagesToGallery)
+        putBoolean(K_AI_SAFETY_STRICT, s.aiSafetyStrict)
+        putString(K_AI_REPORT_ENDPOINT, s.aiReportEndpoint)
+        putString(K_AI_SEND_NOTICE, s.aiSendNotice)
+        remove(K_AI_REPORT_EMAIL)
         putBoolean(K_CHECK_UPDATES, s.checkForUpdates)
         putBoolean(K_TERM_CASE, s.matchTermCase)
         putString(K_SPEECH_LANGUAGE, s.speechLanguage)
@@ -217,6 +224,11 @@ class SettingsStore(context: Context) {
         const val K_PROMPT_SERVER_MODEL = "prompt_server_model"
         const val K_IMAGE_SERVER_MODEL = "image_server_model"
         const val K_IMAGE_GALLERY = "image_save_to_gallery"
+        const val K_AI_SAFETY_STRICT = "ai_safety_strict"
+        const val K_AI_REPORT_ENDPOINT = "ai_report_endpoint"
+        const val K_AI_SEND_NOTICE = "ai_send_notice"
+        /** Replaced by [K_AI_REPORT_ENDPOINT]. Dropped on the next save. */
+        const val K_AI_REPORT_EMAIL = "ai_report_email"
         const val K_VIBRATE = "vibrate"
         const val K_AUTOCAP = "auto_capitalize"
         const val K_AUTOCORRECT = "autocorrect"

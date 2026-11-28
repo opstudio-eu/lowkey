@@ -7,8 +7,11 @@ import org.json.JSONObject
 /** What Improve got back: a better prompt, or a message for the user. */
 sealed interface PromptReply {
     data class Text(val prompt: String) : PromptReply
-    /** [refused]: the API key or token was turned down (401). */
-    data class Failed(val message: String, val refused: Boolean = false) : PromptReply
+    /**
+     * [refused]: the API key or token was turned down (401).
+     * [safety]: the provider refused the request for safety; the message is already the one to show.
+     */
+    data class Failed(val message: String, val refused: Boolean = false, val safety: Boolean = false) : PromptReply
 }
 
 /**
@@ -60,10 +63,18 @@ object PromptApi {
     fun parse(code: Int, body: String): PromptReply {
         val json = try { JSONObject(body) } catch (_: JSONException) { null }
         if (code !in 200..299) {
-            return PromptReply.Failed(AiConnection.errorMessage(code, json?.optJSONObject("error")?.opt("message") as? String),
-                refused = code == 401)
+            val error = json?.optJSONObject("error")
+            if (ContentSafety.isProviderSafetyRefusal(code, error)) {
+                return PromptReply.Failed(ContentSafety.PROVIDER_REFUSAL, safety = true)
+            }
+            return PromptReply.Failed(AiConnection.errorMessage(code, error?.opt("message") as? String), refused = code == 401)
         }
-        val message = json?.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
+        val choice = json?.optJSONArray("choices")?.optJSONObject(0)
+        val message = choice?.optJSONObject("message")
+        val refusal = message?.opt("refusal") as? String
+        if (choice?.opt("finish_reason") == "content_filter" || !refusal.isNullOrBlank()) {
+            return PromptReply.Failed(ContentSafety.PROVIDER_REFUSAL, safety = true)
+        }
         val text = when (val content = message?.opt("content")) {
             is String -> content
             // Some servers answer with parts: [{"type": "text", "text": "…"}].

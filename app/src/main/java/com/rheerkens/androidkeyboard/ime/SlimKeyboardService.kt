@@ -135,6 +135,15 @@ import com.rheerkens.androidkeyboard.ai.mayReplaceClip
 import com.rheerkens.androidkeyboard.ai.AiComposerHost
 import com.rheerkens.androidkeyboard.ai.AiComposerLink
 import com.rheerkens.androidkeyboard.ai.AiPromptActivity
+import com.rheerkens.androidkeyboard.ai.AiReportActivity
+import com.rheerkens.androidkeyboard.ai.AiReportLink
+import com.rheerkens.androidkeyboard.ai.ContentGate
+import com.rheerkens.androidkeyboard.ai.ContentSafetyPolicy
+import com.rheerkens.androidkeyboard.ai.GalleryDelete
+import com.rheerkens.androidkeyboard.ai.LocalBlocklist
+import com.rheerkens.androidkeyboard.ai.SafetyDecision
+import com.rheerkens.androidkeyboard.ai.SafetyStage
+import com.rheerkens.androidkeyboard.ai.deleteCreatedImage
 import com.rheerkens.androidkeyboard.ai.aiSetupOf
 
 /**
@@ -274,9 +283,15 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
      * once that field is back.
      */
     private var pendingAiCard: PendingAiCard? = null
+    /** The ready card a report was opened from, put back if the report is cancelled. */
+    private var reportHold: ReportHold? = null
+    /** Shown once the keyboard returns after a report is filed. */
+    private var reportNote: String? = null
+    private val discardImageHook: (String) -> Boolean = { discardReportedImage(it) }
 
     private class PendingAiCard(val editor: String?, val ready: AiReady? = null, val failure: AiFailure? = null,
         val note: String? = null)
+    private class ReportHold(val entry: ClipEntry.Image, val ready: AiReady, val editor: String?)
 
     /** Words (and pictures) to offer again, only in the field ([editor], `EditorBridge.editorKey`) they were typed for. */
     private data class RetryPrompt(val editor: String?, val text: String, val images: List<PromptImage> = emptyList())
@@ -351,6 +366,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         AppGraph.init(this)
         owner.onCreate()
         AiComposerLink.host = this
+        AiReportLink.discardImage = discardImageHook
         bridge = EditorBridge { currentInputConnection }
         clipboardManager = getSystemService(ClipboardManager::class.java)
         clipboardReader = ClipboardReader(contentResolver)
@@ -825,6 +841,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
             voiceSink.editorGone = false
         }
         enterKind.value = bridge.enterKind()
+        restoreReportHold()
         if (keepSession) return
         keyboard.reset(bridge.numberPad)
         keyboard.setKeyboard(AppGraph.currentKeyboard())
@@ -846,6 +863,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         recordClipboard(changed = false)
         refreshScreenshots()
         showPendingAiCard()
+        restoreReportHold()
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
@@ -906,6 +924,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
 
     override fun onDestroy() {
         if (AiComposerLink.host === this) AiComposerLink.host = null
+        if (AiReportLink.discardImage === discardImageHook) AiReportLink.discardImage = null
         aiRuns.values.forEach { it.client.cancel() }
         clipboardManager.removePrimaryClipChangedListener(clipboardListener)
         contentResolver.unregisterContentObserver(mediaObserver)
@@ -2145,6 +2164,8 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         if (session != composerSession) return "Open the prompt again with ✨"
         val text = prompt.trim()
         if (text.isEmpty()) return "Describe the image first"
+        LocalBlocklist.check(text, ContentSafetyPolicy.strict(settings.current.aiSafetyStrict), SafetyStage.INPUT)
+            ?.let { return it.message }
         if (!settings.current.aiKeyboard) return "AI on the keyboard is off"
         if (aiTasks.value.size >= MAX_AI_TASKS) return "Wait until one finishes"
         if (promptImagesLoading > 0) return "Wait a moment, a picture is still being added"
@@ -2226,6 +2247,70 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
             wandSession = composerSession
             if (attachPromptImage(entry.uri)) wandImage = nextPromptImage
         }
+    }
+
+    /** Flag on a ready image: the report screen. The card comes back if that screen is cancelled. */
+    override fun onReportAiResult(key: String) {
+        val ready = aiReady.value?.takeIf { it.entry.key == key } ?: return
+        val entry = clipHistory.current().firstOrNull { it.key == key } as? ClipEntry.Image
+        if (entry == null) {
+            showNote("This image is no longer kept", warn = true)
+            return
+        }
+        reportHold = ReportHold(entry, ready, bridge.editorKey())
+        reportNote = null
+        AiReportLink.reporting = true
+        try {
+            startActivity(AiReportActivity.imageIntent(this, entry.key, entry.file.absolutePath, entry.mimeType, ready.prompt)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (_: RuntimeException) {
+            AiReportLink.reporting = false
+            reportHold = null
+            showNote("Couldn't open the report", warn = true)
+        }
+    }
+
+    /**
+     * The report was filed. Removes the image from the clipboard history and, when it is still the
+     * system clip, from there too. Returns whether a Pictures/Lowkey copy may still be there.
+     */
+    private fun discardReportedImage(clipKey: String): Boolean {
+        reportHold = null
+        clearAiCards()
+        val entry = clipHistory.current().firstOrNull { it.key == clipKey } as? ClipEntry.Image
+        clipHistory.remove(clipKey)
+        if (entry != null) clearSystemClipIf(entry.uri)
+        val leftover = entry != null && settings.current.saveImagesToGallery &&
+            deleteCreatedImage(this, entry.timeMs, entry.mimeType) == GalleryDelete.FAILED
+        reportNote = if (leftover) {
+            "Reported and removed. A copy in Pictures/Lowkey may still be there."
+        } else {
+            "Reported and removed"
+        }
+        return leftover
+    }
+
+    /** Puts the card back after a cancelled report, or shows the note after one that was filed. */
+    private fun restoreReportHold() {
+        if (inReportField() || AiReportLink.reporting) return
+        val note = reportNote
+        reportNote = null
+        if (note != null) showNote(note, warn = note.contains("Pictures/Lowkey"))
+        val hold = reportHold ?: return
+        reportHold = null
+        if (!inputViewActive || bridge.isSensitiveField) return
+        if (hold.editor == null || hold.editor != bridge.editorKey()) return
+        if (clipHistory.current().none { it.key == hold.entry.key }) return
+        showAiCard(hold.ready.copy(pasteable = bridge.acceptsImage(hold.entry.mimeType)), null)
+    }
+
+    private fun inReportField(): Boolean =
+        currentInputEditorInfo?.privateImeOptions?.contains(AiReportActivity.FIELD) == true
+
+    private fun clearSystemClipIf(uri: android.net.Uri) {
+        val clip = try { clipboardManager.primaryClip } catch (_: RuntimeException) { return } ?: return
+        if (clip.itemCount == 0 || clip.getItemAt(0).uri != uri) return
+        try { clipboardManager.clearPrimaryClip() } catch (_: RuntimeException) { }
     }
 
     override fun onDismissAiResult(card: String) {
@@ -2335,15 +2420,36 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         val action = if (images.isEmpty()) AiAction.CREATE_IMAGE else AiAction.EDIT_IMAGE
         aiTasks.value = aiTasks.value + AiTask(id, action, prompt, System.currentTimeMillis())
         val clipAtSubmit = clipTime()
+        val strict = ContentSafetyPolicy.strict(settings.current.aiSafetyStrict)
+        val gate = ContentGate { endpoint, token, body -> run.client.moderate(endpoint, token, body) }
         run.job = scope.launch {
             try {
-                val reply = withContext(Dispatchers.IO) { run.client.generate(job) }
-                // Stopped meanwhile: drop whatever came back.
+                val input = withContext(Dispatchers.IO) {
+                    gate.checkText(prompt, job.endpoint, job.token, strict, SafetyStage.INPUT)
+                }
+                // Stopped meanwhile: drop the check, and don't say it was held back.
                 if (aiRuns[id] !== run) return@launch
+                if (input is SafetyDecision.Blocked) {
+                    failed(prompt, run, input.message, refused = input.refused)
+                    return@launch
+                }
+                val reply = withContext(Dispatchers.IO) { run.client.generate(job) }
+                if (aiRuns[id] !== run) return@launch
+                if (reply is ImageReply.Image) {
+                    val checked = withContext(Dispatchers.IO) {
+                        gate.checkImage(reply.bytes, reply.mimeType, reply.revisedPrompt, job.endpoint, job.token, strict)
+                    }
+                    if (aiRuns[id] !== run) return@launch
+                    if (checked is SafetyDecision.Blocked) {
+                        failed(prompt, run, checked.message, refused = checked.refused)
+                        return@launch
+                    }
+                }
                 // The result is here: from now on it is kept, so it leaves the list (and can't be stopped).
                 finishAiTask(id)
                 when (reply) {
-                    is ImageReply.Image -> if (!deliverImage(reply, clipAtSubmit, editor)) retryPrompt = RetryPrompt(editor, prompt, images)
+                    is ImageReply.Image ->
+                        if (!deliverImage(reply, clipAtSubmit, editor, prompt)) retryPrompt = RetryPrompt(editor, prompt, images)
                     is ImageReply.Failed -> failed(prompt, run, reply.message, refused = reply.refused)
                     is ImageReply.Link -> failed(prompt, run, "The AI service sent no image")
                 }
@@ -2414,7 +2520,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
      * clipboard, so long-press Paste works where the keyboard can't insert images; to the gallery too
      * when that setting is on. Nothing else shows: the image is simply there in the clipboard row.
      */
-    private suspend fun deliverImage(image: ImageReply.Image, clipAtSubmit: Long, editor: String?): Boolean {
+    private suspend fun deliverImage(image: ImageReply.Image, clipAtSubmit: Long, editor: String?, prompt: String): Boolean {
         val entry = withContext(Dispatchers.IO) {
             clipHistory.recordCreated(image.bytes, image.mimeType) { loadThumbnail(contentResolver, it) }
         }
@@ -2445,7 +2551,9 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         }
         if (inAiPrompt.value) {
             // The prompt window has the keys: the card waits for the field the image was made for.
-            if (editor != null && editor == composerEditor) pendingAiCard = PendingAiCard(editor, ready = AiReady(entry, false, onClipboard))
+            if (editor != null && editor == composerEditor) {
+                pendingAiCard = PendingAiCard(editor, ready = AiReady(entry, false, onClipboard, prompt))
+            }
             showNote(if (gallery && !saved) "Image ready · couldn't save it to Gallery" else "Image ready", warn = gallery && !saved)
             if (settings.current.vibrateOnKeyPress) composeView?.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
             return true
@@ -2453,7 +2561,7 @@ class SlimKeyboardService : InputMethodService(), KeyboardActions, AiComposerHos
         if (!bridge.isSensitiveField) {
             // Insert only in the field it was made for: another chat gets the paste hint instead.
             val sameField = editor != null && editor == bridge.editorKey()
-            showAiCard(AiReady(entry, sameField && bridge.acceptsImage(entry.mimeType), onClipboard), null)
+            showAiCard(AiReady(entry, sameField && bridge.acceptsImage(entry.mimeType), onClipboard, prompt), null)
         }
         if (gallery && !saved) showNote("Image ready · couldn't save it to Gallery", warn = true)
         if (settings.current.vibrateOnKeyPress) composeView?.performHapticFeedback(HapticFeedbackConstants.CONFIRM)

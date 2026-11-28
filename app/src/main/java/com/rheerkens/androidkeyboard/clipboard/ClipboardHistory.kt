@@ -176,6 +176,17 @@ class ClipboardHistory(
      * Forgets every clip and returns them, so [restore] can bring them back. Their cached images
      * stay until [discard].
      */
+    /** Drops one clip and deletes its cached image. Does not touch the system clipboard. */
+    @Synchronized
+    fun remove(key: String) {
+        val old = _entries.value
+        val next = old.filterNot { it.key == key }
+        if (next.size == old.size) return
+        _entries.value = next
+        usedAt.remove(key)
+        deleteImages(old.filter { it.key == key })
+    }
+
     @Synchronized
     fun clear(): List<ClipEntry> {
         val old = _entries.value

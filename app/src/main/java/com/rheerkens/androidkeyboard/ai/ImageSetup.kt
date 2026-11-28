@@ -65,6 +65,44 @@ fun aiConnection(settings: Settings, secret: (Secret) -> String?, allowLocalHttp
 /** Whether this Android version can save to the gallery without a storage permission (Android 10+). */
 val gallerySupported: Boolean get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
 
+/** The Pictures/Lowkey file name [saveToGallery] uses, so a report can ask to remove that copy. */
+fun createdImageDisplayName(mimeType: String, timeMs: Long): String {
+    val ext = mimeType.substringAfter('/').substringBefore(';').replace("jpeg", "jpg").ifBlank { "img" }
+    return "lowkey-$timeMs.$ext"
+}
+
+/** What happened when a reported image's gallery copy was removed. */
+enum class GalleryDelete { REMOVED, ABSENT, FAILED }
+
+/**
+ * Deletes the Pictures/Lowkey copy [saveToGallery] made for this image, if it is still there.
+ * [FAILED] means it may still be there (the gallery didn't allow the delete).
+ */
+fun deleteCreatedImage(context: Context, timeMs: Long, mimeType: String): GalleryDelete {
+    if (!gallerySupported) return GalleryDelete.ABSENT
+    val name = createdImageDisplayName(mimeType, timeMs)
+    val collection = MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+    return try {
+        val uri = context.contentResolver.query(
+            collection,
+            arrayOf(MediaStore.Images.Media._ID),
+            "${MediaStore.Images.Media.DISPLAY_NAME} = ? AND ${MediaStore.Images.Media.RELATIVE_PATH} LIKE ?",
+            arrayOf(name, "%${Environment.DIRECTORY_PICTURES}/Lowkey%"),
+            null,
+        )?.use { cursor ->
+            if (!cursor.moveToFirst()) return GalleryDelete.ABSENT
+            android.content.ContentUris.withAppendedId(collection, cursor.getLong(0))
+        } ?: return GalleryDelete.ABSENT
+        if (context.contentResolver.delete(uri, null, null) > 0) GalleryDelete.REMOVED else GalleryDelete.ABSENT
+    } catch (_: SecurityException) {
+        GalleryDelete.FAILED
+    } catch (_: IllegalArgumentException) {
+        GalleryDelete.FAILED
+    } catch (_: RuntimeException) {
+        GalleryDelete.FAILED
+    }
+}
+
 /**
  * Saves a created image to Pictures/Lowkey, where gallery apps show it. Android 10+ only, which
  * needs no permission for the app's own new photos. Call on an IO dispatcher.
@@ -72,9 +110,8 @@ val gallerySupported: Boolean get() = Build.VERSION.SDK_INT >= Build.VERSION_COD
 fun saveToGallery(context: Context, bytes: ByteArray, mimeType: String, timeMs: Long): Boolean {
     if (!gallerySupported) return false
     val resolver = context.contentResolver
-    val ext = mimeType.substringAfter('/').replace("jpeg", "jpg")
     val values = ContentValues().apply {
-        put(MediaStore.Images.Media.DISPLAY_NAME, "lowkey-$timeMs.$ext")
+        put(MediaStore.Images.Media.DISPLAY_NAME, createdImageDisplayName(mimeType, timeMs))
         put(MediaStore.Images.Media.MIME_TYPE, mimeType)
         put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/Lowkey")
         put(MediaStore.Images.Media.IS_PENDING, 1)
