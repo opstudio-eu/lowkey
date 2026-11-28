@@ -178,6 +178,8 @@ internal interface AiComposerActions {
     fun onImprove()
     /** Undo after Improve: the words from before. */
     fun onUndoImprove()
+    /** Flag beside Undo: report the improved prompt and put the earlier words back. */
+    fun onReportImproved() {}
 }
 
 /**
@@ -268,7 +270,12 @@ internal fun AiPromptCard(
             AddPictureButton(ai.trayOpen, ai.images.size, actions, Modifier.offset(x = (-4).dp))
             // Improve takes the room between, and shortens its label before Create would.
             Box(Modifier.weight(1f).padding(end = 8.dp)) {
-                ImproveButton(ai.improving, undo = ai.beforeImprove != null && !ai.improving, prompt.text.isNotBlank(), actions)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (ai.beforeImprove != null && !ai.improving) {
+                        CardIcon(SlimIcons.Flag, "Report this improved prompt") { actions.onReportImproved() }
+                    }
+                    ImproveButton(ai.improving, undo = ai.beforeImprove != null && !ai.improving, prompt.text.isNotBlank(), actions)
+                }
             }
             val setup = ai.setup
             // Not while Improve rewrites the words: Create would send the old ones. Stop first, or wait.
@@ -725,6 +732,7 @@ private fun AiReadyCard(ready: AiReady, width: Dp, maxHeight: Dp, actions: Keybo
                 CardIcon(if (preview) SlimIcons.ChevronDown else SlimIcons.ChevronUp,
                     if (preview) "Hide the preview" else "Preview the image") { preview = !preview }
             }
+            CardIcon(SlimIcons.Flag, "Report this image") { actions.onReportAiResult(ready.entry.key) }
             // Change it: the prompt window opens with this image added.
             CardIcon(SlimIcons.Wand, "Change this image with AI") { actions.onEditAiResult(ready.entry.key) }
             if (ready.pasteable) {

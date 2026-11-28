@@ -1,5 +1,6 @@
 package com.rheerkens.androidkeyboard.settings
 
+import com.rheerkens.androidkeyboard.ai.ContentReports
 import com.rheerkens.androidkeyboard.ai.ImageModel
 import com.rheerkens.androidkeyboard.ai.ImageQuality
 import com.rheerkens.androidkeyboard.ai.AiService
@@ -166,6 +167,13 @@ data class Settings(
     val promptServerModel: String = "",
     /** Also save each created image to the photo gallery (Pictures/Lowkey), not only to the clipboard. */
     val saveImagesToGallery: Boolean = false,
+    /**
+     * Also block other content the provider's safety check flags. Sexual content involving a child is
+     * always blocked, and a Play build ignores a saved false (see [com.rheerkens.androidkeyboard.ai.ContentSafetyPolicy]).
+     */
+    val aiSafetyStrict: Boolean = true,
+    /** Where a content report is addressed when the user chooses to email it. A placeholder until a real one is published. */
+    val aiReportEmail: String = ContentReports.PLACEHOLDER_EMAIL,
     // Diagnostics
     val audioInput: AudioInput = AudioInput.MICROPHONE,
     // Keyboard state that is remembered between sessions

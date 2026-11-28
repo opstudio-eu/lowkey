@@ -6,11 +6,15 @@ import java.util.Base64
 
 /** What a finished request gave: an image, an image to download, or a message for the user. */
 sealed interface ImageReply {
-    class Image(val bytes: ByteArray, val mimeType: String) : ImageReply
+    /** [revisedPrompt]: the words the service actually used, when it rewrote the prompt. */
+    class Image(val bytes: ByteArray, val mimeType: String, val revisedPrompt: String? = null) : ImageReply
     /** A server that answers with a link instead of the image; the link must be HTTPS. */
     data class Link(val url: String) : ImageReply
-    /** [refused]: the API key or token was turned down (401), so trying again won't help until it changes. */
-    data class Failed(val message: String, val refused: Boolean = false) : ImageReply
+    /**
+     * [refused]: the API key or token was turned down (401), so trying again won't help until it changes.
+     * [safety]: the provider refused the request for safety; the message is already the one to show.
+     */
+    data class Failed(val message: String, val refused: Boolean = false, val safety: Boolean = false) : ImageReply
 }
 
 /** A picture sent along with the prompt ([ImageApi.editBody]): already shrunk and encoded. */
@@ -70,7 +74,11 @@ object ImageApi {
         val json = try { JSONObject(body) } catch (_: JSONException) { null }
         // opt(…) as? String: Android's optString turns a JSON null into the text "null".
         if (code !in 200..299) {
-            return ImageReply.Failed(AiConnection.errorMessage(code, json?.optJSONObject("error")?.opt("message") as? String), refused = code == 401)
+            val error = json?.optJSONObject("error")
+            if (ContentSafety.isProviderSafetyRefusal(code, error)) {
+                return ImageReply.Failed(ContentSafety.PROVIDER_REFUSAL, safety = true)
+            }
+            return ImageReply.Failed(AiConnection.errorMessage(code, error?.opt("message") as? String), refused = code == 401)
         }
         val first = json?.optJSONArray("data")?.optJSONObject(0)
             ?: return ImageReply.Failed("The service sent no image")
@@ -80,11 +88,15 @@ object ImageApi {
             val bytes = try { Base64.getMimeDecoder().decode(b64) } catch (_: IllegalArgumentException) { null }
                 ?: return ImageReply.Failed("The service sent an unreadable image")
             val mime = sniffMime(bytes) ?: return ImageReply.Failed("The service sent something that isn't an image")
-            return ImageReply.Image(bytes, mime)
+            return ImageReply.Image(bytes, mime, revisedPrompt(first))
         }
         val url = (first.opt("url") as? String)?.takeIf { it.startsWith("https://") }
         return if (url != null) ImageReply.Link(url) else ImageReply.Failed("The service sent no image")
     }
+
+    /** The rewritten prompt, when the service sent one, trimmed to the length a prompt may be. */
+    private fun revisedPrompt(item: JSONObject): String? =
+        (item.opt("revised_prompt") as? String)?.trim()?.take(MAX_PROMPT_CHARS)?.takeIf { it.isNotEmpty() }
 
     /** The image type from the file's first bytes; null when it isn't PNG, JPEG, WebP or GIF. */
     fun sniffMime(bytes: ByteArray): String? {

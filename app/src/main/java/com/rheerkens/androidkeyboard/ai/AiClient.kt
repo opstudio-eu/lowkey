@@ -92,6 +92,16 @@ class AiClient(
         if (reply is ImageReply.Link) download(reply.url) else reply
     }
 
+    /**
+     * One call to the provider's safety check. Used only for OpenAI. A failure is a [ModerationReply.Failed],
+     * which holds the content back; this does not retry.
+     */
+    fun moderate(endpoint: String, token: String?, body: String): ModerationReply =
+        request({ ModerationReply.Failed(failure(it, "safety check")) }) {
+            post(endpoint, token, "application/json", body.toByteArray(Charsets.UTF_8),
+                MAX_MODERATION_RESPONSE, MODERATION_TIMEOUT_MS, ModerationApi::parse)
+        }
+
     /** A rewritten prompt for [job]'s, from the service's text model. */
     fun improve(job: PromptJob): PromptReply = request({ PromptReply.Failed(failure(it, "AI service")) }) {
         val body = PromptApi.requestBody(job.prompt, job.model, job.openAi, job.imageCount).toByteArray(Charsets.UTF_8)
@@ -197,6 +207,9 @@ class AiClient(
         private const val READ_TIMEOUT_MS = 240_000
         /** Base64 makes the JSON about a third larger than the image, which the history caps. */
         private const val MAX_RESPONSE_BYTES = ImageApi.MAX_IMAGE_BYTES / 3 * 4 + 64 * 1024
+        /** A moderation answer is a short JSON object, not an image. */
+        private const val MAX_MODERATION_RESPONSE = 256 * 1024
+        private const val MODERATION_TIMEOUT_MS = 30_000
         /** A short text answer; longer means the text model hangs. */
         private const val PROMPT_READ_TIMEOUT_MS = 60_000
         /** A rewritten prompt is a few hundred bytes; the rest of a chat answer is small too. */

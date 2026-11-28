@@ -134,11 +134,15 @@ fun ExperimentalScreen(modifier: Modifier) {
                 )
             }
         }
+        if (s.aiKeyboard) item { AiSafetySettings(s) }
         if (s.aiKeyboard) item {
             SettingsGroup("What is sent") {
                 GroupText(
                     "Only what is in the ✨ prompt box when you tap Create goes to the service above: the words and the " +
                         "pictures you added to it, nothing else you type. Improve sends just the words. " +
+                        "With OpenAI, Lowkey also sends that text, and a finished image, to OpenAI's safety check with your key " +
+                        "before anything is shown or copied. Your own server is not asked to look at the picture; an on-device list " +
+                        "checks the words. A report stays on this phone until you email it yourself. " +
                         "The key and token are encrypted on this phone and never included in a backup.",
                 )
                 if (s.aiService == AiService.OWN_SERVER) GroupText(
@@ -322,7 +326,7 @@ private fun TextSettingRow(title: String, value: String, initial: String, placeh
 
 /** A row with a value under its title that opens an editor; [warn] marks something still missing. */
 @Composable
-private fun ValueRow(title: String, value: String, warn: Boolean, onClick: () -> Unit) {
+internal fun ValueRow(title: String, value: String, warn: Boolean, onClick: () -> Unit) {
     Column(
         settingHighlight(title, onEdit = onClick)
             .fillMaxWidth()

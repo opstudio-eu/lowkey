@@ -3,4 +3,6 @@
 <paths>
     <cache-path name="clipboard" path="clipboard/" />
     <cache-path name="edits" path="edits/" />
+    <!-- An image the user chose to attach to a content report, kept under the app's files. -->
+    <files-path name="ai-reports" path="ai-reports/" />
 </paths>

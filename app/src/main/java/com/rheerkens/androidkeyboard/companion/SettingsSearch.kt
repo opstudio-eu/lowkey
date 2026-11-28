@@ -95,6 +95,8 @@ val settingsIndex: List<SettingEntry> = listOfNotNull(
     row("Access token", Destination.SETTINGS_EXPERIMENTAL, "bearer", "token", "password", "own server", "image generation"),
     row("Server address", Destination.SETTINGS_EXPERIMENTAL, "own server", "url", "endpoint", "tailscale", "image generation"),
     row("Save to Gallery", Destination.SETTINGS_EXPERIMENTAL, "gallery", "photos", "save image", "created images"),
+    row("Stricter safety checks", Destination.SETTINGS_EXPERIMENTAL, "safety", "filter", "moderation", "blocked", "content"),
+    row("Report email", Destination.SETTINGS_EXPERIMENTAL, "report", "flag", "offensive", "email", "safety"),
     // Voice
     page("Voice typing", Destination.MODELS, "speech recognition", "voice", "microphone", "mic"),
     page("Speech models", Destination.SPEECH_MODELS, "speech model", "whisper", "download model", "delete model", "change model", "offline",
