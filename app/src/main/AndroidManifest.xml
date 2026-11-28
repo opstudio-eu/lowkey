@@ -24,18 +24,6 @@
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
 
-    <!-- The report screen opens the user's email app. Nothing is sent from Lowkey itself. -->
-    <queries>
-        <intent>
-            <action android:name="android.intent.action.SENDTO" />
-            <data android:scheme="mailto" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.SEND" />
-            <data android:mimeType="image/*" />
-        </intent>
-    </queries>
-
     <application
         android:name=".SlimKeyboardApp"
         android:allowBackup="false"

@@ -172,8 +172,13 @@ data class Settings(
      * always blocked, and a Play build ignores a saved false (see [com.rheerkens.androidkeyboard.ai.ContentSafetyPolicy]).
      */
     val aiSafetyStrict: Boolean = true,
-    /** Where a content report is addressed when the user chooses to email it. A placeholder until a real one is published. */
-    val aiReportEmail: String = ContentReports.PLACEHOLDER_EMAIL,
+    /** Where a content report is posted from the app. A placeholder until a real https address is published. */
+    val aiReportEndpoint: String = ContentReports.PLACEHOLDER_ENDPOINT,
+    /**
+     * The service the user agreed to send to, from [com.rheerkens.androidkeyboard.ai.AiDisclosure.acceptanceKey].
+     * Empty until they tap Continue on the first send. A different service asks again.
+     */
+    val aiSendNotice: String = "",
     // Diagnostics
     val audioInput: AudioInput = AudioInput.MICROPHONE,
     // Keyboard state that is remembered between sessions

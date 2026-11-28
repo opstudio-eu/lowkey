@@ -29,6 +29,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -44,6 +45,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rheerkens.androidkeyboard.AppGraph
 import com.rheerkens.androidkeyboard.companion.theme.SlimTheme
 import java.io.IOException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * The keyboard's side of a report opened from a result. Both run in this process. [reporting] is
@@ -57,8 +60,8 @@ object AiReportLink {
 }
 
 /**
- * Report a generated image or an improved prompt without leaving Lowkey. Confirming removes it.
- * Email is a separate tap that opens the user's mail app; nothing is sent from here.
+ * Report a generated image or an improved prompt without leaving Lowkey. Confirming removes it
+ * and posts the report from this app. If the post doesn't go through, the report stays on the phone.
  */
 class AiReportActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -70,7 +73,7 @@ class AiReportActivity : ComponentActivity() {
             val settings by AppGraph.settings.settings.collectAsStateWithLifecycle()
             SlimTheme(settings.theme) {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    ReportForm(launch = launch, address = settings.aiReportEmail, onClose = { finish() })
+                    ReportForm(launch = launch, endpoint = settings.aiReportEndpoint, onClose = { finish() })
                 }
             }
         }
@@ -135,16 +138,40 @@ private data class ReportLaunch(
 )
 
 @Composable
-private fun ReportForm(launch: ReportLaunch, address: String, onClose: () -> Unit) {
+private fun ReportForm(launch: ReportLaunch, endpoint: String, onClose: () -> Unit) {
     var reasonName by rememberSaveable { mutableStateOf<String?>(null) }
     var note by rememberSaveable { mutableStateOf("") }
     var include by rememberSaveable { mutableStateOf(false) }
     var reportId by rememberSaveable { mutableStateOf<String?>(null) }
+    var phase by rememberSaveable { mutableStateOf("form") }
     var omitted by rememberSaveable { mutableStateOf(false) }
     var leftover by rememberSaveable { mutableStateOf(false) }
     var missing by rememberSaveable { mutableStateOf(false) }
     var error by rememberSaveable { mutableStateOf<String?>(null) }
-    var mailError by rememberSaveable { mutableStateOf<String?>(null) }
+    var keptMessage by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(reportId, phase) {
+        if (phase != "sending") return@LaunchedEffect
+        val id = reportId ?: return@LaunchedEffect
+        val report = AppGraph.reports.find(id)
+        if (report == null) {
+            phase = "sent"
+            return@LaunchedEffect
+        }
+        val bytes = withContext(Dispatchers.IO) { AppGraph.reports.imageFile(report)?.takeIf { it.isFile }?.readBytes() }
+        val result = withContext(Dispatchers.IO) {
+            ContentReportSender().send(ContentReports.endpointOrPlaceholder(endpoint), ContentReports.jsonBody(report, bytes))
+        }
+        when (result) {
+            ReportDelivery.Sent -> {
+                AppGraph.reports.delete(id)
+                phase = "sent"
+            }
+            is ReportDelivery.Kept -> {
+                keptMessage = result.message
+                phase = "kept"
+            }
+        }
+    }
     val reason = reasonName?.let { name -> ReportReason.entries.firstOrNull { it.name == name } }
     val context = LocalContext.current
     Column(
@@ -153,10 +180,21 @@ private fun ReportForm(launch: ReportLaunch, address: String, onClose: () -> Uni
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        if (reportId != null) {
-            Text("Removed from Lowkey", style = MaterialTheme.typography.headlineSmall)
+        if (phase != "form") {
             Text(
-                "Nothing has been sent. The report stays on this phone until you delete it.",
+                when (phase) {
+                    "sent" -> "Report sent"
+                    "kept" -> "Saved on this phone"
+                    else -> "Sending the report"
+                },
+                style = MaterialTheme.typography.headlineSmall,
+            )
+            Text(
+                when (phase) {
+                    "sent" -> "Lowkey submitted it. You stayed in the app."
+                    "kept" -> keptMessage ?: "It couldn't be sent just now. It stays on this phone until you send it again from Settings."
+                    else -> "Sending it from Lowkey. You don't need another app."
+                },
                 style = MaterialTheme.typography.bodyLarge,
             )
             if (leftover) {
@@ -175,32 +213,13 @@ private fun ReportForm(launch: ReportLaunch, address: String, onClose: () -> Uni
             }
             if (omitted) {
                 Text(
-                    "The image was too large to keep with the report, so it won't be attached.",
+                    "The image was too large to include, so the report doesn't contain it.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
-            Text(
-                if (ContentReports.isPlaceholder(address)) {
-                    "Send opens your email app, addressed to ${ContentReports.addressOrPlaceholder(address)}, " +
-                        "a placeholder until Op Studio publishes a real address. You can change it before sending."
-                } else {
-                    "Send opens your email app. You send the message yourself."
-                },
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            mailError?.let {
-                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+            if (phase != "sending") {
+                TextButton(onClick = onClose, modifier = Modifier.fillMaxWidth()) { Text("Done") }
             }
-            Button(
-                onClick = {
-                    val report = reportId?.let { AppGraph.reports.find(it) } ?: return@Button
-                    val sent = ContentReportMail.send(context, report, AppGraph.reports.imageFile(report), address)
-                    mailError = if (sent) null else "No email app is installed. The report stays on this phone."
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Send by email") }
-            TextButton(onClick = onClose, modifier = Modifier.fillMaxWidth()) { Text("Not now") }
             return@Column
         }
         Text(
@@ -208,7 +227,8 @@ private fun ReportForm(launch: ReportLaunch, address: String, onClose: () -> Uni
             style = MaterialTheme.typography.headlineSmall,
         )
         Text(
-            "This removes it from Lowkey and keeps a report on this phone. Nothing is emailed unless you tap Send afterwards.",
+            "This removes it from Lowkey and sends the report from this app. You don't leave Lowkey. " +
+                "The content is included only if you turn that on.",
             style = MaterialTheme.typography.bodyLarge,
         )
         ReportReason.entries.forEach { choice ->
@@ -245,7 +265,7 @@ private fun ReportForm(launch: ReportLaunch, address: String, onClose: () -> Uni
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = include, onCheckedChange = { include = it })
             Text(
-                "Include the content in the email, if I send one. Until then it stays on this phone.",
+                "Include the content in the report Lowkey sends. Off leaves it out.",
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(start = 4.dp),
             )
@@ -290,6 +310,7 @@ private fun ReportForm(launch: ReportLaunch, address: String, onClose: () -> Uni
                     }
                     omitted = saved.imageOmitted
                     reportId = saved.id
+                    phase = "sending"
                     error = null
                 },
                 enabled = reason != null,

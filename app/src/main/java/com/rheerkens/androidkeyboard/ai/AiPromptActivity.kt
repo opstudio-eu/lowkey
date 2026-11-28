@@ -54,6 +54,7 @@ import com.rheerkens.androidkeyboard.companion.Destination
 import com.rheerkens.androidkeyboard.companion.theme.resolveDark
 import com.rheerkens.androidkeyboard.keyboard.ui.AiComposerActions
 import com.rheerkens.androidkeyboard.keyboard.ui.AiPromptCard
+import com.rheerkens.androidkeyboard.keyboard.ui.AiSendNoticeCard
 import com.rheerkens.androidkeyboard.keyboard.ui.AiUi
 import com.rheerkens.androidkeyboard.keyboard.ui.LocalKeyboardColors
 import com.rheerkens.androidkeyboard.keyboard.ui.StripNote
@@ -83,6 +84,8 @@ class AiPromptActivity : ComponentActivity() {
     /** Counts returns from the photo picker: each one gives the box the focus and the keyboard back. */
     private var refocus by mutableStateOf(0)
 
+    /** The first send to this service is waiting for Continue. Cancel leaves the prompt unsent. */
+    private var pendingSend by mutableStateOf<AiSendKind?>(null)
     /** Improve's request while it runs. */
     private var improver: AiClient? = null
     private var improving by mutableStateOf(false)
@@ -193,12 +196,21 @@ class AiPromptActivity : ComponentActivity() {
                 // else closes it.
                 Box(
                     Modifier.fillMaxSize()
-                        .pointerInput(Unit) { detectTapGestures { finish() } }
+                        .pointerInput(pendingSend) { detectTapGestures { if (pendingSend == null) finish() } }
                         .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.systemBars))
                         .padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 4.dp),
                     contentAlignment = Alignment.BottomCenter,
                 ) {
-                    AiPromptCard(ai, prompt, { next ->
+                    val waiting = pendingSend
+                    if (waiting != null) {
+                        val notice = AiDisclosure.notice(waiting, images.size, settings.aiService, serverHostOf(settings))
+                        AiSendNoticeCard(
+                            notice,
+                            onContinue = { acceptSendNotice(host) },
+                            onCancel = { pendingSend = null },
+                            modifier = Modifier.widthIn(max = 720.dp).fillMaxWidth(),
+                        )
+                    } else AiPromptCard(ai, prompt, { next ->
                         // Typed into: Improve stops (the words typed win), and its Undo goes once the improved words change.
                         if (next.text != prompt.text && improving) stopImproving()
                         if (next.text != prompt.text && next.text != improved) beforeImprove = null
@@ -264,6 +276,29 @@ class AiPromptActivity : ComponentActivity() {
         trayOpen = false
     }
 
+    private fun sendNoticeAccepted(): Boolean {
+        val settings = AppGraph.settings.current
+        return AiDisclosure.accepted(settings.aiSendNotice, settings.aiService, settings.aiServerUrl)
+    }
+
+    /** Continue on the first-send notice: remember it, then send what was waiting. */
+    private fun acceptSendNotice(host: AiComposerHost) {
+        val settings = AppGraph.settings.current
+        val key = AiDisclosure.acceptanceKey(settings.aiService, settings.aiServerUrl)
+        AppGraph.settings.update { it.copy(aiSendNotice = key) }
+        val pending = pendingSend
+        pendingSend = null
+        when (pending) {
+            AiSendKind.CREATE -> submit(host) {
+                if (AppGraph.settings.current.vibrateOnKeyPress) {
+                    window.decorView.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                }
+            }
+            AiSendKind.IMPROVE -> improve(host)
+            null -> Unit
+        }
+    }
+
     /**
      * Improve: the service's text model rewrites the prompt into a clearer, more vivid one, which
      * replaces the words (Undo brings them back). Again while it works stops it.
@@ -287,6 +322,10 @@ class AiPromptActivity : ComponentActivity() {
         val check = promptJob(settings, words, AppGraph.secrets::get, BuildConfig.DEBUG, host.promptImages.value.size)
         val job = check.job ?: run {
             note = StripNote(check.problem ?: "AI isn't set up", warn = true)
+            return
+        }
+        if (!sendNoticeAccepted()) {
+            pendingSend = AiSendKind.IMPROVE
             return
         }
         val client = AiClient()
@@ -385,6 +424,18 @@ class AiPromptActivity : ComponentActivity() {
             return
         }
         if (prompt.text.isBlank()) return
+        LocalBlocklist.check(
+            prompt.text,
+            ContentSafetyPolicy.strict(settings.aiSafetyStrict),
+            SafetyStage.INPUT,
+        )?.let {
+            note = StripNote(it.message, warn = true)
+            return
+        }
+        if (!sendNoticeAccepted()) {
+            pendingSend = AiSendKind.CREATE
+            return
+        }
         val problem = host.submitImagePrompt(prompt.text, session)
         if (problem != null) {
             note = StripNote(problem, warn = true)

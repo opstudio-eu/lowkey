@@ -2,6 +2,7 @@ package com.rheerkens.androidkeyboard.ai
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -153,15 +154,15 @@ class ContentSafetyTest {
             ReportSubmission(ReportKind.IMPROVED_PROMPT, ReportReason.OTHER, "note", false, text, null, null),
             id = "one", nowMs = 1_700_000_000_000,
         )
-        val mail = ContentReports.email(without.report, "")
-        assertEquals(ContentReports.PLACEHOLDER_EMAIL, mail.address)
-        assertFalse(mail.body.contains(text))
+        val hidden = ContentReports.jsonBody(without.report, null)
+        assertFalse(hidden.contains(text))
         assertFalse(ContentReports.encode(listOf(without.report)).contains(text))
+        assertEquals(ContentReports.PLACEHOLDER_ENDPOINT, ContentReports.endpointOrPlaceholder(""))
         val with = ContentReports.prepare(
             ReportSubmission(ReportKind.IMPROVED_PROMPT, ReportReason.HATE, "  note  ", true, text, null, null),
             id = "two", nowMs = 1_700_000_000_000,
         )
-        assertTrue(ContentReports.email(with.report, ContentReports.PLACEHOLDER_EMAIL).body.contains(text))
+        assertTrue(ContentReports.jsonBody(with.report, null).contains(text))
         val png = ByteArray(8) { 1 }
         val image = ContentReports.prepare(
             ReportSubmission(ReportKind.IMAGE, ReportReason.VIOLENCE, "", true, text, png, "image/png"),
@@ -177,7 +178,51 @@ class ContentSafetyTest {
         )
         assertTrue(huge.report.imageOmitted)
         assertNull(huge.report.imageFile)
-        assertTrue(ContentReports.email(huge.report, ContentReports.PLACEHOLDER_EMAIL).body.contains("too large"))
+        val posted = ContentReports.jsonBody(huge.report, ByteArray(4))
+        assertFalse(posted.contains("imageBase64\":\"A"))
+        assertTrue(posted.contains("\"imageOmitted\":true"))
+        val included = ContentReports.jsonBody(image.report, png)
+        assertTrue(included.contains("imageBase64"))
+        assertTrue(included.contains(text))
+        val leftOut = ContentReports.jsonBody(image.report.copy(includeContent = false, text = null), png)
+        assertFalse(leftOut.contains("imageBase64\":\"A"))
+        assertFalse(leftOut.contains(text))
+    }
+
+    @Test
+    fun reportAddressIsHttpsOnly() {
+        assertEquals(ContentReports.PLACEHOLDER_ENDPOINT, ContentReports.normalizeEndpoint(ContentReports.PLACEHOLDER_ENDPOINT))
+        assertNull(ContentReports.normalizeEndpoint("http://example.com/lowkey/ai-report"))
+        assertNull(ContentReports.normalizeEndpoint("https://user:secret@example.com/lowkey/ai-report"))
+        assertNull(ContentReports.normalizeEndpoint("https://example.com/lowkey/ai-report?token=secret"))
+        assertTrue(ContentReports.isPlaceholder(ContentReports.PLACEHOLDER_ENDPOINT))
+        assertEquals(ReportDelivery.Sent, ContentReports.deliveryOf(204))
+        assertTrue(ContentReports.deliveryOf(302) is ReportDelivery.Kept)
+        assertTrue(ContentReports.deliveryOf(500) is ReportDelivery.Kept)
+    }
+
+    @Test
+    fun firstSendNamesWhatLeavesThePhoneAndRemembersTheService() {
+        val create = AiDisclosure.notice(AiSendKind.CREATE, 2, AiService.OPENAI, "api.openai.com")
+        val text = create.provider + "\n" + create.lines.joinToString("\n")
+        assertTrue(text.contains("OpenAI"))
+        assertTrue(text.contains("prompt"))
+        assertTrue(text.contains("2 attached pictures"))
+        assertTrue(text.contains("follow-up link"))
+        assertTrue(text.contains("IP address"))
+        val improve = AiDisclosure.notice(AiSendKind.IMPROVE, 1, AiService.OWN_SERVER, "ai.example.net")
+        val improved = improve.lines.joinToString("\n")
+        assertTrue(improve.provider.contains("ai.example.net"))
+        assertTrue(improved.contains("1 picture"))
+        assertTrue(improved.contains("not the picture"))
+        assertTrue(improved.contains("IP address"))
+        val openAi = AiDisclosure.acceptanceKey(AiService.OPENAI, "")
+        val own = AiDisclosure.acceptanceKey(AiService.OWN_SERVER, "https://ai.example.net")
+        assertTrue(AiDisclosure.accepted(openAi, AiService.OPENAI, ""))
+        assertFalse(AiDisclosure.accepted(openAi, AiService.OWN_SERVER, "https://ai.example.net"))
+        assertFalse(AiDisclosure.accepted("", AiService.OPENAI, ""))
+        assertNotEquals(own, AiDisclosure.acceptanceKey(AiService.OWN_SERVER, "https://other.example.net"))
+        assertTrue(AiDisclosure.review(AiService.OPENAI, "api.openai.com", accepted = false).contains("IP address"))
     }
 
     @Test

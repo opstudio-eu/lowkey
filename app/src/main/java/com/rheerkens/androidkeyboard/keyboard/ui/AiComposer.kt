@@ -979,3 +979,38 @@ internal fun AiButton(running: Int, actions: KeyboardActions) {
         }
     }
 }
+
+/**
+ * Shown in place of the prompt, immediately before the first send to a service.
+ * Continue is the only way the request starts.
+ */
+@Composable
+internal fun AiSendNoticeCard(
+    notice: com.rheerkens.androidkeyboard.ai.AiSendNotice,
+    onContinue: () -> Unit,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val c = LocalKeyboardColors.current
+    Column(
+        modifier.shadow(8.dp, RoundedCornerShape(16.dp))
+            .background(c.background, RoundedCornerShape(16.dp))
+            .border(1.dp, c.divider, RoundedCornerShape(16.dp))
+            .heightIn(max = 420.dp)
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(com.rheerkens.androidkeyboard.ai.AiDisclosure.TITLE, color = c.keyText, fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.semantics { heading() })
+        Text(notice.provider, color = c.enter, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        notice.lines.forEach { line ->
+            Text(line, color = c.keyText, fontSize = 15.sp, lineHeight = 20.sp)
+        }
+        Text("Continue sends it. Cancel keeps it on this phone.", color = c.muted, fontSize = 14.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            CardButton("Cancel", "Cancel, don't send this", primary = false, onTap = onCancel)
+            CardButton("Continue", "Continue, send this", primary = true, onTap = onContinue)
+        }
+    }
+}
